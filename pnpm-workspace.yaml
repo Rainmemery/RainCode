@@ -2,7 +2,7 @@ packages:
   - "packages/*"
   - "apps/*"
 
-# 允许运行构建脚本的依赖（better-sqlite3 需要编译/下载预编译产物）
+# 允许运行构建脚本的依赖（better-sqlite3 需要编译/下载预编译产物；esbuild 为 tsx 的安装脚本）
 allowBuilds:
   better-sqlite3: true
-
+  esbuild: true

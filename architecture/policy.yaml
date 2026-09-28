@@ -1,8 +1,9 @@
 # NovaCode 架构治理策略（04-architecture §6.1）
 #
-# 本波（walking skeleton 第一波）先登记 shared / rpc 两包规则；
-# storage / llm / tools / permission / memory / mcp / agent-core / server / apps/*
-# 随各包落码的波次同步登记（07-dev-plan §8.1：目录与 policy 同步登记）。
+# 波次登记进度（07-dev-plan §8.1：目录与 policy 同步登记）：
+#   第一/二波：shared / rpc / storage / llm；
+#   第三波（walking skeleton 收尾）：agent-core / server / app-cli；
+#   tools / permission / memory / mcp / app-desktop 随各自落码波次登记。
 version: 1
 
 global:
@@ -22,5 +23,38 @@ modules:
     managed: true
     requires: [shared]
     publicEntrypoints: [packages/rpc/src/index.ts]
+  - id: storage
+    roots: [packages/storage/src]
+    managed: true
+    requires: [shared]
+    publicEntrypoints: [packages/storage/src/index.ts]
+  - id: llm
+    roots: [packages/llm/src]
+    managed: true
+    requires: [shared]
+    publicEntrypoints: [packages/llm/src/index.ts]
+  - id: agent-core
+    roots: [packages/agent-core/src]
+    managed: true
+    # 本波实际依赖 llm / storage（端口类型）；tools/permission/memory/mcp 随波次扩入（04 §2.3 全集）
+    requires: [llm, storage, shared]
+    publicEntrypoints: [packages/agent-core/src/index.ts]
+  - id: server
+    roots: [packages/server/src]
+    managed: true
+    # 偏差注记（交付报告已申报）：04 §2.1 表格列 server「不可依赖 rpc（传输绑定发生在端层）」，
+    # 但第三波任务明确规定 AgentService 经 rpc 的 createServiceBinding 暴露控制面、
+    # createAgentServiceNode(transport) 工厂绑定端层注入的 transport——transport 仍由端层选择，
+    # server 仅引用绑定装配函数，不选择传输载体。该偏差为任务决策，后续若回归 04 原文需上移绑定装配。
+    requires: [agent-core, llm, rpc, storage, shared]
+    publicEntrypoints: [packages/server/src/index.ts]
+  - id: app-cli
+    roots: [apps/cli/src]
+    managed: true
+    requires: [server, rpc, shared]
+  - id: app-desktop
+    roots: [apps/desktop/src]
+    managed: true
+    requires: []            # 占位包（未落码），落码波次按 04 §2.1 改为 [server, rpc, shared]
 
 exceptions: []               # 白名单外豁免必须显式登记并附理由，随 PR 评审

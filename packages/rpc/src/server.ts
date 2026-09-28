@@ -1,5 +1,6 @@
 import { SYSTEM_ERROR_CODES, rpcFrameSchema } from "@novacode/shared";
 import type { RequestFrame } from "@novacode/shared";
+import { RpcCallError } from "./client.js";
 import { formatZodIssues, isDevMode } from "./validate.js";
 import type { IMessageTransport, RpcFrame, Unsubscribe } from "./transport.js";
 
@@ -96,6 +97,12 @@ export function createServiceBinding(
       if (frame.method === "system.ping") handshaken = true;
       sendResponse(frame.id, true, result);
     } catch (err) {
+      // 业务错误码传播（06 §4.3）：handler 抛 RpcCallError 时按其 code/message/details 应答，
+      // 使 SESSION_NOT_FOUND 等业务码可结构化到达端层；其余异常维持 INTERNAL（最小改动，向后兼容）。
+      if (err instanceof RpcCallError) {
+        sendResponse(frame.id, false, undefined, { code: err.code, message: err.message, details: err.details });
+        return;
+      }
       // 响应不携带内部错误细节（04 §5.3：错误信息先过脱敏）；诊断进 stderr
       console.error(`[novacode/rpc binding] handler failed for "${frame.method}"`, err);
       sendResponse(frame.id, false, undefined, {
