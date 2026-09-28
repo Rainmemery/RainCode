@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NovaCode · 设置页 设计稿 02</title>
+<style>
+/* ============ NovaCode Design Tokens（与 03-ui-design.md 3.1–3.5 一致） ============ */
+:root{
+  --bg-void:#0A0E13; --bg-base:#0D1219; --bg-panel:#111823; --bg-card:#141C28;
+  --bg-raised:#1A2432; --bg-hover:#1C2735; --bg-selected:#24384F; --bg-popover:#161F2C;
+  --border-faint:#1A2432; --border:#223042; --border-strong:#31435A;
+  --text-hi:#E8EEF5; --text-mid:#A3B3C7; --text-low:#66798F; --text-faint:#42546A;
+  --accent:#E0784F; --accent-hover:#F08D63; --accent-dim:#A85A3B; --accent-bg:rgba(224,120,79,.12);
+  --ok:#53C383; --warn:#E0B354; --danger:#E4655E; --info:#58A6F5; --violet:#A48AFA; --cyan:#4EC9D4; --mint:#4FCFA0;
+  --diff-add-bg:rgba(83,195,131,.12); --diff-add-tx:#6FD79A;
+  --diff-del-bg:rgba(228,101,94,.12); --diff-del-tx:#F08A84;
+  --font-ui:"Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI","PingFang SC",sans-serif;
+  --font-mono:"Cascadia Code","Cascadia Mono","JetBrains Mono",Consolas,monospace;
+  --fs-xl:18px; --fs-lg:15px; --fs-md:13px; --fs-sm:12px; --fs-xs:11px; --fs-2xs:10px; --fs-code:12.5px;
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px; --sp-8:32px;
+  --r-sm:4px; --r-md:6px; --r-lg:10px; --r-xl:14px;
+  --shadow-1:0 1px 2px rgba(0,0,0,.40); --shadow-2:0 4px 16px rgba(0,0,0,.45); --shadow-3:0 12px 40px rgba(0,0,0,.55);
+  --t-fast:120ms; --t-med:200ms; --t-slow:320ms; --ease:cubic-bezier(.2,.8,.3,1);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--bg-void);color:var(--text-hi);font-family:var(--font-ui);font-size:var(--fs-md);line-height:1.6;overflow:hidden}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,select,textarea{font-family:inherit}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:var(--border-strong)}
+::-webkit-scrollbar-track{background:transparent}
+.mono{font-family:var(--font-mono)}
+
+/* ============ 应用窗体 ============ */
+.app{height:100vh;display:flex;flex-direction:column;background:var(--bg-base);border:1px solid var(--border);margin:10px;border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow-3)}
+
+/* 标题栏 */
+.titlebar{height:40px;display:flex;align-items:center;background:var(--bg-void);border-bottom:1px solid var(--border-faint);padding-left:var(--sp-4);flex-shrink:0}
+.brand{display:flex;align-items:center;gap:var(--sp-2);margin-right:var(--sp-5)}
+.brand-mark{width:18px;height:18px;border:1px solid var(--accent);border-radius:var(--r-sm);display:grid;place-items:center;color:var(--accent);font-size:11px;font-family:var(--font-mono);position:relative}
+.brand-mark::after{content:"";position:absolute;inset:3px;background:var(--accent-bg);border-radius:2px}
+.brand-name{font-weight:600;font-size:var(--fs-sm);letter-spacing:.04em}
+.crumb{display:flex;align-items:center;gap:var(--sp-2);font-size:var(--fs-sm);color:var(--text-mid)}
+.crumb .sep{color:var(--text-faint)}
+.crumb .here{color:var(--text-hi);font-weight:500}
+.back{margin-left:var(--sp-2);height:24px;padding:0 10px;border:1px solid var(--border);border-radius:var(--r-md);font-size:var(--fs-xs);color:var(--text-low);display:flex;align-items:center;gap:5px;transition:all var(--t-fast) var(--ease)}
+.back:hover{color:var(--text-hi);border-color:var(--border-strong);background:var(--bg-hover)}
+.tb-right{margin-left:auto;display:flex;align-items:center;height:100%}
+.tb-btn{width:34px;height:100%;display:grid;place-items:center;color:var(--text-low);transition:background var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
+.tb-btn:hover{background:var(--bg-hover);color:var(--text-hi)}
+.tb-btn.close:hover{background:#B03A32;color:#fff}
+.tb-sep{width:1px;height:16px;background:var(--border);margin:0 var(--sp-2)}
+.saved-tip{font-size:var(--fs-2xs);color:var(--ok);display:flex;align-items:center;gap:5px;margin-right:var(--sp-3)}
+
+/* ============ 布局 ============ */
+.body{flex:1;display:flex;min-height:0}
+.sidenav{width:220px;flex-shrink:0;background:var(--bg-panel);border-right:1px solid var(--border-faint);padding:var(--sp-3);display:flex;flex-direction:column;gap:2px}
+.nav-title{font-size:var(--fs-2xs);color:var(--text-faint);letter-spacing:.12em;font-weight:600;padding:var(--sp-2) var(--sp-3) var(--sp-1)}
+.nav-item{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3);border-radius:var(--r-md);font-size:var(--fs-sm);color:var(--text-mid);cursor:pointer;position:relative;transition:all var(--t-fast) var(--ease);text-align:left;width:100%}
+.nav-item:hover{background:var(--bg-hover);color:var(--text-hi)}
+.nav-item.active{background:var(--accent-bg);color:var(--text-hi);font-weight:500}
+.nav-item.active::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:2px;background:var(--accent);border-radius:1px}
+.nav-item .ico{width:16px;text-align:center;color:var(--text-low);font-size:12px}
+.nav-item.active .ico{color:var(--accent)}
+.nav-item .dotw{margin-left:auto;width:6px;height:6px;border-radius:50%;background:var(--warn)}
+.content{flex:1;min-width:0;overflow-y:auto;padding:var(--sp-6) var(--sp-8) var(--sp-8)}
+.page-inner{max-width:860px}
+.view{display:none;animation:fadein var(--t-med) var(--ease)}
+.view.active{display:block}
+@keyframes fadein{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* 区块与卡片 */
+.h1{font-size:var(--fs-xl);font-weight:600;margin-bottom:var(--sp-1)}
+.h1-sub{font-size:var(--fs-sm);color:var(--text-low);margin-bottom:var(--sp-5)}
+.sec{margin-bottom:var(--sp-8)}
+.sec-title{display:flex;align-items:center;gap:var(--sp-2);font-size:var(--fs-lg);font-weight:600;margin-bottom:var(--sp-1)}
+.sec-desc{font-size:var(--fs-sm);color:var(--text-low);margin-bottom:var(--sp-3)}
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow-1)}
+
+/* 表单 */
+.form{padding:var(--sp-4)}
+.field{margin-bottom:var(--sp-4)}
+.field:last-child{margin-bottom:0}
+.field label{display:block;font-size:var(--fs-sm);color:var(--text-mid);font-weight:500;margin-bottom:var(--sp-1)}
+.field .help{font-size:var(--fs-2xs);color:var(--text-faint);margin-top:var(--sp-1)}
+.input{width:100%;height:32px;background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--r-md);color:var(--text-hi);font-size:var(--fs-sm);padding:0 var(--sp-3);outline:none;transition:border-color var(--t-fast) var(--ease)}
+.input:focus{border-color:var(--accent-dim);background:var(--bg-popover)}
+.input::placeholder{color:var(--text-faint)}
+.input.mono{font-family:var(--font-mono);font-size:var(--fs-code)}
+.select{width:100%;height:32px;background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--r-md);color:var(--text-hi);font-size:var(--fs-sm);padding:0 var(--sp-3);display:flex;align-items:center;justify-content:space-between;cursor:pointer;transition:border-color var(--t-fast) var(--ease)}
+.select:hover{border-color:var(--border-strong)}
+.select .v{font-family:var(--font-mono);font-size:var(--fs-sm)}
+.select .chev{color:var(--text-faint);font-size:10px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-4)}
+.key-row{display:flex;gap:var(--sp-2)}
+.key-row .input{flex:1}
+.eye{width:32px;height:32px;border:1px solid var(--border);border-radius:var(--r-md);display:grid;place-items:center;color:var(--text-low);font-size:12px;transition:all var(--t-fast) var(--ease);flex-shrink:0}
+.eye:hover{color:var(--text-hi);border-color:var(--border-strong)}
+.slider{display:flex;align-items:center;gap:var(--sp-3)}
+.slider .track{flex:1;height:4px;background:var(--bg-raised);border-radius:2px;position:relative}
+.slider .track i{position:absolute;left:0;top:0;height:100%;background:var(--accent);border-radius:2px}
+.slider .knob{position:absolute;top:50%;width:12px;height:12px;background:var(--text-hi);border-radius:50%;transform:translate(-50%,-50%);box-shadow:var(--shadow-1)}
+.slider .val{font-family:var(--font-mono);font-size:var(--fs-sm);color:var(--text-hi);width:64px;text-align:right}
+.btn{height:30px;padding:0 var(--sp-4);border-radius:var(--r-md);font-size:var(--fs-sm);display:inline-flex;align-items:center;gap:6px;transition:all var(--t-fast) var(--ease);border:1px solid transparent}
+.btn.primary{background:var(--accent);color:#14100C;font-weight:600}
+.btn.primary:hover{background:var(--accent-hover)}
+.btn.outline{border-color:var(--border-strong);color:var(--text-mid)}
+.btn.outline:hover{border-color:var(--accent-dim);color:var(--text-hi);background:var(--bg-hover)}
+.btn.ghost{color:var(--text-low)}
+.btn.ghost:hover{color:var(--danger);background:rgba(228,101,94,.08)}
+.form-foot{display:flex;align-items:center;gap:var(--sp-3);margin-top:var(--sp-4);padding-top:var(--sp-4);border-top:1px solid var(--border-faint)}
+.conn-ok{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-xs);color:var(--ok)}
+.conn-ok .d{width:7px;height:7px;border-radius:50%;background:var(--ok)}
+
+/* 当前 Provider 卡 */
+.prov-hero{display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-4);margin-bottom:var(--sp-4)}
+.prov-hero .logo{width:38px;height:38px;border-radius:var(--r-md);background:var(--accent-bg);border:1px solid var(--accent-dim);display:grid;place-items:center;color:var(--accent);font-family:var(--font-mono);font-weight:700;font-size:var(--fs-lg)}
+.prov-hero .nm{font-weight:600;font-size:var(--fs-md)}
+.prov-hero .sub{font-size:var(--fs-2xs);color:var(--text-low);font-family:var(--font-mono)}
+.prov-hero .badge{margin-left:auto;font-size:var(--fs-2xs);border-radius:var(--r-sm);padding:2px 8px;border:1px solid rgba(224,120,79,.35);background:var(--accent-bg);color:var(--accent-hover)}
+
+/* 权限规则 */
+.mode-strip{display:flex;gap:var(--sp-3);margin-bottom:var(--sp-4)}
+.mode-chip{display:flex;align-items:center;gap:var(--sp-2);font-size:var(--fs-xs);color:var(--text-low);background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3);flex:1}
+.mode-chip .swatch{width:8px;height:8px;border-radius:50%}
+.mode-chip b{color:var(--text-hi);font-family:var(--font-mono);font-weight:600}
+.rule-table{overflow:hidden}
+.rule-head,.rule-row{display:grid;grid-template-columns:72px 1fr 150px 130px 60px;gap:var(--sp-3);align-items:center;padding:var(--sp-2) var(--sp-4)}
+.rule-head{font-size:var(--fs-2xs);color:var(--text-faint);letter-spacing:.08em;border-bottom:1px solid var(--border-faint);font-weight:600}
+.rule-row{border-bottom:1px solid var(--border-faint);transition:background var(--t-fast) var(--ease)}
+.rule-row:last-child{border-bottom:none}
+.rule-row:hover{background:var(--bg-hover)}
+.mode-tag{font-family:var(--font-mono);font-size:var(--fs-2xs);border-radius:var(--r-sm);padding:1px 0;text-align:center;border:1px solid}
+.mode-tag.allow{color:var(--ok);border-color:rgba(83,195,131,.4);background:rgba(83,195,131,.08)}
+.mode-tag.ask{color:var(--warn);border-color:rgba(224,179,84,.4);background:rgba(224,179,84,.08)}
+.mode-tag.deny{color:var(--danger);border-color:rgba(228,101,94,.4);background:rgba(228,101,94,.08)}
+.rule-expr{font-family:var(--font-mono);font-size:var(--fs-code);color:var(--text-hi);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rule-scope{font-size:var(--fs-xs);color:var(--text-low)}
+.rule-src{font-size:var(--fs-2xs);color:var(--text-faint)}
+.rule-src .sess{color:var(--accent-dim)}
+.rule-del{width:24px;height:24px;border-radius:var(--r-sm);display:grid;place-items:center;color:var(--text-faint);font-size:11px;transition:all var(--t-fast) var(--ease)}
+.rule-del:hover{color:var(--danger);background:rgba(228,101,94,.1)}
+.rule-add{display:flex;gap:var(--sp-2);padding:var(--sp-3) var(--sp-4);border-top:1px dashed var(--border);background:rgba(13,18,25,.4)}
+.rule-add .input{height:30px}
+.newrule-modes{display:flex;gap:var(--sp-1);flex-shrink:0}
+.newrule-modes span{font-family:var(--font-mono);font-size:var(--fs-2xs);border:1px solid var(--border);border-radius:var(--r-sm);padding:2px 8px;color:var(--text-low);cursor:pointer}
+.newrule-modes span.on{color:var(--warn);border-color:rgba(224,179,84,.4);background:rgba(224,179,84,.08)}
+
+/* MCP */
+.srv-card{margin-bottom:var(--sp-3)}
+.srv-head{display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-3) var(--sp-4)}
+.srv-head .nm{font-family:var(--font-mono);font-size:var(--fs-md);font-weight:600}
+.srv-head .tr{font-size:var(--fs-2xs);color:var(--text-low);font-family:var(--font-mono);border:1px solid var(--border);border-radius:var(--r-sm);padding:0 6px}
+.status-pill{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-2xs);border-radius:var(--r-sm);padding:2px 8px;border:1px solid}
+.status-pill.ok{color:var(--ok);border-color:rgba(83,195,131,.35);background:rgba(83,195,131,.07)}
+.status-pill.warn{color:var(--warn);border-color:rgba(224,179,84,.35);background:rgba(224,179,84,.07)}
+.status-pill.off{color:var(--text-faint);border-color:var(--border)}
+.sdot{width:6px;height:6px;border-radius:50%}
+.status-pill.ok .sdot{background:var(--ok)}
+.status-pill.warn .sdot{background:var(--warn);animation:pulse 1.6s var(--ease) infinite}
+.status-pill.off .sdot{background:var(--text-faint)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.srv-head .tools-n{margin-left:auto;font-size:var(--fs-2xs);color:var(--text-low)}
+.switch{width:30px;height:16px;border-radius:8px;background:var(--bg-raised);border:1px solid var(--border);position:relative;cursor:pointer;flex-shrink:0}
+.switch::after{content:"";position:absolute;top:1px;left:1px;width:12px;height:12px;border-radius:50%;background:var(--text-low);transition:all var(--t-med) var(--ease)}
+.switch.on{background:rgba(88,166,245,.18);border-color:rgba(88,166,245,.4)}
+.switch.on::after{left:15px;background:var(--info)}
+.srv-err{margin:0 var(--sp-4) var(--sp-3);font-size:var(--fs-xs);color:var(--danger);background:rgba(228,101,94,.07);border:1px solid rgba(228,101,94,.25);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3);display:flex;align-items:center;gap:var(--sp-2)}
+.srv-err .mono{color:var(--danger)}
+.srv-err .retry{margin-left:auto;height:22px;padding:0 10px;border:1px solid rgba(228,101,94,.4);border-radius:var(--r-sm);font-size:var(--fs-2xs);color:var(--danger);display:flex;align-items:center}
+.srv-err .retry:hover{background:rgba(228,101,94,.12)}
+.srv-tools{display:flex;flex-wrap:wrap;gap:var(--sp-1);padding:0 var(--sp-4) var(--sp-3)}
+.tool-chip{font-family:var(--font-mono);font-size:var(--fs-2xs);color:var(--text-low);background:var(--bg-raised);border:1px solid var(--border-faint);border-radius:var(--r-sm);padding:1px 7px}
+.add-card{border:1px dashed var(--border-strong);border-radius:var(--r-lg);padding:var(--sp-4)}
+.add-head{display:flex;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-3)}
+.add-head .plus{width:26px;height:26px;border:1px solid var(--border-strong);border-radius:var(--r-md);display:grid;place-items:center;color:var(--accent);font-family:var(--font-mono)}
+.add-head .t{font-size:var(--fs-sm);font-weight:600}
+.json-block{background:var(--bg-void);border:1px solid var(--border);border-radius:var(--r-md);padding:var(--sp-3);font-family:var(--font-mono);font-size:var(--fs-code);line-height:1.6;color:var(--text-mid);overflow-x:auto;margin-bottom:var(--sp-3)}
+.jk{color:var(--cyan)}.js{color:var(--ok)}.jp{color:var(--text-low)}
+
+/* 通用 / 开关行 */
+.opt-row{display:flex;align-items:center;gap:var(--sp-4);padding:var(--sp-3) var(--sp-4);border-bottom:1px solid var(--border-faint)}
+.opt-row:last-child{border-bottom:none}
+.opt-row .l{min-width:0}
+.opt-row .t{font-size:var(--fs-sm);color:var(--text-hi)}
+.opt-row .d{font-size:var(--fs-2xs);color:var(--text-low)}
+.opt-row .ctl{margin-left:auto;flex-shrink:0}
+.switch.g{width:30px;height:16px;border-radius:8px;background:var(--bg-raised);border:1px solid var(--border);position:relative;cursor:pointer}
+.switch.g::after{content:"";position:absolute;top:1px;left:1px;width:12px;height:12px;border-radius:50%;background:var(--text-low);transition:all var(--t-med) var(--ease)}
+.switch.g.on{background:rgba(224,120,79,.2);border-color:var(--accent-dim)}
+.switch.g.on::after{left:15px;background:var(--accent)}
+.seg{display:flex;background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--r-md);padding:2px;gap:2px}
+.seg span{font-size:var(--fs-xs);color:var(--text-low);padding:2px 12px;border-radius:var(--r-sm);cursor:pointer}
+.seg span.on{background:var(--bg-selected);color:var(--text-hi)}
+.kbd-tbl{width:100%;border-collapse:collapse}
+.kbd-tbl td{padding:var(--sp-2) var(--sp-4);border-bottom:1px solid var(--border-faint);font-size:var(--fs-sm);color:var(--text-mid)}
+.kbd-tbl tr:last-child td{border-bottom:none}
+.kbd-tbl .k{font-family:var(--font-mono);font-size:var(--fs-xs);color:var(--text-hi);background:var(--bg-raised);border:1px solid var(--border-strong);border-radius:var(--r-sm);padding:1px 7px;margin-right:4px}
+.about-kv{display:flex;justify-content:space-between;padding:var(--sp-2) var(--sp-4);font-size:var(--fs-sm);border-bottom:1px solid var(--border-faint)}
+.about-kv:last-child{border-bottom:none}
+.about-kv .k{color:var(--text-low)}
+.about-kv .v{font-family:var(--font-mono);color:var(--text-mid)}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- 标题栏 -->
+  <div class="titlebar">
+    <div class="brand">
+      <div class="brand-mark">✦</div>
+      <span class="brand-name">NovaCode</span>
+    </div>
+    <div class="crumb">
+      <span>设置</span><span class="sep">/</span><span class="here">Provider 与模型</span>
+      <button class="back">← 返回工作区</button>
+    </div>
+    <span class="saved-tip">✓ 已自动保存</span>
+    <div class="tb-right">
+      <div class="tb-btn" title="最小化">─</div>
+      <div class="tb-btn" title="最大化">▢</div>
+      <div class="tb-btn close" title="关闭">✕</div>
+    </div>
+  </div>
+
+  <div class="body">
+
+    <!-- 左侧导航 -->
+    <nav class="sidenav">
+      <div class="nav-title">设置</div>
+      <button class="nav-item" onclick="go(this,'general')"><span class="ico">◎</span>通用</button>
+      <button class="nav-item active" onclick="go(this,'provider')"><span class="ico">✦</span>Provider 与模型</button>
+      <button class="nav-item" onclick="go(this,'perms')"><span class="ico">⚠</span>命令权限</button>
+      <button class="nav-item" onclick="go(this,'mcp')"><span class="ico">⇄</span>MCP 服务器<span class="dotw" title="postgres 重连中"></span></button>
+      <button class="nav-item" onclick="go(this,'keys')"><span class="ico">⌘</span>快捷键</button>
+      <button class="nav-item" onclick="go(this,'about')"><span class="ico">ⓘ</span>关于</button>
+    </nav>
+
+    <!-- 内容区 -->
+    <div class="content"><div class="page-inner">
+
+      <!-- ============ 通用 ============ -->
+      <section class="view" id="view-general">
+        <div class="h1">通用</div>
+        <div class="h1-sub">语言、外观与启动行为。所有设置即时保存到本地 ~/.novacode/settings.json。</div>
+
+        <div class="sec">
+          <div class="sec-title">外观与语言</div>
+          <div class="sec-desc">浅色主题与深色共享同一套语义 token，切换不改版式。</div>
+          <div class="card">
+            <div class="opt-row">
+              <div class="l"><div class="t">界面语言</div><div class="d">默认 zh-CN，可切换 en-US（部分文案仍在翻译）</div></div>
+              <div class="ctl"><div class="seg"><span class="on">简体中文</span><span>English</span></div></div>
+            </div>
+            <div class="opt-row">
+              <div class="l"><div class="t">主题</div><div class="d">深色为默认主题，跟随系统将随 Windows 主题切换</div></div>
+              <div class="ctl"><div class="seg"><span>跟随系统</span><span class="on">深色</span><span>浅色</span></div></div>
+            </div>
+            <div class="opt-row">
+              <div class="l"><div class="t">界面字号</div><div class="d">仅影响界面文案，代码与 TUI 字号独立设置</div></div>
+              <div class="ctl"><div class="seg"><span>小</span><span class="on">默认 13px</span><span>大</span></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <div class="sec-title">启动行为</div>
+          <div class="card">
+            <div class="opt-row">
+              <div class="l"><div class="t">启动时恢复上次会话</div><div class="d">与 CLI 共享会话记录，双端无缝接续</div></div>
+              <div class="ctl"><div class="switch g on"></div></div>
+            </div>
+            <div class="opt-row">
+              <div class="l"><div class="t">启动时自动连接 MCP 服务器</div><div class="d">关闭后首次调用工具时再连接</div></div>
+              <div class="ctl"><div class="switch g on"></div></div>
+            </div>
+            <div class="opt-row">
+              <div class="l"><div class="t">记忆自动提取</div><div class="d">会话结束后自动总结可沉淀为项目记忆的内容</div></div>
+              <div class="ctl"><div class="switch g on"></div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ Provider 与模型 ============ -->
+      <section class="view active" id="view-provider">
+        <div class="h1">Provider 与模型</div>
+        <div class="h1-sub">配置模型服务商与默认参数。API Key 仅存储在本机，不会上传。</div>
+
+        <div class="prov-hero card">
+          <div class="logo">A</div>
+          <div>
+            <div class="nm">Anthropic</div>
+            <div class="sub">api.anthropic.com · 默认模型 sonnet-4.5 · 200k ctx</div>
+          </div>
+          <span class="badge">当前使用</span>
+        </div>
+
+        <div class="card form">
+          <div class="field">
+            <label>API Key</label>
+            <div class="key-row">
+              <input class="input mono" type="password" id="keyInput" value="sk-ant-api03-Xk2_fJ8sQwLnR7tVbY4mCd9pZe6uHg" readonly>
+              <button class="eye" onclick="toggleKey()" id="eyeBtn">显示</button>
+              <button class="eye" title="重新生成">↻</button>
+            </div>
+            <div class="help">密钥以掩码显示；点击「显示」临时可见 10 秒。也可通过环境变量 ANTHROPIC_API_KEY 注入。</div>
+          </div>
+          <div class="field">
+            <label>Base URL</label>
+            <input class="input mono" value="https://api.anthropic.com">
+            <div class="help">如需代理或自建网关，可修改此地址。</div>
+          </div>
+          <div class="row2">
+            <div class="field">
+              <label>默认模型</label>
+              <div class="select"><span class="v">claude-sonnet-4.5</span><span class="chev">▾</span></div>
+              <div class="help">会话内可随时通过输入区快切。</div>
+            </div>
+            <div class="field">
+              <label>上下文窗口</label>
+              <div class="select"><span class="v">200,000 tokens</span><span class="chev">▾</span></div>
+              <div class="help">决定状态栏 context 用量条的满刻度。</div>
+            </div>
+          </div>
+          <div class="row2">
+            <div class="field">
+              <label>温度 temperature</label>
+              <div class="slider">
+                <div class="track"><i style="width:30%"></i><span class="knob" style="left:30%"></span></div>
+                <span class="val">0.3</span>
+              </div>
+              <div class="help">代码任务建议 0–0.4，保持输出稳定。</div>
+            </div>
+            <div class="field">
+              <label>最大输出 tokens</label>
+              <div class="slider">
+                <div class="track"><i style="width:52%"></i><span class="knob" style="left:52%"></span></div>
+                <span class="val">16,384</span>
+              </div>
+              <div class="help">单次回复上限，超长任务由 Agent 分步完成。</div>
+            </div>
+          </div>
+          <div class="form-foot">
+            <button class="btn primary" onclick="testConn(this)">测试连接</button>
+            <button class="btn outline">添加自定义 Provider</button>
+            <span class="conn-ok" id="connResult" style="display:none"><span class="d"></span>连接成功 · 延迟 320ms · 模型可用</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 命令权限 ============ -->
+      <section class="view" id="view-perms">
+        <div class="h1">命令权限</div>
+        <div class="h1-sub">工具调用与 Shell 命令的执行策略。会话内的审批决策（「始终允许」）会自动同步为规则。</div>
+
+        <div class="mode-strip">
+          <div class="mode-chip"><span class="swatch" style="background:var(--ok)"></span><b>allow</b>直接执行，不打断</div>
+          <div class="mode-chip"><span class="swatch" style="background:var(--warn)"></span><b>ask</b>弹窗审批后再执行</div>
+          <div class="mode-chip"><span class="swatch" style="background:var(--danger)"></span><b>deny</b>直接拒绝并记录</div>
+        </div>
+
+        <div class="sec">
+          <div class="sec-title">规则列表</div>
+          <div class="sec-desc">按从上到下顺序匹配，首条命中生效；deny 规则建议置顶。</div>
+          <div class="card rule-table">
+            <div class="rule-head"><span>模式</span><span>规则表达式</span><span>作用域</span><span>来源</span><span></span></div>
+            <div class="rule-row"><span class="mode-tag deny">deny</span><span class="rule-expr">rm -rf *</span><span class="rule-scope">全局</span><span class="rule-src">手动</span><button class="rule-del">✕</button></div>
+            <div class="rule-row"><span class="mode-tag deny">deny</span><span class="rule-expr">git push --force*</span><span class="rule-scope">全局</span><span class="rule-src">手动</span><button class="rule-del">✕</button></div>
+            <div class="rule-row"><span class="mode-tag deny">deny</span><span class="rule-expr">Bash: curl * | bash</span><span class="rule-scope">全局</span><span class="rule-src">手动</span><button class="rule-del">✕</button></div>
+            <div class="rule-row"><span class="mode-tag allow">allow</span><span class="rule-expr">npm test -- --filter *</span><span class="rule-scope">novacode 工作区</span><span class="rule-src">会话决策 <span class="sess">#a3f2</span></span><button class="rule-del">✕</button></div>
+            <div class="rule-row"><span class="mode-tag allow">allow</span><span class="rule-expr">npm run build</span><span class="rule-scope">novacode 工作区</span><span class="rule-src">会话决策 <span class="sess">#98c1</span></span><button class="rule-del">✕</button></div>
+            <div class="rule-row"><span class="mode-tag allow">allow</span><span class="rule-expr">Read *</span><span class="rule-scope">工作区内</span><span class="rule-src">默认</span><button class="rule-del">✕</button></div>
+            <div class="rule-row"><span class="mode-tag ask">ask</span><span class="rule-expr">Bash *</span><span class="rule-scope">全局</span><span class="rule-src">默认</span><button class="rule-del">✕</button></div>
+            <div class="rule-row"><span class="mode-tag ask">ask</span><span class="rule-expr">Write *</span><span class="rule-scope">工作区外</span><span class="rule-src">默认</span><button class="rule-del">✕</button></div>
+            <div class="rule-add">
+              <span class="newrule-modes"><span>allow</span><span class="on">ask</span><span>deny</span></span>
+              <input class="input mono" placeholder="输入规则表达式，如 Bash: npm run *">
+              <button class="btn primary" style="height:30px">添加规则</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ MCP 服务器 ============ -->
+      <section class="view" id="view-mcp">
+        <div class="h1">MCP 服务器</div>
+        <div class="h1-sub">Model Context Protocol 服务器为 Agent 提供扩展工具。远程服务器调用会经过权限审批。</div>
+
+        <div class="card srv-card">
+          <div class="srv-head">
+            <span class="status-pill ok"><span class="sdot"></span>已连接</span>
+            <span class="nm">filesystem</span><span class="tr">stdio · 本地</span>
+            <span class="tools-n">12 工具 · 平均响应 45ms</span>
+            <div class="switch on"></div>
+          </div>
+          <div class="srv-tools">
+            <span class="tool-chip">read_file</span><span class="tool-chip">write_file</span><span class="tool-chip">list_dir</span><span class="tool-chip">search_files</span><span class="tool-chip">create_dir</span><span class="tool-chip">move</span><span class="tool-chip">+6</span>
+          </div>
+        </div>
+
+        <div class="card srv-card">
+          <div class="srv-head">
+            <span class="status-pill ok"><span class="sdot"></span>已连接</span>
+            <span class="nm">github</span><span class="tr">sse · 远程</span>
+            <span class="tools-n">18 工具 · 平均响应 310ms</span>
+            <div class="switch on"></div>
+          </div>
+          <div class="srv-tools">
+            <span class="tool-chip">create_issue</span><span class="tool-chip">list_prs</span><span class="tool-chip">get_diff</span><span class="tool-chip">search_code</span><span class="tool-chip">+14</span>
+          </div>
+        </div>
+
+        <div class="card srv-card">
+          <div class="srv-head">
+            <span class="status-pill warn"><span class="sdot"></span>重连中…</span>
+            <span class="nm">postgres</span><span class="tr">stdio · 本地</span>
+            <span class="tools-n">7 工具</span>
+            <div class="switch on"></div>
+          </div>
+          <div class="srv-err">✕ <span class="mono">ECONNREFUSED 127.0.0.1:5432</span> — 数据库未启动或端口已变更<button class="retry" onclick="this.textContent='正在重连…'">立即重试</button></div>
+        </div>
+
+        <div class="card srv-card">
+          <div class="srv-head">
+            <span class="status-pill off"><span class="sdot"></span>未启用</span>
+            <span class="nm">puppeteer</span><span class="tr">stdio · 本地</span>
+            <span class="tools-n">9 工具</span>
+            <div class="switch"></div>
+          </div>
+        </div>
+
+        <div class="add-card">
+          <div class="add-head"><span class="plus">＋</span><span class="t">添加 MCP 服务器</span></div>
+          <div class="json-block">{
+  <span class="jk">"mcpServers"</span>: {
+    <span class="jk">"filesystem"</span>: {
+      <span class="jk">"command"</span>: <span class="js">"npx"</span>,
+      <span class="jk">"args"</span>: [<span class="js">"-y"</span>, <span class="js">"@modelcontextprotocol/server-filesystem"</span>, <span class="js">"d:\\LYX\\MyClaudeCode"</span>]
+    }
+  }
+}</div>
+          <div style="display:flex;gap:var(--sp-2)">
+            <button class="btn primary">从剪贴板导入 JSON</button>
+            <button class="btn outline">手动填写</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 快捷键 ============ -->
+      <section class="view" id="view-keys">
+        <div class="h1">快捷键</div>
+        <div class="h1-sub">桌面端全局与工作区快捷键。CLI 端快捷键见设计稿 04 与文档第 5.3 节。</div>
+        <div class="card"><table class="kbd-tbl">
+          <tr><td>新建会话</td><td><span class="k">Ctrl</span><span class="k">N</span></td><td>搜索会话</td><td><span class="k">Ctrl</span><span class="k">P</span></td></tr>
+          <tr><td>聚焦输入框</td><td><span class="k">Ctrl</span><span class="k">I</span></td><td>中断生成</td><td><span class="k">Ctrl</span><span class="k">C</span></td></tr>
+          <tr><td>切换右侧面板</td><td><span class="k">Ctrl</span><span class="k">J</span></td><td>切换左侧栏</td><td><span class="k">Ctrl</span><span class="k">B</span></td></tr>
+          <tr><td>审批：允许（仅本次）</td><td><span class="k">1</span></td><td>审批：拒绝</td><td><span class="k">4</span> / <span class="k">Esc</span></td></tr>
+          <tr><td>打开记忆管理器</td><td><span class="k">Ctrl</span><span class="k">M</span></td><td>打开设置</td><td><span class="k">Ctrl</span><span class="k">,</span></td></tr>
+        </table></div>
+      </section>
+
+      <!-- ============ 关于 ============ -->
+      <section class="view" id="view-about">
+        <div class="h1">关于</div>
+        <div class="h1-sub">NovaCode · 本地优先的个人代码智能助手</div>
+        <div class="card" style="padding:var(--sp-2) 0">
+          <div class="about-kv"><span class="k">版本</span><span class="v">v0.3.2 (stable)</span></div>
+          <div class="about-kv"><span class="k">运行时</span><span class="v">Electron 33 · React 18 · Node 20</span></div>
+          <div class="about-kv"><span class="k">数据目录</span><span class="v">~/.novacode/</span></div>
+          <div class="about-kv"><span class="k">会话存储</span><span class="v">~/.novacode/sessions/</span></div>
+          <div class="about-kv"><span class="k">项目记忆</span><span class="v">~/.novacode/memory/MEMORY.md</span></div>
+          <div class="about-kv"><span class="k">许可</span><span class="v">MIT · 仅供个人使用</span></div>
+        </div>
+      </section>
+
+    </div></div>
+  </div>
+</div>
+
+<div class="demo-tip" style="position:fixed;left:24px;bottom:24px;z-index:40;font-size:var(--fs-2xs);color:var(--text-faint);background:var(--bg-void);border:1px solid var(--border);border-radius:var(--r-md);padding:6px 10px">设计稿 02 · 设置页：左侧导航可切换 · 「测试连接」「显示 Key」等按钮可点击演示</div>
+
+<script>
+/* 极少量演示交互：导航切换 / Key 显隐 / 测试连接 */
+function go(btn,id){
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-'+id).classList.add('active');
+  document.querySelector('.here').textContent=btn.textContent.trim().replace(/^\W+/,'');
+}
+let shown=false;
+function toggleKey(){
+  const el=document.getElementById('keyInput'),b=document.getElementById('eyeBtn');
+  shown=!shown; el.type=shown?'text':'password'; b.textContent=shown?'隐藏':'显示';
+}
+function testConn(btn){
+  btn.textContent='连接中…';
+  setTimeout(()=>{ btn.textContent='测试连接'; document.getElementById('connResult').style.display='inline-flex'; },700);
+}
+</script>
+</body>
+</html>

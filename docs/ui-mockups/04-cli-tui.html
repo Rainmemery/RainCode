@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NovaCode · CLI TUI 视觉示意 设计稿 04</title>
+<style>
+/* ============ NovaCode Design Tokens（与 03-ui-design.md 3.1–3.5 一致） ============ */
+:root{
+  --bg-void:#0A0E13; --bg-base:#0D1219; --bg-panel:#111823; --bg-card:#141C28;
+  --bg-raised:#1A2432; --bg-hover:#1C2735; --bg-selected:#24384F; --bg-popover:#161F2C;
+  --border-faint:#1A2432; --border:#223042; --border-strong:#31435A;
+  --text-hi:#E8EEF5; --text-mid:#A3B3C7; --text-low:#66798F; --text-faint:#42546A;
+  --accent:#E0784F; --accent-hover:#F08D63; --accent-dim:#A85A3B; --accent-bg:rgba(224,120,79,.12);
+  --ok:#53C383; --warn:#E0B354; --danger:#E4655E; --info:#58A6F5; --violet:#A48AFA; --cyan:#4EC9D4; --mint:#4FCFA0;
+  --diff-add-bg:rgba(83,195,131,.12); --diff-add-tx:#6FD79A;
+  --diff-del-bg:rgba(228,101,94,.12); --diff-del-tx:#F08A84;
+  --font-ui:"Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI","PingFang SC",sans-serif;
+  --font-mono:"Cascadia Code","Cascadia Mono","JetBrains Mono",Consolas,monospace;
+  --fs-xl:18px; --fs-lg:15px; --fs-md:13px; --fs-sm:12px; --fs-xs:11px; --fs-2xs:10px; --fs-code:12.5px;
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px; --sp-8:32px;
+  --r-sm:4px; --r-md:6px; --r-lg:10px; --r-xl:14px;
+  --shadow-1:0 1px 2px rgba(0,0,0,.40); --shadow-2:0 4px 16px rgba(0,0,0,.45); --shadow-3:0 12px 40px rgba(0,0,0,.55);
+  --t-fast:120ms; --t-med:200ms; --t-slow:320ms; --ease:cubic-bezier(.2,.8,.3,1);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg-void);color:var(--text-mid);font-family:var(--font-ui);min-height:100vh;padding:var(--sp-6) var(--sp-6) var(--sp-8);overflow-x:hidden}
+/* 背景细网格，营造工作台氛围 */
+body::before{content:"";position:fixed;inset:0;background:
+  linear-gradient(rgba(49,67,90,.06) 1px,transparent 1px),
+  linear-gradient(90deg,rgba(49,67,90,.06) 1px,transparent 1px);
+  background-size:28px 28px;pointer-events:none}
+
+/* ============ 页面头部 ============ */
+.page-head{max-width:920px;margin:0 auto var(--sp-5);animation:rise var(--t-slow) var(--ease) both}
+.page-head .kicker{font-family:var(--font-mono);font-size:var(--fs-2xs);letter-spacing:.2em;color:var(--accent);margin-bottom:var(--sp-1)}
+.page-head h1{font-size:var(--fs-xl);font-weight:600;color:var(--text-hi);display:flex;align-items:center;gap:var(--sp-3)}
+.page-head h1 .mark{width:22px;height:22px;border:1px solid var(--accent);border-radius:var(--r-sm);display:grid;place-items:center;color:var(--accent);font-size:12px;font-family:var(--font-mono)}
+.page-head .sub{font-size:var(--fs-sm);color:var(--text-low);margin-top:var(--sp-1)}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* ============ 终端窗口 ============ */
+.term-wrap{max-width:920px;margin:0 auto;animation:rise var(--t-slow) var(--ease) .08s both}
+.term{background:var(--bg-void);border:1px solid var(--border-strong);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow-3);position:relative}
+.term::after{content:"";position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(255,255,255,.012) 0 1px,transparent 1px 3px)} /* 极轻扫描线 */
+/* 标题栏：Windows Terminal 风格 */
+.term-title{height:34px;display:flex;align-items:center;background:#080B10;border-bottom:1px solid var(--border-faint);padding:0 var(--sp-3);gap:var(--sp-3)}
+.tt-tab{display:flex;align-items:center;gap:var(--sp-2);height:24px;padding:0 var(--sp-3);background:var(--bg-panel);border:1px solid var(--border);border-bottom:none;border-radius:var(--r-md) var(--r-md) 0 0;font-family:var(--font-mono);font-size:var(--fs-2xs);color:var(--text-mid);transform:translateY(1px)}
+.tt-tab .ico{color:var(--accent)}
+.tt-plus{color:var(--text-faint);font-family:var(--font-mono);font-size:var(--fs-xs)}
+.tt-right{margin-left:auto;display:flex;gap:var(--sp-4);color:var(--text-faint);font-size:10px}
+.tt-right span{cursor:default}
+.tt-right .x:hover{color:var(--danger)}
+
+/* TUI 主体：全等宽 */
+.tui{font-family:var(--font-mono);font-size:var(--fs-code);line-height:1.6;padding:var(--sp-4) var(--sp-5) 0;color:var(--text-mid);white-space:pre;overflow-x:auto}
+.tui .dim{color:var(--text-faint)}
+.tui .soft{color:var(--text-low)}
+.tui .hi{color:var(--text-hi)}
+.tui .acc{color:var(--accent)}
+.tui .okc{color:var(--ok)}
+.tui .warnc{color:var(--warn)}
+.tui .errc{color:var(--danger)}
+.tui .infoc{color:var(--info)}
+.tui .vioc{color:var(--violet)}
+.tui .cyanc{color:var(--cyan)}
+.tui .mintc{color:var(--mint)}
+.banner{color:var(--accent)}
+.banner-sub{color:var(--text-low)}
+
+/* 运行中 spinner（braille 帧动画） */
+.spin::before{content:"⠋";display:inline-block;color:var(--cyan);animation:spin .8s steps(1) infinite}
+@keyframes spin{0%{content:"⠋"}12.5%{content:"⠙"}25%{content:"⠹"}37.5%{content:"⠸"}50%{content:"⠼"}62.5%{content:"⠴"}75%{content:"⠦"}87.5%{content:"⠧"}100%{content:"⠇"}}
+/* 闪烁光标 */
+.blink{display:inline-block;width:8px;height:15px;background:var(--accent);vertical-align:-2px;animation:blink 1.1s steps(2) infinite}
+.blink.w{background:var(--warn)}
+@keyframes blink{50%{opacity:0}}
+
+/* 审批块 */
+.apprv{color:var(--warn);position:relative;display:block;margin:var(--sp-2) 0}
+.apprv .box{border:1px solid rgba(224,179,84,.45);background:rgba(224,179,84,.05);border-radius:var(--r-md);padding:var(--sp-3) var(--sp-4);display:inline-block;min-width:560px}
+.apprv .opt{color:var(--text-mid)}
+.apprv .opt .num{color:var(--warn)}
+.apprv .opt .sel{background:var(--accent-bg);color:var(--accent-hover);border-radius:2px;padding:0 3px}
+
+/* 状态栏 */
+.statusbar{font-family:var(--font-mono);font-size:var(--fs-code);border-top:1px solid var(--border);background:#080B10;padding:var(--sp-2) var(--sp-5);display:flex;align-items:center;gap:var(--sp-4);white-space:nowrap;overflow:hidden}
+.statusbar .seg{display:flex;align-items:center;gap:6px}
+.statusbar .sep{color:var(--text-faint)}
+.statusbar .pause{color:var(--warn)}
+.ctxbar{color:var(--cyan);letter-spacing:-1px}
+
+/* ============ 底部标注卡 ============ */
+.notes{max-width:920px;margin:var(--sp-5) auto 0;display:grid;grid-template-columns:repeat(3,1fr);gap:var(--sp-3)}
+.note{background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--r-lg);padding:var(--sp-4);animation:rise var(--t-slow) var(--ease) .16s both}
+.note .h{display:flex;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-2)}
+.note .h .ico{font-size:13px}
+.note .h .t{font-size:var(--fs-sm);font-weight:600;color:var(--text-hi)}
+.note p{font-size:var(--fs-xs);color:var(--text-low);line-height:1.7}
+.note .k{font-family:var(--font-mono);font-size:var(--fs-2xs);color:var(--text-hi);background:var(--bg-raised);border:1px solid var(--border-strong);border-radius:3px;padding:0 5px}
+.note table{width:100%;border-collapse:collapse;font-size:var(--fs-2xs)}
+.note td{padding:3px 0;color:var(--text-low)}
+.note td.k2{font-family:var(--font-mono);color:var(--text-hi);width:86px}
+.foot{max-width:920px;margin:var(--sp-4) auto 0;font-size:var(--fs-2xs);color:var(--text-faint);text-align:center}
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <div class="kicker">NOVACODE · UI MOCKUP 04</div>
+  <h1><span class="mark">✦</span>CLI TUI 视觉示意</h1>
+  <div class="sub">Ink 终端界面：消息流 · 工具行 · 子代理进度 · 权限审批块 · 输入区与状态栏。与桌面端共享会话数据与状态语义（tokens 与设计稿 01–03 一致）。</div>
+</div>
+
+<div class="term-wrap">
+  <div class="term">
+    <div class="term-title">
+      <div class="tt-tab"><span class="ico">❯</span>novacode — pwsh</div>
+      <span class="tt-plus">＋</span>
+      <div class="tt-right"><span>─</span><span>▢</span><span class="x">✕</span></div>
+    </div>
+
+    <div class="tui"><span class="banner">    _   _                 ___  ___
+   | \ | | _____   ____ _  / _ \/ __|__
+   |  \| |/ _ \ \ / / _` || | | \__ \___|
+   | |\  | (_) \ V / (_| || |_| |___) |
+   |_| \_|\___/ \_/ \__,_| \___/|____/  <span class="dim">v0.3.2</span></span>
+<span class="banner-sub">  本地优先的个人代码智能助手 · 会话 #a3f2 已恢复（12 条消息）· d:\LYX\MyClaudeCode\NovaCode</span>
+
+<span class="acc">❯</span> <span class="hi">你</span> <span class="dim">· 14:32</span>
+  <span class="hi">重构 src/session/manager.ts 的错误处理，把裸 throw 换成
+  Result 类型，跑通全部测试</span>
+
+<span class="acc">✦</span> <span class="hi">NovaCode</span> <span class="dim">· sonnet-4.5</span>
+  我先查看现有实现，再统一错误路径，最后由子代理并行补齐测试。
+  <span class="cyanc">⚙</span> <span class="hi">Read</span>   <span class="soft">src/session/manager.ts · 120 行</span>            <span class="okc">✓ 0.4s</span>
+  <span class="cyanc">⚙</span> <span class="hi">Grep</span>   <span class="soft">"throw new Error" · src/session/** · 8 处命中</span>  <span class="okc">✓ 0.2s</span>
+  <span class="cyanc">⚙</span> <span class="hi">Edit</span>   <span class="soft">src/session/manager.ts · +18 −6</span>              <span class="okc">✓ 0.6s</span>
+  <span class="cyanc">⚙</span> <span class="hi">Bash</span>   <span class="mintc">〔沙箱〕</span><span class="soft">npm test -- --filter session</span>           <span class="okc">✓ 6.8s</span>
+  <span class="vioc">⧉</span> <span class="hi">子代理 ×3 并行</span> <span class="dim">· 测试生成与汇总</span>
+    <span class="dim">├</span> <span class="soft">test-writer-1</span> <span class="dim">manager 错误分支用例</span>  <span class="okc">████████░░ 100% ✓</span>
+    <span class="dim">├</span> <span class="soft">test-writer-2</span> <span class="dim">persistence 边界条件</span>  <span class="vioc">██████░░░░</span> <span class="dim">64%</span>
+    <span class="dim">└</span> <span class="soft">runner</span> <span class="dim">沙箱执行测试并汇总</span>      <span class="vioc">███░░░░░░░</span> <span class="dim">38%</span>
+
+  测试已覆盖 MissingModel 与 NoWorkspace 两个分支，接下来我会
+  汇总结果并更新 <span class="cyanc">src/session/errors.ts</span><span class="blink"></span>
+
+<span class="warnc">⚠ 权限确认</span> <span class="dim">─────────────────────────────────────────────────────</span>
+<span class="apprv"><span class="box">  <span class="warnc">Bash</span> · <span class="hi">npm run e2e</span>          <span class="dim">风险:中 · 本地沙箱 · 网络仅 localhost</span>
+  <span class="soft">$ npm run e2e -- --grep "session result"</span>
+
+  <span class="opt"><span class="num">[1]</span> <span class="sel">仅本次允许</span>  <span class="num">[2]</span> 本会话允许  <span class="num">[3]</span> 始终允许  <span class="num">[4]</span> 拒绝</span>
+  <span class="soft">输入序号，或 y 允许 / n 拒绝</span> <span class="warnc">›</span> <span class="blink w"></span>  <span class="dim">Agent 已暂停 ⏸</span></span></span></div>
+
+    <div class="statusbar">
+      <span class="seg"><span class="acc">✦</span> sonnet-4.5</span><span class="sep">│</span>
+      <span class="seg">ctx <span class="ctxbar">▎██░░░░░░░░</span> 8%</span><span class="sep">│</span>
+      <span class="seg dim">12.4k tok</span><span class="sep">│</span>
+      <span class="seg dim">¥0.04</span><span class="sep">│</span>
+      <span class="seg dim">main ✓</span>
+      <span class="pause" style="margin-left:auto">⏸ 等待审批 · [1–4] 决策 · Esc 拒绝</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 底部标注 ============ -->
+<div class="notes">
+  <div class="note">
+    <div class="h"><span class="ico warnc" style="color:var(--warn)">⚠</span><span class="t">权限审批交互</span></div>
+    <p>审批块以琥珀边框内嵌于消息流，Agent 同步暂停。决策方式：<span class="k">1</span>–<span class="k">4</span> 直选、<span class="k">y</span>/<span class="k">n</span> 快捷、<span class="k">Esc</span> 拒绝。决策后块折叠为单行结果；「始终允许」自动写入桌面端权限规则，双端语义一致。</p>
+  </div>
+  <div class="note">
+    <div class="h"><span class="ico" style="color:var(--cyan)">⚙</span><span class="t">行内状态语义</span></div>
+    <p>工具行：<span style="color:var(--ok)">✓ 成功</span> · <span style="color:var(--cyan)">⟳ 运行中（spinner）</span> · <span style="color:var(--danger)">✗ 失败</span> · <span style="color:var(--warn)">⚠ 待审批</span>。徽标：<span style="color:var(--mint)">〔沙箱〕</span>本地沙箱执行、<span style="color:var(--info)">〔MCP·名〕</span>远程调用、<span style="color:var(--violet)">⧉</span> 子代理块。生成中行尾为橙色闪烁光标。</p>
+  </div>
+  <div class="note">
+    <div class="h"><span class="ico" style="color:var(--accent)">⌘</span><span class="t">常用快捷键</span></div>
+    <table>
+      <tr><td class="k2">Enter / ⇧Enter</td><td>发送 / 换行</td></tr>
+      <tr><td class="k2">/ 与 @</td><td>命令面板 · 文件引用</td></tr>
+      <tr><td class="k2">Ctrl+C · Esc</td><td>中断生成 / 拒绝审批</td></tr>
+      <tr><td class="k2">Ctrl+T</td><td>折叠展开全部工具行</td></tr>
+      <tr><td class="k2">Ctrl+R</td><td>搜索历史会话</td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="foot">设计稿 04 · CLI TUI 视觉示意（Ink / 等宽 76 列基准）· 配套文档：NovaCode/docs/03-ui-design.md 第 5 节</div>
+
+</body>
+</html>

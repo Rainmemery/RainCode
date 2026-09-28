@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NovaCode · 记忆管理 设计稿 03</title>
+<style>
+/* ============ NovaCode Design Tokens（与 03-ui-design.md 3.1–3.5 一致） ============ */
+:root{
+  --bg-void:#0A0E13; --bg-base:#0D1219; --bg-panel:#111823; --bg-card:#141C28;
+  --bg-raised:#1A2432; --bg-hover:#1C2735; --bg-selected:#24384F; --bg-popover:#161F2C;
+  --border-faint:#1A2432; --border:#223042; --border-strong:#31435A;
+  --text-hi:#E8EEF5; --text-mid:#A3B3C7; --text-low:#66798F; --text-faint:#42546A;
+  --accent:#E0784F; --accent-hover:#F08D63; --accent-dim:#A85A3B; --accent-bg:rgba(224,120,79,.12);
+  --ok:#53C383; --warn:#E0B354; --danger:#E4655E; --info:#58A6F5; --violet:#A48AFA; --cyan:#4EC9D4; --mint:#4FCFA0;
+  --diff-add-bg:rgba(83,195,131,.12); --diff-add-tx:#6FD79A;
+  --diff-del-bg:rgba(228,101,94,.12); --diff-del-tx:#F08A84;
+  --font-ui:"Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI","PingFang SC",sans-serif;
+  --font-mono:"Cascadia Code","Cascadia Mono","JetBrains Mono",Consolas,monospace;
+  --fs-xl:18px; --fs-lg:15px; --fs-md:13px; --fs-sm:12px; --fs-xs:11px; --fs-2xs:10px; --fs-code:12.5px;
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px; --sp-8:32px;
+  --r-sm:4px; --r-md:6px; --r-lg:10px; --r-xl:14px;
+  --shadow-1:0 1px 2px rgba(0,0,0,.40); --shadow-2:0 4px 16px rgba(0,0,0,.45); --shadow-3:0 12px 40px rgba(0,0,0,.55);
+  --t-fast:120ms; --t-med:200ms; --t-slow:320ms; --ease:cubic-bezier(.2,.8,.3,1);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--bg-void);color:var(--text-hi);font-family:var(--font-ui);font-size:var(--fs-md);line-height:1.6;overflow:hidden}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input{font-family:inherit}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:var(--border-strong)}
+::-webkit-scrollbar-track{background:transparent}
+.mono{font-family:var(--font-mono)}
+
+/* ============ 应用窗体 ============ */
+.app{height:100vh;display:flex;flex-direction:column;background:var(--bg-base);border:1px solid var(--border);margin:10px;border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow-3)}
+
+/* 标题栏 */
+.titlebar{height:40px;display:flex;align-items:center;background:var(--bg-void);border-bottom:1px solid var(--border-faint);padding-left:var(--sp-4);flex-shrink:0}
+.brand{display:flex;align-items:center;gap:var(--sp-2);margin-right:var(--sp-5)}
+.brand-mark{width:18px;height:18px;border:1px solid var(--accent);border-radius:var(--r-sm);display:grid;place-items:center;color:var(--accent);font-size:11px;font-family:var(--font-mono);position:relative}
+.brand-mark::after{content:"";position:absolute;inset:3px;background:var(--accent-bg);border-radius:2px}
+.brand-name{font-weight:600;font-size:var(--fs-sm);letter-spacing:.04em}
+.crumb{display:flex;align-items:center;gap:var(--sp-2);font-size:var(--fs-sm);color:var(--text-mid)}
+.crumb .sep{color:var(--text-faint)}
+.crumb .here{color:var(--ok);font-weight:500}
+.crumb .here .ico{color:var(--ok)}
+.back{margin-left:var(--sp-2);height:24px;padding:0 10px;border:1px solid var(--border);border-radius:var(--r-md);font-size:var(--fs-xs);color:var(--text-low);display:flex;align-items:center;gap:5px;transition:all var(--t-fast) var(--ease)}
+.back:hover{color:var(--text-hi);border-color:var(--border-strong);background:var(--bg-hover)}
+.tb-right{margin-left:auto;display:flex;align-items:center;height:100%}
+.tb-btn{width:34px;height:100%;display:grid;place-items:center;color:var(--text-low);transition:background var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
+.tb-btn:hover{background:var(--bg-hover);color:var(--text-hi)}
+.tb-btn.close:hover{background:#B03A32;color:#fff}
+.tb-sep{width:1px;height:16px;background:var(--border);margin:0 var(--sp-2)}
+
+/* ============ 三栏 ============ */
+.body{flex:1;display:flex;min-height:0}
+
+/* ---- 左栏：记忆源 ---- */
+.src-col{width:232px;flex-shrink:0;background:var(--bg-panel);border-right:1px solid var(--border-faint);display:flex;flex-direction:column}
+.src-head{padding:var(--sp-3) var(--sp-3) var(--sp-2)}
+.src-head .t{font-size:var(--fs-sm);font-weight:600;display:flex;align-items:center;gap:var(--sp-2)}
+.src-head .t .ico{color:var(--ok)}
+.src-head .d{font-size:var(--fs-2xs);color:var(--text-low);margin-top:2px}
+.btn-new{margin:var(--sp-1) var(--sp-3) var(--sp-2);height:30px;border:1px solid var(--border-strong);color:var(--text-mid);border-radius:var(--r-md);font-size:var(--fs-sm);display:flex;align-items:center;justify-content:center;gap:6px;transition:all var(--t-fast) var(--ease)}
+.btn-new:hover{color:var(--text-hi);border-color:var(--accent-dim);background:var(--bg-hover)}
+.src-list{flex:1;overflow-y:auto;padding:0 var(--sp-2) var(--sp-2)}
+.src-item{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3);border-radius:var(--r-md);cursor:pointer;position:relative;transition:background var(--t-fast) var(--ease)}
+.src-item:hover{background:var(--bg-hover)}
+.src-item.active{background:rgba(83,195,131,.10)}
+.src-item.active::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:2px;background:var(--ok);border-radius:1px}
+.src-item .nm{font-size:var(--fs-sm);color:var(--text-hi);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.src-item.active .nm{font-weight:500}
+.src-item .cnt{margin-left:auto;font-family:var(--font-mono);font-size:var(--fs-2xs);color:var(--text-faint);border:1px solid var(--border);border-radius:var(--r-sm);padding:0 6px}
+.src-item .fi{font-size:11px;color:var(--text-faint);flex-shrink:0}
+.src-foot{border-top:1px solid var(--border-faint);padding:var(--sp-3)}
+.stat-line{display:flex;justify-content:space-between;font-size:var(--fs-2xs);color:var(--text-low);padding:2px 0}
+.stat-line b{font-family:var(--font-mono);color:var(--text-mid);font-weight:500}
+.auto-pill{display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-2xs);color:var(--ok);margin-top:var(--sp-2)}
+.auto-pill .d{width:6px;height:6px;border-radius:50%;background:var(--ok)}
+
+/* ---- 中栏：MEMORY.md 预览 ---- */
+.preview-col{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--bg-base)}
+.preview-head{height:44px;display:flex;align-items:center;gap:var(--sp-3);padding:0 var(--sp-5);border-bottom:1px solid var(--border-faint);flex-shrink:0}
+.preview-head .path{font-family:var(--font-mono);font-size:var(--fs-xs);color:var(--text-mid)}
+.preview-head .badge-live{font-size:var(--fs-2xs);color:var(--ok);border:1px solid rgba(83,195,131,.35);background:rgba(83,195,131,.07);border-radius:var(--r-sm);padding:1px 7px}
+.preview-head .acts{margin-left:auto;display:flex;gap:var(--sp-2)}
+.pbtn{height:26px;padding:0 var(--sp-3);border:1px solid var(--border);border-radius:var(--r-md);font-size:var(--fs-xs);color:var(--text-low);display:flex;align-items:center;gap:5px;transition:all var(--t-fast) var(--ease)}
+.pbtn:hover{color:var(--text-hi);border-color:var(--border-strong);background:var(--bg-hover)}
+.pbtn.primary{background:var(--accent);border-color:var(--accent);color:#14100C;font-weight:600}
+.pbtn.primary:hover{background:var(--accent-hover)}
+.preview-scroll{flex:1;overflow-y:auto;padding:var(--sp-6) var(--sp-8)}
+.md{max-width:640px;margin:0 auto;animation:fadein var(--t-med) var(--ease)}
+@keyframes fadein{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.md h1{font-size:var(--fs-xl);font-weight:600;padding-bottom:var(--sp-3);border-bottom:1px solid var(--border-faint);margin-bottom:var(--sp-4)}
+.md h2{font-size:var(--fs-lg);font-weight:600;margin:var(--sp-6) 0 var(--sp-2);display:flex;align-items:center;gap:var(--sp-2)}
+.md h2 .mk{width:8px;height:8px;border:1px solid var(--ok);display:inline-block;transform:rotate(45deg);opacity:.7}
+.md p{color:var(--text-mid);margin-bottom:var(--sp-3)}
+.md ul{list-style:none;margin-bottom:var(--sp-3)}
+.md li{color:var(--text-mid);padding:var(--sp-1) 0 var(--sp-1) var(--sp-4);position:relative}
+.md li::before{content:"—";position:absolute;left:0;color:var(--text-faint)}
+.md code.inline{font-family:var(--font-mono);font-size:var(--fs-sm);background:var(--bg-raised);border:1px solid var(--border-faint);border-radius:var(--r-sm);padding:0 5px;color:var(--cyan)}
+.md blockquote{border-left:2px solid var(--ok);background:rgba(83,195,131,.06);border-radius:0 var(--r-md) var(--r-md) 0;padding:var(--sp-2) var(--sp-4);color:var(--text-low);font-size:var(--fs-sm);margin-bottom:var(--sp-3)}
+.md .hl{background:var(--accent-bg);color:var(--accent-hover);border-radius:2px;padding:0 3px}
+
+/* ---- 右栏：条目与检索 ---- */
+.item-col{width:340px;flex-shrink:0;background:var(--bg-panel);border-left:1px solid var(--border-faint);display:flex;flex-direction:column}
+.item-head{padding:var(--sp-3);border-bottom:1px solid var(--border-faint)}
+.search-box{display:flex;align-items:center;gap:var(--sp-2);background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3);transition:border-color var(--t-fast) var(--ease)}
+.search-box:focus-within{border-color:var(--accent-dim)}
+.search-box .ico{color:var(--text-faint);font-size:11px}
+.search-box input{background:none;border:none;outline:none;color:var(--text-hi);font-size:var(--fs-sm);width:100%}
+.search-box input::placeholder{color:var(--text-faint)}
+.filter-chips{display:flex;gap:var(--sp-1);margin-top:var(--sp-2);flex-wrap:wrap}
+.chip{font-size:var(--fs-2xs);color:var(--text-low);border:1px solid var(--border);border-radius:var(--r-sm);padding:2px 9px;cursor:pointer;transition:all var(--t-fast) var(--ease)}
+.chip:hover{color:var(--text-hi);border-color:var(--border-strong)}
+.chip.on{color:var(--accent-hover);border-color:var(--accent-dim);background:var(--accent-bg)}
+.chip .n{font-family:var(--font-mono);color:var(--text-faint)}
+.item-scroll{flex:1;overflow-y:auto;padding:var(--sp-3)}
+.hit-line{font-size:var(--fs-2xs);color:var(--text-low);padding:0 var(--sp-1) var(--sp-2);display:flex;align-items:center;gap:var(--sp-2)}
+.hit-line b{color:var(--text-hi);font-family:var(--font-mono);font-weight:600}
+.mem-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-lg);padding:var(--sp-3);margin-bottom:var(--sp-2);cursor:pointer;transition:all var(--t-fast) var(--ease);animation:fadein var(--t-med) var(--ease) both}
+.mem-card:hover{border-color:var(--border-strong);background:var(--bg-hover)}
+.mem-card.match{border-color:rgba(224,120,79,.45)}
+.mem-card .top{display:flex;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-1)}
+.type-tag{font-size:var(--fs-2xs);border-radius:var(--r-sm);padding:0 6px;border:1px solid var(--border);color:var(--text-low);flex-shrink:0}
+.type-tag.conv{color:var(--ok);border-color:rgba(83,195,131,.35)}
+.type-tag.pref{color:var(--warn);border-color:rgba(224,179,84,.35)}
+.type-tag.cmd{color:var(--cyan);border-color:rgba(78,201,212,.35)}
+.type-tag.adr{color:var(--info);border-color:rgba(88,166,245,.35)}
+.mem-card .pin{margin-left:auto;color:var(--accent);font-size:10px}
+.mem-card .pin.off{color:var(--text-faint)}
+.mem-card .tt{font-size:var(--fs-sm);color:var(--text-hi);font-weight:500;margin-bottom:2px}
+.mem-card .ds{font-size:var(--fs-xs);color:var(--text-low);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:var(--sp-2)}
+.mem-card .ds .hl{background:var(--accent-bg);color:var(--accent-hover);border-radius:2px;padding:0 2px}
+.mem-card .meta{display:flex;align-items:center;gap:var(--sp-2);font-size:var(--fs-2xs);color:var(--text-faint);font-family:var(--font-mono)}
+.mem-card .meta .src{color:var(--accent-dim)}
+.mem-card .meta .ops{margin-left:auto;display:flex;gap:2px;opacity:0;transition:opacity var(--t-fast) var(--ease)}
+.mem-card:hover .ops{opacity:1}
+.mem-card .ops button{width:20px;height:20px;border-radius:var(--r-sm);display:grid;place-items:center;color:var(--text-low);font-size:10px}
+.mem-card .ops button:hover{background:var(--bg-selected);color:var(--text-hi)}
+.demo-tip{position:fixed;left:24px;bottom:24px;z-index:40;font-size:var(--fs-2xs);color:var(--text-faint);background:var(--bg-void);border:1px solid var(--border);border-radius:var(--r-md);padding:6px 10px}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- 标题栏 -->
+  <div class="titlebar">
+    <div class="brand">
+      <div class="brand-mark">✦</div>
+      <span class="brand-name">NovaCode</span>
+    </div>
+    <div class="crumb">
+      <span>记忆管理</span><span class="sep">/</span>
+      <span class="here"><span class="ico">◈</span> novacode 项目记忆</span>
+      <button class="back">← 返回工作区</button>
+    </div>
+    <div class="tb-right">
+      <div class="tb-btn" title="导入 / 导出">⇄</div>
+      <div class="tb-btn" title="设置">⚙</div>
+      <div class="tb-sep"></div>
+      <div class="tb-btn" title="最小化">─</div>
+      <div class="tb-btn" title="最大化">▢</div>
+      <div class="tb-btn close" title="关闭">✕</div>
+    </div>
+  </div>
+
+  <div class="body">
+
+    <!-- ============ 左栏：记忆源 ============ -->
+    <aside class="src-col">
+      <div class="src-head">
+        <div class="t"><span class="ico">◈</span>记忆库</div>
+        <div class="d">跨会话沉淀的项目知识与偏好</div>
+      </div>
+      <button class="btn-new">＋ 新建记忆</button>
+      <div class="src-list">
+        <div class="src-item active" onclick="pick(this)">
+          <span class="fi">◉</span><span class="nm">MEMORY.md · 总览</span><span class="cnt">46</span>
+        </div>
+        <div class="src-item" onclick="pick(this)">
+          <span class="fi">◻</span><span class="nm">项目约定 conventions</span><span class="cnt">18</span>
+        </div>
+        <div class="src-item" onclick="pick(this)">
+          <span class="fi">◻</span><span class="nm">用户偏好 preferences</span><span class="cnt">9</span>
+        </div>
+        <div class="src-item" onclick="pick(this)">
+          <span class="fi">◻</span><span class="nm">命令速查 commands</span><span class="cnt">11</span>
+        </div>
+        <div class="src-item" onclick="pick(this)">
+          <span class="fi">◻</span><span class="nm">架构决策 decisions</span><span class="cnt">8</span>
+        </div>
+        <div class="src-item" onclick="pick(this)">
+          <span class="fi">◻</span><span class="nm">已归档 archived</span><span class="cnt">23</span>
+        </div>
+      </div>
+      <div class="src-foot">
+        <div class="stat-line"><span>记忆总条数</span><b>46</b></div>
+        <div class="stat-line"><span>本周新增</span><b>+7</b></div>
+        <div class="stat-line"><span>自动提取命中率</span><b>92%</b></div>
+        <span class="auto-pill"><span class="d"></span>自动提取已开启 · 每次会话结束后总结</span>
+      </div>
+    </aside>
+
+    <!-- ============ 中栏：MEMORY.md 预览 ============ -->
+    <main class="preview-col">
+      <div class="preview-head">
+        <span class="path">~/.novacode/memory/MEMORY.md</span>
+        <span class="badge-live">Agent 每次会话自动加载</span>
+        <div class="acts">
+          <button class="pbtn">在编辑器打开</button>
+          <button class="pbtn">查看历史版本</button>
+          <button class="pbtn primary">✎ 编辑</button>
+        </div>
+      </div>
+      <div class="preview-scroll">
+        <div class="md">
+          <h1>novacode · 项目记忆总览</h1>
+          <p>本文件由 NovaCode 自动维护，记录跨会话需要长期保留的约定、偏好与决策。最近更新：2026-09-24 14:36，来源会话 <code class="inline">#a3f2</code>。</p>
+
+          <h2><span class="mk"></span>项目约定</h2>
+          <ul>
+            <li><span class="hl">错误处理</span>统一使用 <code class="inline">Result&lt;T, SessionError&gt;</code> 类型，<code class="inline">src/</code> 下禁止裸 <code class="inline">throw</code>（14 次引用）</li>
+            <li>目录结构：<code class="inline">docs/</code> 与 <code class="inline">src/</code> 同级；设计文档编号 01– 前缀（3 次引用）</li>
+            <li>测试框架 Vitest；单测文件与源码同目录 <code class="inline">*.test.ts</code>（6 次引用）</li>
+            <li>提交信息使用中文，摘要行 ≤ 50 字，正文解释动机（21 次引用）</li>
+          </ul>
+
+          <h2><span class="mk"></span>用户偏好</h2>
+          <ul>
+            <li>沟通风格：先给结论，再列依据；避免长篇铺垫（11 次引用）</li>
+            <li>回答中的代码注释保持中文，标识符与报错信息保持英文（8 次引用）</li>
+            <li>深色主题 + 等宽字体 Cascadia Code；界面字号 13px</li>
+          </ul>
+
+          <h2><span class="mk"></span>常用命令</h2>
+          <ul>
+            <li>测试：<code class="inline">npm test -- --filter &lt;module&gt;</code>，全量约 90s（9 次引用）</li>
+            <li>构建：<code class="inline">npm run build</code>，产物在 <code class="inline">dist/</code>（5 次引用）</li>
+            <li>TUI 本地调试：<code class="inline">npm run dev:tui</code>，需先启动 mock provider</li>
+          </ul>
+
+          <h2><span class="mk"></span>架构决策</h2>
+          <blockquote>ADR-004 · 状态管理选型 Zustand：单窗口多视图 + 轻量 store，避免 Redux 样板代码；决策于会话 <code class="inline">#71d0</code>。</blockquote>
+          <blockquote>ADR-007 · MCP 传输优先 stdio（本地），仅 github 走 sse 远程；远程调用必须经过权限审批。</blockquote>
+
+          <p style="font-size:var(--fs-2xs);color:var(--text-faint)">— 共 46 条记忆，详细条目与检索见右侧面板；本文件为人类可读快照，条目级数据存储于 memory/index.json。</p>
+        </div>
+      </div>
+    </main>
+
+    <!-- ============ 右栏：条目与检索 ============ -->
+    <aside class="item-col">
+      <div class="item-head">
+        <div class="search-box"><span class="ico">⌕</span><input value="错误处理" placeholder="检索记忆内容…"></div>
+        <div class="filter-chips">
+          <span class="chip on" onclick="chip(this)">全部 <span class="n">46</span></span>
+          <span class="chip" onclick="chip(this)">约定 <span class="n">18</span></span>
+          <span class="chip" onclick="chip(this)">偏好 <span class="n">9</span></span>
+          <span class="chip" onclick="chip(this)">命令 <span class="n">11</span></span>
+          <span class="chip" onclick="chip(this)">决策 <span class="n">8</span></span>
+        </div>
+      </div>
+      <div class="item-scroll">
+        <div class="hit-line">检索「<b>错误处理</b>」· 命中 6 条 · 按引用排序</div>
+
+        <div class="mem-card match">
+          <div class="top"><span class="type-tag conv">项目约定</span><span class="pin">📌</span></div>
+          <div class="tt">错误处理统一使用 Result 类型</div>
+          <div class="ds"><span class="hl">错误处理</span>：src/ 下禁止裸 throw，对外 API 返回 Result&lt;T, E&gt;；内部可先返回 Err 再统一上抛语义。</div>
+          <div class="meta"><span class="src">会话 #a3f2</span><span>14 次引用</span><span>3 分钟前</span>
+            <span class="ops"><button title="置顶">📌</button><button title="编辑">✎</button><button title="删除">✕</button></span></div>
+        </div>
+
+        <div class="mem-card match">
+          <div class="top"><span class="type-tag cmd">命令速查</span><span class="pin off">📌</span></div>
+          <div class="tt">测试命令按模块过滤</div>
+          <div class="ds">npm test -- --filter &lt;module&gt;；<span class="hl">错误处理</span>模块改动后至少跑 session 过滤组。</div>
+          <div class="meta"><span class="src">会话 #98c1</span><span>9 次引用</span><span>昨天</span>
+            <span class="ops"><button title="置顶">📌</button><button title="编辑">✎</button><button title="删除">✕</button></span></div>
+        </div>
+
+        <div class="mem-card match">
+          <div class="top"><span class="type-tag adr">架构决策</span><span class="pin off">📌</span></div>
+          <div class="tt">ADR-011 · Session 错误模型</div>
+          <div class="ds">选定 Result 风格而非异常风格：跨进程边界更可控；<span class="hl">错误处理</span>集中在 session/errors.ts。</div>
+          <div class="meta"><span class="src">会话 #a3f2</span><span>4 次引用</span><span>今天</span>
+            <span class="ops"><button title="置顶">📌</button><button title="编辑">✎</button><button title="删除">✕</button></span></div>
+        </div>
+
+        <div class="mem-card">
+          <div class="top"><span class="type-tag conv">项目约定</span><span class="pin off">📌</span></div>
+          <div class="tt">测试文件与源码同目录</div>
+          <div class="ds">Vitest 单测命名为 *.test.ts，与源码同目录放置，便于重构时同步维护。</div>
+          <div class="meta"><span class="src">会话 #98c1</span><span>6 次引用</span><span>昨天</span>
+            <span class="ops"><button title="置顶">📌</button><button title="编辑">✎</button><button title="删除">✕</button></span></div>
+        </div>
+
+        <div class="mem-card">
+          <div class="top"><span class="type-tag pref">用户偏好</span><span class="pin">📌</span></div>
+          <div class="tt">提交信息使用中文并说明动机</div>
+          <div class="ds">摘要行 ≤ 50 字；正文解释 why 而非 what；涉及破坏性变更时正文首行标注 BREAKING。</div>
+          <div class="meta"><span class="src">会话 #71d0</span><span>21 次引用</span><span>9月22日</span>
+            <span class="ops"><button title="置顶">📌</button><button title="编辑">✎</button><button title="删除">✕</button></span></div>
+        </div>
+
+        <div class="mem-card">
+          <div class="top"><span class="type-tag pref">用户偏好</span><span class="pin off">📌</span></div>
+          <div class="tt">沟通风格：先结论后依据</div>
+          <div class="ds">回答先给结论，再列出依据与备选；避免长篇铺垫与重复确认。</div>
+          <div class="meta"><span class="src">会话 #71d0</span><span>11 次引用</span><span>9月22日</span>
+            <span class="ops"><button title="置顶">📌</button><button title="编辑">✎</button><button title="删除">✕</button></span></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<div class="demo-tip">设计稿 03 · 记忆管理：左栏源列表与右侧过滤 chips 可点击 · 检索词「错误处理」命中已用强调色高亮</div>
+
+<script>
+/* 极少量演示交互：源列表选中 / 过滤 chips */
+function pick(el){
+  document.querySelectorAll('.src-item').forEach(i=>i.classList.remove('active'));
+  el.classList.add('active');
+}
+function chip(el){
+  document.querySelectorAll('.filter-chips .chip').forEach(c=>c.classList.remove('on'));
+  el.classList.add('on');
+}
+</script>
+</body>
+</html>
