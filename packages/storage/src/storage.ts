@@ -1,0 +1,232 @@
+/**
+ * Storage 端口门面：唯一持久化出口（04-architecture §2.4 铁律 2）。
+ * - 同步 SQLite（better-sqlite3 + WAL）与同步 fs 内核之上提供全异步端口（walking skeleton 约定）；
+ * - 数据根：NOVACODE_HOME 覆盖 → 缺省 ~/.novacode（05 §2.1）；workspace 打开即登记（§3.1）；
+ * - 会话创建 = sessions 行 + 会话目录 + JSONL 头行（02 §1.2.2 C1）；
+ * - append / checkpoint 经单写者 SessionStream；checkpoint 落盘后回写 sessions 投影列（§4.3）；
+ * - resume 走 checkpoint O(1) 定位 + 增量重放，并对账回写（§4.4 第 6 步）。
+ */
+import { mkdir, stat, writeFile } from "node:fs/promises";
+import { basename } from "node:path";
+import type { MessageRecord } from "@novacode/shared";
+import { openDatabase, type SqliteDatabase } from "./db.js";
+import { StorageError } from "./errors.js";
+import { HEADER_EVENT_NAME, JSONL_SCHEMA_VERSION, NOVACODE_VERSION, type CheckpointState } from "./jsonl-lines.js";
+import { replaySessionFile, repairDanglingTail, scanTailState, type ResumeReplay } from "./jsonl-resume.js";
+import { SessionStream, type AppendResult, type CheckpointResult } from "./jsonl-stream.js";
+import { canonicalWorkspacePath, computeWorkspaceHash, resolveDataRoot, sessionPaths } from "./paths.js";
+import { SessionsRepo, type SessionCreateInput, type SessionMeta } from "./sessions-repo.js";
+
+export interface WorkspaceInfo {
+  hash: string;
+  rootPath: string;
+  name: string;
+  createdAt: number;
+  lastOpenedAt: number;
+}
+
+export interface StorageOpenOptions {
+  /** 显式数据根；缺省按 NOVACODE_HOME → ~/.novacode 解析（测试注入用）。 */
+  dataRoot?: string;
+  /** 环境变量来源（缺省 process.env；测试隔离 NOVACODE_HOME 用）。 */
+  env?: NodeJS.ProcessEnv;
+}
+
+export interface SessionResume extends ResumeReplay {
+  sessionId: string;
+}
+
+export interface AppendOptions {
+  /** 调用方持有的压缩代次；小于会话当前值的写入被拒绝（05 §4.3 第 5 点）。 */
+  epoch?: number;
+}
+
+export interface CheckpointOptions extends AppendOptions {}
+
+export class Storage {
+  readonly dataRoot: string;
+  readonly sessions: SessionsRepo;
+
+  private readonly db: SqliteDatabase;
+  private readonly streams = new Map<string, SessionStream>();
+
+  private constructor(db: SqliteDatabase, dataRoot: string) {
+    this.db = db;
+    this.dataRoot = dataRoot;
+    this.sessions = new SessionsRepo(db);
+  }
+
+  /** 打开全局单库：连接 PRAGMA + 迁移在 TUI ready 前同步完成（05 §6，NFR-1）。 */
+  static async open(options: StorageOpenOptions = {}): Promise<Storage> {
+    const dataRoot = options.dataRoot ?? resolveDataRoot(options.env ?? process.env);
+    return new Storage(openDatabase(dataRoot), dataRoot);
+  }
+
+  /** 打开即登记 workspace：upsert + last_opened_at 刷新（05 §3.1）。 */
+  async ensureWorkspace(workspaceRoot: string): Promise<WorkspaceInfo> {
+    const rootPath = canonicalWorkspacePath(workspaceRoot);
+    const hash = computeWorkspaceHash(rootPath);
+    const ts = Date.now();
+    const name = basename(workspaceRoot);
+    this.db
+      .prepare(
+        `INSERT INTO workspaces (hash, root_path, name, created_at, last_opened_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(hash) DO UPDATE SET last_opened_at = excluded.last_opened_at`,
+      )
+      .run(hash, rootPath, name, ts, ts);
+    const row = this.db
+      .prepare(
+        `SELECT hash, root_path AS rootPath, name, created_at AS createdAt, last_opened_at AS lastOpenedAt
+         FROM workspaces WHERE hash = ?`,
+      )
+      .get(hash) as WorkspaceInfo | undefined;
+    if (!row) {
+      throw new StorageError("WORKSPACE_NOT_FOUND", `workspace upsert failed: ${rootPath}`);
+    }
+    return row;
+  }
+
+  /** 创建会话：sessions 行 + 会话目录 + JSONL 头行（头行携带 schemaVersion + epoch，05 §4.2/§4.3）。 */
+  async createSession(input: SessionCreateInput & { workspaceRoot?: string }): Promise<SessionMeta> {
+    const meta = await this.sessions.create(input);
+    const paths = sessionPaths(this.dataRoot, meta.workspaceId, meta.id);
+    await mkdir(paths.dir, { recursive: true });
+    const root = input.workspaceRoot ?? this.getWorkspaceRoot(meta.workspaceId) ?? "";
+    // 头行 = 首条 event 行（seq 1）：schemaVersion 与 epoch 显式落盘，epoch 单调合并的文件内起点
+    const header = {
+      v: JSONL_SCHEMA_VERSION,
+      type: "event",
+      seq: 1,
+      ts: meta.createdAt,
+      name: HEADER_EVENT_NAME,
+      payload: {
+        schemaVersion: JSONL_SCHEMA_VERSION,
+        epoch: 0,
+        workspaceHash: meta.workspaceId,
+        root,
+        novacodeVersion: NOVACODE_VERSION,
+      },
+    };
+    await writeFile(paths.eventsFile, `${JSON.stringify(header)}\n`, { flag: "ax" });
+    return meta;
+  }
+
+  /** 打开（或复用）会话追加流：残尾修复 → 尾部扫描续写位 → epoch 守卫取 max(库内, 文件内)。 */
+  async openSessionStream(sessionId: string): Promise<SessionStream> {
+    const existing = this.streams.get(sessionId);
+    if (existing) {
+      return existing;
+    }
+    const meta = await this.getExistingSession(sessionId);
+    const paths = sessionPaths(this.dataRoot, meta.workspaceId, sessionId);
+    await repairDanglingTail(paths.eventsFile); // 05 §4.5：半行残尾另存截去，保证后续追加行完整
+    const tail = await scanTailState(paths.eventsFile);
+    const stream = await SessionStream.open(paths.eventsFile, {
+      lastSeq: tail.lastSeq,
+      epoch: Math.max(meta.epoch, tail.epoch),
+    });
+    this.streams.set(sessionId, stream);
+    return stream;
+  }
+
+  /** 追加消息定稿行（message）；旧 epoch 写入被拒绝并计数，不落盘。 */
+  async appendMessage(sessionId: string, message: MessageRecord, options: AppendOptions = {}): Promise<AppendResult> {
+    const stream = await this.openSessionStream(sessionId);
+    return stream.appendMessage(message, options);
+  }
+
+  /** 追加非消息类持久事件行（event）：审批、模式切换、压缩报告等（05 §4.2）。 */
+  async appendEvent(
+    sessionId: string,
+    name: string,
+    payload: unknown,
+    options: AppendOptions = {},
+  ): Promise<AppendResult> {
+    const stream = await this.openSessionStream(sessionId);
+    return stream.appendEvent(name, payload, options);
+  }
+
+  /**
+   * 追加 checkpoint 行（fsync 断电级持久点），并把最近 checkpoint 行起始偏移 / epoch /
+   * messageCount / last_active_at 对账回写 sessions 投影列（05 §4.3、§1.2「checkpoint_offset / epoch
+   * 是 sessions 被写入最频繁的两个投影列」）。
+   */
+  async writeCheckpoint(
+    sessionId: string,
+    state: CheckpointState,
+    options: CheckpointOptions = {},
+  ): Promise<CheckpointResult> {
+    const stream = await this.openSessionStream(sessionId);
+    const result = await stream.writeCheckpoint(state, options);
+    if (result.accepted) {
+      await this.sessions.updateMeta(sessionId, {
+        checkpointOffset: result.lineStartOffset,
+        epoch: result.epoch,
+        messageCount: state.messageCount,
+        lastActiveAt: Date.now(),
+      });
+    }
+    return result;
+  }
+
+  /**
+   * 恢复重放（05 §4.4）：checkpoint_offset O(1) 定位校验 → 增量重放（不可用退尾部扫描/全量）→
+   * 悬挂 tool_call 内存态补齐 → 对账回写 checkpoint_offset / epoch / message_count。
+   */
+  async resumeSession(sessionId: string): Promise<SessionResume> {
+    const meta = await this.getExistingSession(sessionId);
+    const paths = sessionPaths(this.dataRoot, meta.workspaceId, sessionId);
+    const replay = await replaySessionFile(paths.eventsFile, {
+      checkpointOffset: meta.checkpointOffset,
+      epoch: meta.epoch,
+      includeHistory: true,
+    });
+    await this.sessions.updateMeta(sessionId, {
+      messageCount: replay.messageCount,
+      checkpointOffset: replay.checkpoint?.offset ?? 0,
+      epoch: Math.max(meta.epoch, replay.epoch),
+      lastActiveAt: Date.now(),
+    });
+    return { sessionId, ...replay };
+  }
+
+  /** 会话 events.jsonl 绝对路径（诊断/测试用）。 */
+  async sessionEventsFile(sessionId: string): Promise<string> {
+    const meta = await this.getExistingSession(sessionId);
+    return sessionPaths(this.dataRoot, meta.workspaceId, sessionId).eventsFile;
+  }
+
+  async eventsFileSize(sessionId: string): Promise<number> {
+    const eventsFile = await this.sessionEventsFile(sessionId);
+    try {
+      return (await stat(eventsFile)).size;
+    } catch {
+      return 0;
+    }
+  }
+
+  /** 关闭全部追加流与数据库（单写者句柄随生命周期释放，05 §4.3 第 1 点）。 */
+  async close(): Promise<void> {
+    for (const stream of this.streams.values()) {
+      await stream.close();
+    }
+    this.streams.clear();
+    this.db.close();
+  }
+
+  private async getExistingSession(sessionId: string): Promise<SessionMeta> {
+    const meta = await this.sessions.get(sessionId);
+    if (!meta) {
+      throw new StorageError("SESSION_NOT_FOUND", `session not found: ${sessionId}`);
+    }
+    return meta;
+  }
+
+  private getWorkspaceRoot(hash: string): string | null {
+    const row = this.db.prepare("SELECT root_path FROM workspaces WHERE hash = ?").get(hash) as
+      | { root_path: string }
+      | undefined;
+    return row?.root_path ?? null;
+  }
+}

@@ -1,0 +1,5 @@
+# 统一换行符：仓库内 LF，工作区按系统
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.icns binary

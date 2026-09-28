@@ -13,6 +13,8 @@ pnpm-debug.log*
 .env
 .env.*
 secrets.json
+config/*.local.json
+config/*.local.yaml
 
 # os / editor
 .DS_Store
