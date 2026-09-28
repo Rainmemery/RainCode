@@ -1,6 +1,11 @@
 import { z } from "zod";
 import type { EventBase } from "./common.js";
-import { eventBaseSchema, tokenUsageSchema, turnPhaseSchema } from "./common.js";
+import {
+  eventBaseSchema,
+  tokenUsageSchema,
+  toolMetadataSummarySchema,
+  turnPhaseSchema,
+} from "./common.js";
 
 /**
  * 数据面 turn 事件 payload（06-api-spec §3.2 A 组：消息与 turn 生命周期）。
@@ -90,6 +95,48 @@ export const errorEventPayloadSchema = eventBaseSchema.extend({
 export type ErrorEventPayload = z.infer<typeof errorEventPayloadSchema>;
 
 // ---------------------------------------------------------------------------
+// tool_call.*（06-api-spec §3.2 B 组：工具调度与收敛，02 §1.2.1 T9–T11 区间外露）
+// ---------------------------------------------------------------------------
+
+/** tool_call.started：进入 ToolExecution 调度（T9；含待审批/被拒的调用，06 §3.2）。 */
+export const toolCallStartedEventPayloadSchema = eventBaseSchema.extend({
+  turnId: z.string(),
+  toolCallId: z.string(),
+  toolName: z.string(),
+  input: z.unknown(),
+  metadata: toolMetadataSummarySchema,
+  batchIndex: z.number().int().optional(),
+  batchSize: z.number().int().optional(),
+});
+export type ToolCallStartedEventPayload = z.infer<typeof toolCallStartedEventPayloadSchema>;
+
+/** tool_call.progress：长耗时执行周期性产出（06 §3.4：500ms 窗口节流；UI 瞬态不落盘）。 */
+export const toolCallProgressEventPayloadSchema = eventBaseSchema.extend({
+  toolCallId: z.string(),
+  stream: z.enum(["stdout", "stderr", "generic"]).optional(),
+  text: z.string().optional(),
+  elapsedMs: z.number(),
+});
+export type ToolCallProgressEventPayload = z.infer<typeof toolCallProgressEventPayloadSchema>;
+
+/** tool_call.completed：单个调用收敛（含被拒/超时；02 ToolResult 投影，06 §3.2）。 */
+export const toolCallCompletedEventPayloadSchema = eventBaseSchema.extend({
+  toolCallId: z.string(),
+  isError: z.boolean(),
+  error: z
+    .object({
+      code: z.string(),
+      message: z.string(),
+    })
+    .optional(),
+  contentPreview: z.string().optional(),
+  truncated: z.boolean(),
+  durationMs: z.number(),
+  display: z.unknown().optional(),
+});
+export type ToolCallCompletedEventPayload = z.infer<typeof toolCallCompletedEventPayloadSchema>;
+
+// ---------------------------------------------------------------------------
 // 事件构造函数（06 §5：出口即合法；seq 由会话事件流分配，ts 缺省取当前时刻）
 // ---------------------------------------------------------------------------
 
@@ -127,4 +174,22 @@ export function buildDoneEvent(input: EventInput<DoneEventPayload>): DoneEventPa
 
 export function buildErrorEvent(input: EventInput<ErrorEventPayload>): ErrorEventPayload {
   return buildEvent(errorEventPayloadSchema, input);
+}
+
+export function buildToolCallStartedEvent(
+  input: EventInput<ToolCallStartedEventPayload>,
+): ToolCallStartedEventPayload {
+  return buildEvent(toolCallStartedEventPayloadSchema, input);
+}
+
+export function buildToolCallProgressEvent(
+  input: EventInput<ToolCallProgressEventPayload>,
+): ToolCallProgressEventPayload {
+  return buildEvent(toolCallProgressEventPayloadSchema, input);
+}
+
+export function buildToolCallCompletedEvent(
+  input: EventInput<ToolCallCompletedEventPayload>,
+): ToolCallCompletedEventPayload {
+  return buildEvent(toolCallCompletedEventPayloadSchema, input);
 }

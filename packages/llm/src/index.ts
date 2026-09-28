@@ -20,6 +20,7 @@ export type {
   ChatRequestMessage,
   FetchLike,
   LlmClientOptions,
+  LlmFunctionTool,
   LlmStreamEvent,
   LlmStreamResult,
 } from "./types.js";

@@ -1,37 +1,32 @@
 /**
  * SessionTurnLoop：单会话 Turn 循环（02-module-design §1 / 04-architecture §1.3）。
- *
- * - 单写者：一个循环实例同时只执行一个 turn；运行中 submit 经 CommandInbox 排队；
- * - 状态机：TurnPhase 子集（见 turn/phase.ts），每次合法迁移发 turn.phase_changed（06 §3.2）；
- * - turn 执行：用户输入落库 → 组装上下文（历史常驻内存）→ LlmPort 流式 → delta 50ms 批量节流
- *   发 message.delta（06 §3.4）→ 落库 assistant 行 → message.completed → writeCheckpoint → done；
- * - 持久化口径（05-database §4.2）：message 行与 turn.phase_changed / message.completed / done /
- *   error 事件落 JSONL；message.delta 为 UI 瞬态不落盘；
- * - 取消：T3（接纳段）/ T5+T8（请求与流式段），已产出正文落库不丢（02 §1.4）；
- * - steering（02 §1.2.1 正交通道）：本波留接口——运行中注入 steeringBuffer，顺延到下一次
- *   上下文组装合并（无多轮工具往返时即下一 turn；偏差见交付报告）。
+ * 单写者：一个循环实例同时只执行一个 turn；运行中 submit 经 CommandInbox 排队。
+ * 多轮主流程（T1–T15，02 §1.2.1）：用户输入落库 → [组装上下文 → 流式 → 落库 assistant 行
+ * → message.completed → 无 tool_call 则 T7 收束；有则 T6 → ToolSchedule（zod + 权限判定）→
+ * T9 ToolExecution（并发 ≤4，tool_call.* 事件）→ tool 结果落库（T11/T12）→ T13 回传模型继续]
+ * 直至纯文本收束；maxRoundsPerTurn（默认 32）保护。message.delta / tool_call.progress 为
+ * UI 瞬态不落盘（05 §4.2）；事件出口见 turn/loop-events.ts。取消：T3 / T5+T8 / T12（聚合
+ * 已产生结果，不留悬挂 tool_call）；steering 注入 steeringBuffer 顺延下一轮合并。
  */
 import { LlmAbortedError, LlmError } from "@novacode/llm";
 import type { LlmStreamEvent } from "@novacode/llm";
 import { ulid } from "@novacode/storage";
 import type { CheckpointState } from "@novacode/storage";
-import {
-  buildDoneEvent,
-  buildErrorEvent,
-  buildMessageCompletedEvent,
-  buildMessageDeltaEvent,
-  buildTurnPhaseChangedEvent,
-} from "@novacode/shared";
 import type { MessageRecord, TokenUsage } from "@novacode/shared";
+import type { BackgroundTaskRegistry } from "@novacode/tools";
 import { CommandInbox } from "../inbox/command-inbox.js";
-import type { LlmPort, SessionEventPublisher, StoragePort } from "../ports.js";
+import type { LlmPort, SessionEventPublisher, StoragePort, ToolPhaseDeps } from "../ports.js";
 import { assembleChatMessages } from "./context.js";
 import { DeltaBatcher } from "./delta-batcher.js";
+import { LoopEvents } from "./loop-events.js";
 import { transitionPhase } from "./phase.js";
 import type { TurnPhase, TurnTrigger } from "./phase.js";
+import { buildAssistantRecord, errorMessage, mergeUsage, toLlmFunctionTools } from "./round-helpers.js";
+import { ToolPhaseRunner } from "./tool-phase.js";
+import type { PlannedToolCall } from "./tool-phase.js";
 
-/** message.delta 批量节流窗口（06 §3.4：≤50ms）。 */
-const DEFAULT_DELTA_FLUSH_MS = 50;
+const DEFAULT_DELTA_FLUSH_MS = 50; // message.delta 批量节流窗口（06 §3.4：≤50ms）
+const DEFAULT_MAX_ROUNDS = 32; // turn 内模型↔工具往返轮次上限（02 §1.2.1）
 
 export type TurnOutcome =
   | { status: "completed"; usage?: TokenUsage; rounds: number }
@@ -50,7 +45,6 @@ export interface TurnAdmission {
   queuePosition?: number;
   done: Promise<TurnOutcome>;
 }
-
 export interface SessionTurnLoopOptions {
   sessionId: string;
   /** 协作模式（checkpoint state 透传；权限判定链属后续波次）。 */
@@ -67,6 +61,12 @@ export interface SessionTurnLoopOptions {
   deltaFlushMs?: number;
   /** 诊断出口（server 注入 stderr；默认 console.error）。 */
   onDiagnostic?: (message: string, err?: unknown) => void;
+  /** 工具系统（本波注入；缺省保持 walking-skeleton 行为：模型发工具调用即失败收束）。 */
+  tools?: ToolPhaseDeps & { background: BackgroundTaskRegistry };
+  /** 工具执行 ctx 基准（workspace 越界校验 + bash cwd；缺省 process.cwd()）。 */
+  workspaceRoot?: string;
+  /** turn 内模型轮次上限（02 §1.2.1：默认 32）。 */
+  maxRoundsPerTurn?: number;
 }
 
 interface InboxEntry {
@@ -75,22 +75,35 @@ interface InboxEntry {
   resolve: (outcome: TurnOutcome) => void;
 }
 
+/** 模型 tool_call 完成形态（@novacode/llm tool_calls.completed 事件的 calls 元素）。 */
+type CompletedToolCall = { toolCallId: string; toolName: string; argumentsJSON: string };
+
+/** 单轮收敛：settled = turn 终态；continue = 工具结果已聚合，进入下一轮。 */
+type RoundOutcome = { kind: "settled"; result: TurnOutcome } | { kind: "continue"; usage?: TokenUsage };
+
 export class SessionTurnLoop {
   private _phase: TurnPhase = "Idle";
   private readonly inbox = new CommandInbox<InboxEntry>();
   private readonly history: MessageRecord[];
-  private eventSeq: number;
+  private readonly events: LoopEvents;
   private readonly steeringBuffer: string[] = [];
   private running: InboxEntry | null = null;
   private pumping = false;
   private cancelRequested = false;
   private controller: AbortController | null = null;
-  private writeTail: Promise<unknown> = Promise.resolve();
   private assistantText = "";
 
   constructor(private readonly options: SessionTurnLoopOptions) {
     this.history = [...(options.initialHistory ?? [])];
-    this.eventSeq = options.initialEventSeq ?? 0;
+    this.events = new LoopEvents(
+      {
+        sessionId: options.sessionId,
+        storage: options.storage,
+        publish: options.publish,
+        ...(options.onDiagnostic !== undefined && { onDiagnostic: options.onDiagnostic }),
+      },
+      options.initialEventSeq ?? 0,
+    );
   }
 
   get phase(): TurnPhase {
@@ -99,23 +112,18 @@ export class SessionTurnLoop {
 
   /** 已发布的最大 rpc 事件 seq（session.snapshot.lastSeq 数据源）。 */
   get lastEventSeq(): number {
-    return this.eventSeq;
+    return this.events.lastEventSeq;
   }
 
   getHistory(): MessageRecord[] {
     return [...this.history];
   }
 
-  /**
-   * 接纳一条 turn.new 指令：空闲立即开 turn（started），运行中入队（queued）。
-   * done 在 turn settle 完成后 resolve（永不 reject；结果同时经 done 事件推送）。
-   */
+  /** 接纳 turn.new：空闲立即开 turn（started），运行中入队（queued）；done 永不 reject。 */
   submit(input: TurnInput): TurnAdmission {
     const turnId = `turn_${ulid()}`;
     let resolve!: (outcome: TurnOutcome) => void;
-    const done = new Promise<TurnOutcome>((resolvePromise) => {
-      resolve = resolvePromise;
-    });
+    const done = new Promise<TurnOutcome>((resolvePromise) => (resolve = resolvePromise));
     const entry: InboxEntry = { turnId, input, resolve };
     const { position } = this.inbox.enqueue(entry);
     const started =
@@ -131,10 +139,7 @@ export class SessionTurnLoop {
     };
   }
 
-  /**
-   * steering 正交通道（02 §1.2.3 turn.steer）：运行中注入 steeringBuffer（injected）；
-   * 空闲按 turn.new 处理（started / queued）。
-   */
+  /** steering 正交通道（02 §1.2.3）：运行中注入 steeringBuffer；空闲按 turn.new 处理。 */
   steer(text: string): "injected" | "started" | "queued" {
     if (this.running !== null || this._phase !== "Idle") {
       this.steeringBuffer.push(text);
@@ -153,9 +158,7 @@ export class SessionTurnLoop {
     return { cancelled: true, at: this._phase };
   }
 
-  // ---------------------------------------------------------------------------
-  // 泵：单写者循环
-  // ---------------------------------------------------------------------------
+  // 泵：单写者循环 -----------------------------------------------------------
 
   private pump(): void {
     if (this.pumping) return;
@@ -179,7 +182,6 @@ export class SessionTurnLoop {
 
   private async runTurn(entry: InboxEntry): Promise<void> {
     this.cancelRequested = false;
-    this.assistantText = "";
     this.toPhase("Idle", "command.submitted", entry.turnId); // T1
     const controller = new AbortController();
     this.controller = controller;
@@ -187,7 +189,7 @@ export class SessionTurnLoop {
     try {
       outcome = await this.executeTurn(entry, controller);
     } catch (reason: unknown) {
-      // 存储等基础设施异常：收敛到 failed 终态，防 inbox 死锁（02 §1.2.3 门在异常路径必须释放）
+      // 基础设施异常收敛 failed 终态，防 inbox 死锁（02 §1.2.3 门在异常路径必须释放）
       this.diag("turn crashed", reason);
       outcome = await this.settleAbnormal(entry, "TURN_INTERNAL", errorMessage(reason));
     } finally {
@@ -195,6 +197,8 @@ export class SessionTurnLoop {
     }
     entry.resolve(outcome);
   }
+
+  // 多轮 turn：模型请求 ↔ 工具执行（T2 … T13 往返）---------------------------
 
   private async executeTurn(entry: InboxEntry, controller: AbortController): Promise<TurnOutcome> {
     // T2 前的接纳段：用户输入先落盘再发请求（04 §1.3 预算表顺序）
@@ -214,27 +218,53 @@ export class SessionTurnLoop {
     if (this.cancelRequested) {
       return this.settleCancelledEarly(entry); // T3
     }
-
-    const llm = this.options.llm;
-    if (!llm) {
+    if (!this.options.llm) {
       return this.settleAbnormal(entry, "LLM_NOT_CONFIGURED", "no LLM client configured for this session");
     }
 
+    let usageTotal: TokenUsage | undefined;
+    const maxRounds = this.options.maxRoundsPerTurn ?? DEFAULT_MAX_ROUNDS;
+    for (let round = 1; round <= maxRounds; round += 1) {
+      const outcome = await this.runModelRound(entry, controller, round, usageTotal);
+      if (outcome.kind === "settled") {
+        return outcome.result;
+      }
+      usageTotal = mergeUsage(usageTotal, outcome.usage);
+      if (round === maxRounds) {
+        break; // 轮次耗尽：超限异常收敛（02 §1.2.1 补充约束）
+      }
+    }
+    const reason = `tool rounds exceeded maxRoundsPerTurn=${String(maxRounds)}`;
+    return this.settleAbnormal(entry, "TURN_MAX_ROUNDS_EXCEEDED", reason);
+  }
+
+  private async runModelRound(
+    entry: InboxEntry,
+    controller: AbortController,
+    round: number,
+    usageSoFar: TokenUsage | undefined,
+  ): Promise<RoundOutcome> {
+    const llm = this.options.llm;
+    if (llm === null) {
+      const result = await this.settleAbnormal(entry, "LLM_NOT_CONFIGURED", "no LLM client configured");
+      return { kind: "settled", result };
+    }
     const requestMessages = assembleChatMessages({
       systemPrompt: this.options.systemPrompt,
       history: this.history,
       steering: this.steeringBuffer,
     });
     this.steeringBuffer.length = 0;
-    this.toPhase("ProcessingInput", "context.assembled", entry.turnId); // T2
+    if (round === 1) {
+      this.toPhase("ProcessingInput", "context.assembled", entry.turnId); // T2（后续轮由 T13 直达）
+    }
 
-    const round = 1; // 本波无工具往返（T13 多轮随工具系统波次启用）
     const batcher = new DeltaBatcher(this.options.deltaFlushMs ?? DEFAULT_DELTA_FLUSH_MS, (kind, text) =>
-      this.publishDelta(entry.turnId, round, kind, text),
+      this.events.publishDelta(entry.turnId, round, kind, text),
     );
-    let finishReason: string | null = null;
-    let usage: TokenUsage | undefined;
-    let sawToolCallDelta = false;
+    this.assistantText = "";
+    let roundUsage: TokenUsage | undefined;
+    const state: { calls: CompletedToolCall[] | null } = { calls: null }; // 闭包累积（规避 TS 收窄推断）
 
     const onEvent = (event: LlmStreamEvent): void => {
       switch (event.type) {
@@ -248,90 +278,145 @@ export class SessionTurnLoop {
         case "delta.reasoning":
           batcher.add("reasoning", event.text);
           break;
-        case "delta.tool_call":
-          sawToolCallDelta = true;
-          this.diag(`tool_call delta ignored (tool system arrives in a later wave): ${event.toolName ?? `#${String(event.index)}`}`);
-          break;
-        case "finish":
-          finishReason = event.finishReason;
+        case "tool_calls.completed":
+          state.calls = event.calls;
           break;
         case "usage":
-          usage = event.usage;
+          roundUsage = event.usage;
           break;
         default:
-          break; // role / done：映射表中的透传事件，骨架无需处理
+          break; // role / finish / done / delta.tool_call（片段已聚合）：透传
       }
     };
 
     try {
+      const tools = this.options.tools;
+      const toolsPayload = tools !== undefined ? toLlmFunctionTools(tools.registry) : undefined;
       await llm.streamChat({
         messages: requestMessages,
+        ...(toolsPayload !== undefined && { tools: toolsPayload }),
         includeUsage: true,
         signal: controller.signal,
         onEvent,
       });
       batcher.flush(); // flush 边界：边界事件不乱序于其前的 delta（06 §3.4）
-      if (finishReason === "tool_calls" || sawToolCallDelta) {
-        return await this.settleFailed(
-          entry,
-          "TOOL_CALLS_UNSUPPORTED",
-          "model requested tool calls, but the tool system is not part of the walking skeleton",
-        );
-      }
-      return await this.settleCompleted(entry, this.assistantText, usage, round); // T7
     } catch (reason: unknown) {
       batcher.flush();
       if (reason instanceof LlmAbortedError || this.cancelRequested || controller.signal.aborted) {
-        return await this.settleAborted(entry); // T5（取消）/ T8
+        return { kind: "settled", result: await this.settleAborted(entry) }; // T5（取消）/ T8
       }
       const code = reason instanceof LlmError ? reason.code : "LLM_UNEXPECTED";
-      return await this.settleFailed(entry, code, errorMessage(reason)); // T5 / T5'
+      return { kind: "settled", result: await this.settleFailed(entry, code, errorMessage(reason)) };
     } finally {
       batcher.dispose();
     }
-  }
 
-  // ---------------------------------------------------------------------------
-  // settle 家族：TurnComplete 段 + T15 回 Idle
-  // ---------------------------------------------------------------------------
+    // 落库 assistant 行（含 tool_call 块；02 §1.2.1 T6 前置）
+    const calls = state.calls;
+    const record = buildAssistantRecord(this.assistantText, calls);
+    await this.serialWrite(() =>
+      this.options.storage.appendMessage(this.options.sessionId, record),
+    );
+    this.history.push(record);
 
-  private async settleCompleted(
-    entry: InboxEntry,
-    text: string,
-    usage: TokenUsage | undefined,
-    round: number,
-  ): Promise<TurnOutcome> {
-    await this.persistAssistant(text); // 落库 message 行
-    this.emitMessageCompleted(entry.turnId, round, text, usage); // message.completed
-    this.toPhase("Streaming", "message.completed", entry.turnId); // T7
-    await this.writeTurnCheckpoint(usage);
-    this.emitDone(entry.turnId, {
-      outcome: "completed",
-      ...(usage !== undefined && { usage }),
-      rounds: round,
+    if (calls === null || calls.length === 0) {
+      // T7：纯文本 stop 收束（usage 为 turn 级累计）
+      const totalUsage = mergeUsage(usageSoFar, roundUsage);
+      this.events.emitMessageCompleted(entry.turnId, round, this.assistantText, undefined, roundUsage);
+      this.toPhase("Streaming", "message.completed.stop", entry.turnId);
+      await this.writeTurnCheckpoint(totalUsage);
+      this.events.emitDone(entry.turnId, {
+        outcome: "completed",
+        ...(totalUsage !== undefined && { usage: totalUsage }),
+        rounds: round,
+      });
+      this.toPhase("TurnComplete", "settle.done", entry.turnId); // T15
+      return {
+        kind: "settled",
+        result: {
+          status: "completed",
+          ...(totalUsage !== undefined && { usage: totalUsage }),
+          rounds: round,
+        },
+      };
+    }
+
+    // message.completed（含 toolCalls）→ T6：Streaming --message.completed(tool_calls)--> ToolSchedule
+    this.events.emitMessageCompleted(entry.turnId, round, this.assistantText, calls, roundUsage);
+    this.toPhase("Streaming", "message.completed.tool_calls", entry.turnId);
+    const tools = this.options.tools;
+    if (tools === undefined) {
+      const result = await this.settleFailed(
+        entry,
+        "TOOL_CALLS_UNSUPPORTED",
+        "model requested tool calls, but no tool system is configured for this session",
+      );
+      return { kind: "settled", result };
+    }
+
+    // ToolSchedule → ToolExecution → AggregatingResults（T9/T10/T11/T12 在 runner 内回调迁移）
+    const runner = new ToolPhaseRunner({
+      sessionId: this.options.sessionId,
+      turnId: entry.turnId,
+      deps: tools,
+      emitPersisted: (name, build) => this.events.emitPersisted(name, build),
+      publishProgress: (build) => this.events.publishTransient("tool_call.progress", build),
+      onTransition: (trigger) => this.toPhase(this._phase, trigger, entry.turnId),
+      onDiagnostic: (message, err) => this.diag(message, err),
     });
-    this.toPhase("TurnComplete", "settle.done", entry.turnId); // T15
-    return { status: "completed", ...(usage !== undefined && { usage }), rounds: round };
+    const workspaceRoot = this.options.workspaceRoot ?? process.cwd();
+    const phaseResult = await runner.run(
+      calls.map(
+        (call): PlannedToolCall => ({
+          toolCallId: call.toolCallId,
+          toolName: call.toolName,
+          argsJSON: call.argumentsJSON,
+        }),
+      ),
+      {
+        signal: controller.signal,
+        workspaceRoot,
+        cwd: workspaceRoot,
+        sessionKey: this.options.sessionId,
+        background: tools.background,
+        persistRecord: async (toolRecord) => {
+          await this.serialWrite(() =>
+            this.options.storage.appendMessage(this.options.sessionId, toolRecord),
+          );
+          this.history.push(toolRecord);
+        },
+      },
+    );
+
+    if (this.cancelRequested || phaseResult.cancelled) {
+      // T12 已聚合（记录已落库，不留悬挂 tool_call）→ T14 收束
+      this.toPhase("AggregatingResults", "followup.not_required", entry.turnId);
+      this.events.emitDone(entry.turnId, { outcome: "cancelled", at: "AggregatingResults" });
+      this.toPhase("TurnComplete", "settle.done", entry.turnId); // T15
+      return { kind: "settled", result: { status: "cancelled", at: "AggregatingResults" } };
+    }
+
+    // T13：AggregatingResults --followup.required--> ModelRequest（下一轮）
+    this.toPhase("AggregatingResults", "followup.required", entry.turnId);
+    return { kind: "continue", usage: roundUsage };
   }
+
+  // settle 家族：TurnComplete 段 + T15 回 Idle --------------------------------
 
   private settleCancelledEarly(entry: InboxEntry): TurnOutcome {
     this.toPhase("ProcessingInput", "turn.cancelled", entry.turnId); // T3
-    this.emitDone(entry.turnId, { outcome: "cancelled", at: "ProcessingInput" });
+    this.events.emitDone(entry.turnId, { outcome: "cancelled", at: "ProcessingInput" });
     this.toPhase("TurnComplete", "settle.done", entry.turnId); // T15
     return { status: "cancelled", at: "ProcessingInput" };
   }
 
   private async settleAborted(entry: InboxEntry): Promise<TurnOutcome> {
     const at = this._phase; // ModelRequest（请求期取消，T5）| Streaming（流式中断，T8）
-    if (at === "Streaming") {
-      this.toPhase("Streaming", "turn.cancelled", entry.turnId); // T8
-    } else {
-      this.toPhase("ModelRequest", "request.failed", entry.turnId); // T5（取消即请求失败）
-    }
+    this.toPhase(at, at === "Streaming" ? "turn.cancelled" : "request.failed", entry.turnId); // T8 / T5
     if (this.assistantText.length > 0) {
-      await this.persistAssistant(this.assistantText); // 部分正文落库不丢（02 §1.4）
+      await this.persistPartialText(); // 部分正文落库不丢（02 §1.4）
     }
-    this.emitDone(entry.turnId, { outcome: "cancelled", at });
+    this.events.emitDone(entry.turnId, { outcome: "cancelled", at });
     this.toPhase("TurnComplete", "settle.done", entry.turnId); // T15
     return { status: "cancelled", at };
   }
@@ -340,16 +425,25 @@ export class SessionTurnLoop {
     const at = this._phase; // ModelRequest | Streaming（T5 / T5'）
     this.toPhase(at, "request.failed", entry.turnId);
     if (this.assistantText.length > 0) {
-      await this.persistAssistant(this.assistantText);
+      await this.persistPartialText();
     }
-    this.emitError(entry.turnId, code, message); // error（scope=turn）
-    this.emitDone(entry.turnId, { outcome: "failed", at });
+    this.events.emitError(entry.turnId, code, message); // error（scope=turn）
+    this.events.emitDone(entry.turnId, { outcome: "failed", at });
     this.toPhase("TurnComplete", "settle.done", entry.turnId); // T15
     return { status: "failed", error: { code, message } };
   }
 
-  /** 基础设施异常 / 未配置 Provider 的兜底收束：按当前阶段合法迁移到 TurnComplete。 */
+  /** 基础设施异常 / 未配置 Provider / 轮次超限的兜底收束：经合法迁移收敛到 TurnComplete。 */
   private async settleAbnormal(entry: InboxEntry, code: string, message: string): Promise<TurnOutcome> {
+    if (this._phase === "ToolSchedule") {
+      this.toPhase("ToolSchedule", "schedule.all_blocked", entry.turnId);
+    }
+    if (this._phase === "ToolExecution") {
+      this.toPhase("ToolExecution", "batch.settled", entry.turnId);
+    }
+    if (this._phase === "AggregatingResults") {
+      this.toPhase("AggregatingResults", "followup.not_required", entry.turnId); // T14 异常收敛
+    }
     switch (this._phase) {
       case "ProcessingInput":
         this.toPhase("ProcessingInput", "turn.cancelled", entry.turnId); // T3 收敛
@@ -362,24 +456,14 @@ export class SessionTurnLoop {
         break; // TurnComplete / Idle：已收束或未开始
     }
     if (this._phase === "TurnComplete") {
-      this.emitError(entry.turnId, code, message);
-      this.emitDone(entry.turnId, { outcome: "failed", at: "TurnComplete" });
-      this.toPhase("TurnComplete", "settle.done", entry.turnId);
+      this.events.emitError(entry.turnId, code, message);
+      this.events.emitDone(entry.turnId, { outcome: "failed", at: "TurnComplete" });
+      this.toPhase("TurnComplete", "settle.done", entry.turnId); // T15
     }
     return { status: "failed", error: { code, message } };
   }
 
-  // ---------------------------------------------------------------------------
-  // 持久化与事件
-  // ---------------------------------------------------------------------------
-
-  private async persistAssistant(text: string): Promise<void> {
-    const record: MessageRecord = { id: `msg_${ulid()}`, role: "assistant", content: text };
-    await this.serialWrite(() =>
-      this.options.storage.appendMessage(this.options.sessionId, record),
-    );
-    this.history.push(record);
-  }
+  // 持久化与事件（出口实现见 turn/loop-events.ts）-----------------------------
 
   private async writeTurnCheckpoint(usage: TokenUsage | undefined): Promise<void> {
     const state: CheckpointState = {
@@ -391,129 +475,26 @@ export class SessionTurnLoop {
     const result = await this.serialWrite(() =>
       this.options.storage.writeCheckpoint(this.options.sessionId, state),
     );
-    if (!result.accepted) {
-      this.diag("checkpoint rejected (stale epoch)");
-    }
+    if (!result.accepted) this.diag("checkpoint rejected (stale epoch)");
   }
 
-  /** 全部 JSONL 写入经单写者链串行（SessionStream 并发追加会错序 seq）。 */
-  private serialWrite<T>(task: () => Promise<T>): Promise<T> {
-    const run = this.writeTail.then(task, task);
-    this.writeTail = run.then(
-      () => undefined,
-      () => undefined,
-    );
-    return run;
+  private persistPartialText(): Promise<unknown> {
+    const record: MessageRecord = { id: `msg_${ulid()}`, role: "assistant", content: this.assistantText };
+    return this.serialWrite(() => this.options.storage.appendMessage(this.options.sessionId, record));
   }
 
   private toPhase(from: TurnPhase, trigger: TurnTrigger, turnId: string): TurnPhase {
     const to = transitionPhase(from, trigger);
     this._phase = to;
-    this.emitPersisted("turn.phase_changed", (seq, ts) =>
-      buildTurnPhaseChangedEvent({ seq, ts, sessionId: this.options.sessionId, turnId, from, to }),
-    );
+    this.events.emitTurnPhaseChanged(turnId, from, to);
     return to;
   }
 
-  private emitMessageCompleted(
-    turnId: string,
-    round: number,
-    content: string,
-    usage: TokenUsage | undefined,
-  ): void {
-    this.emitPersisted("message.completed", (seq, ts) =>
-      buildMessageCompletedEvent({
-        seq,
-        ts,
-        sessionId: this.options.sessionId,
-        turnId,
-        round,
-        message: {
-          role: "assistant",
-          content,
-          stopReason: "stop",
-          ...(usage !== undefined && { usage }),
-        },
-      }),
-    );
-  }
-
-  private emitDone(
-    turnId: string,
-    fields: {
-      outcome: "completed" | "cancelled" | "failed";
-      at?: TurnPhase;
-      usage?: TokenUsage;
-      rounds?: number;
-    },
-  ): void {
-    this.emitPersisted("done", (seq, ts) =>
-      buildDoneEvent({ seq, ts, sessionId: this.options.sessionId, turnId, ...fields }),
-    );
-  }
-
-  private emitError(turnId: string, code: string, message: string): void {
-    this.emitPersisted("error", (seq, ts) =>
-      buildErrorEvent({
-        seq,
-        ts,
-        sessionId: this.options.sessionId,
-        turnId,
-        scope: "turn",
-        code,
-        message,
-        recoverable: true,
-      }),
-    );
-  }
-
-  /**
-   * 持久事件出口：payload 经 shared 构造函数生成（出口即合法），先落 JSONL 再发布（事实先行）。
-   * 写入失败仅告警——事件持久化非关键路径，真源兜底由 message/checkpoint 行承担。
-   */
-  private emitPersisted(
-    name: "turn.phase_changed" | "message.completed" | "done" | "error",
-    build: (seq: number, ts: number) => unknown,
-  ): void {
-    const seq = this.nextSeq();
-    const ts = Date.now();
-    const payload = build(seq, ts);
-    void this.serialWrite(async () => {
-      const result = await this.options.storage.appendEvent(this.options.sessionId, name, payload);
-      if (!result.accepted) this.diag(`event "${name}" rejected (stale epoch)`);
-    }).catch((err: unknown) => this.diag(`failed to persist event "${name}"`, err));
-    this.options.publish({ name, payload });
-  }
-
-  private publishDelta(
-    turnId: string,
-    round: number,
-    kind: "text" | "reasoning",
-    text: string,
-  ): void {
-    this.options.publish({
-      name: "message.delta",
-      payload: buildMessageDeltaEvent({
-        seq: this.nextSeq(),
-        sessionId: this.options.sessionId,
-        turnId,
-        round,
-        delta: { type: kind, text },
-      }),
-    });
-  }
-
-  private nextSeq(): number {
-    this.eventSeq += 1;
-    return this.eventSeq;
+  private serialWrite<T>(task: () => Promise<T>): Promise<T> {
+    return this.events.serialWrite(task);
   }
 
   private diag(message: string, err?: unknown): void {
-    const sink = this.options.onDiagnostic ?? console.error;
-    sink(`[novacode/agent-core ${this.options.sessionId}] ${message}`, err ?? "");
+    this.events.diag(message, err);
   }
-}
-
-function errorMessage(reason: unknown): string {
-  return reason instanceof Error ? reason.message : String(reason);
 }

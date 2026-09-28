@@ -197,6 +197,18 @@ export class Storage {
     return sessionPaths(this.dataRoot, meta.workspaceId, sessionId).eventsFile;
   }
 
+  /**
+   * 会话所属 workspace 根路径（05 §3.1 workspaces 表投影）。
+   * 工具执行 ctx.workspaceRoot 的数据源（resume 重建会话时无法从调用方取得 root，经此处回查）。
+   */
+  async workspaceRootOf(sessionId: string): Promise<string | null> {
+    const meta = await this.sessions.get(sessionId);
+    if (meta === null) {
+      return null;
+    }
+    return this.getWorkspaceRoot(meta.workspaceId);
+  }
+
   async eventsFileSize(sessionId: string): Promise<number> {
     const eventsFile = await this.sessionEventsFile(sessionId);
     try {

@@ -39,7 +39,12 @@ export const sessionSummarySchema = z.object({
 });
 export type SessionSummary = z.infer<typeof sessionSummarySchema>;
 
-/** 消息内容块（05-database §JSONL：tool_call 块内嵌于 assistant 消息）。 */
+/**
+ * 消息内容块（05-database §JSONL：tool_call 块内嵌于 assistant 消息）。
+ * - tool_call：assistant 发起的工具调用（id/name/arguments；arguments 保持模型原参结构，
+ *   线上 JSON 序列化在 context 组装时进行——与 verify-wave2 既有 fixture 深比较兼容）；
+ * - tool_result：工具结果块（05 §4.2 数据形态；turn 内聚合优先以独立 role:"tool" 消息行落库）。
+ */
 export const contentBlockSchema = z.union([
   z.object({ type: z.literal("text"), text: z.string() }),
   z.object({
@@ -47,6 +52,12 @@ export const contentBlockSchema = z.union([
     toolCallId: z.string(),
     name: z.string(),
     arguments: z.unknown(),
+  }),
+  z.object({
+    type: z.literal("tool_result"),
+    toolUseId: z.string(),
+    content: z.string(),
+    isError: z.boolean(),
   }),
 ]);
 export type ContentBlock = z.infer<typeof contentBlockSchema>;

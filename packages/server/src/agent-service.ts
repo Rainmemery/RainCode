@@ -22,14 +22,31 @@ import type {
   SessionSendParams,
   SessionSnapshotPayload,
   SessionSummary,
+  ToolBackgroundKillParams,
+  ToolBackgroundListParams,
+  ToolBackgroundOutputParams,
+  ToolToolsListParams,
 } from "@novacode/shared";
 import { RpcCallError, createServiceBinding } from "@novacode/rpc";
 import type { IMessageTransport, RpcMethodHandler, RpcServiceBinding } from "@novacode/rpc";
 import { LlmClient } from "@novacode/llm";
 import { Storage, StorageError, computeWorkspaceHash } from "@novacode/storage";
 import type { SessionResume } from "@novacode/storage";
-import { SessionTurnLoop } from "@novacode/agent-core";
-import type { LlmPort, SessionEventPublisher, TurnOutcome } from "@novacode/agent-core";
+import { createBuiltinTools, ToolExecutor } from "@novacode/tools";
+import type { BackgroundTaskRegistry, ToolRegistry } from "@novacode/tools";
+import {
+  SessionTurnLoop,
+  alwaysAllowApprover,
+  alwaysDenyApprover,
+  createMetadataPermissionPort,
+} from "@novacode/agent-core";
+import type {
+  LlmPort,
+  PermissionPort,
+  SessionEventPublisher,
+  ToolPhaseDeps,
+  TurnOutcome,
+} from "@novacode/agent-core";
 
 /** Provider 运行时配置（apiKey 已由调用方解析为明文注入；绝不落日志）。 */
 export interface ProviderRuntimeConfig {
@@ -41,22 +58,38 @@ export interface ProviderRuntimeConfig {
   maxContextTokens?: number;
 }
 
+/**
+ * 工具系统装配（本波）：
+ * - registry/executor 由 server 组装注入 AgentService（02 §0.2 依赖方向 server→tools）；
+ * - approval 为本波测试审批实现（always-allow / always-deny；生产审批闭环随 permission 包），
+ *   缺省 always-allow（headless 可用；fail-safe deny 语义见 02 §2.4，随 askFallback 配置化收敛）。
+ */
+export interface ToolRuntimeConfig {
+  approval?: "always-allow" | "always-deny";
+  registry?: ToolRegistry;
+}
+
 export interface AgentServiceOptions {
   storage: Storage;
   provider?: ProviderRuntimeConfig | null;
   /** 系统提示（随请求注入；缺省不注入）。 */
   systemPrompt?: string;
+  /** 工具系统；缺省内置工具集 + always-allow 审批。 */
+  tools?: ToolRuntimeConfig;
 }
 
 interface SessionEntry {
   loop: SessionTurnLoop;
   workspaceHash: string;
   mode: CollaborationMode;
+  /** 工具执行 ctx 基准（session.create 传入；resume 经 storage 回查）。 */
+  workspaceRoot: string;
 }
 
 export class AgentService {
   private readonly sessions = new Map<string, SessionEntry>();
   private readonly llm: LlmPort | null;
+  private readonly toolDeps: ToolPhaseDeps & { background: BackgroundTaskRegistry };
   private binding: RpcServiceBinding | null = null;
 
   readonly providerModel: string;
@@ -81,6 +114,19 @@ export class AgentService {
     this.providerModel = provider?.model ?? "";
     this.providerId = provider?.id ?? "default";
     this.maxContextTokens = provider?.maxContextTokens ?? 32768;
+
+    // 工具系统组装（server 是唯一组装点；tools→shared、agent-core→tools 依赖方向不变）
+    const builtin = createBuiltinTools();
+    const registry = options.tools?.registry ?? builtin.registry;
+    const approve =
+      options.tools?.approval === "always-deny" ? alwaysDenyApprover : alwaysAllowApprover;
+    const permission: PermissionPort = createMetadataPermissionPort(approve);
+    this.toolDeps = {
+      registry,
+      executor: new ToolExecutor({ registry }),
+      permission,
+      background: builtin.background,
+    };
   }
 
   /** 绑定传输并暴露方法表（一次服务可多次 attach 到不同 transport）。 */
@@ -120,6 +166,14 @@ export class AgentService {
       "session.cancel": register("session.cancel", (params) => this.cancel(params as { sessionId: string; reason?: string })),
       "session.list": register("session.list", (params) => this.list(params as SessionListParams)),
       "session.resume": register("session.resume", (params) => this.resume(params as SessionResumeParams)),
+      "tool.tools.list": register("tool.tools.list", (params) =>
+        this.listTools(params as ToolToolsListParams)),
+      "tool.background.list": register("tool.background.list", (params) =>
+        this.listBackgroundTasks(params as ToolBackgroundListParams)),
+      "tool.background.kill": register("tool.background.kill", (params) =>
+        this.killBackgroundTask(params as ToolBackgroundKillParams)),
+      "tool.background.output": register("tool.background.output", (params) =>
+        this.readBackgroundOutput(params as ToolBackgroundOutputParams)),
     };
   }
 
@@ -148,9 +202,16 @@ export class AgentService {
       storage: this.options.storage,
       publish: this.publisher(),
       systemPrompt: this.options.systemPrompt,
+      tools: this.toolDeps,
+      workspaceRoot: params.workspaceRoot,
       onDiagnostic: (message, err) => console.error(`[novacode/server] ${message}`, err ?? ""),
     });
-    this.sessions.set(meta.id, { loop, workspaceHash: workspace.hash, mode: meta.mode });
+    this.sessions.set(meta.id, {
+      loop,
+      workspaceHash: workspace.hash,
+      mode: meta.mode,
+      workspaceRoot: params.workspaceRoot,
+    });
     return { sessionId: meta.id, state: "Active", createdAt: meta.createdAt };
   }
 
@@ -239,6 +300,7 @@ export class AgentService {
     if (!meta) {
       throw new RpcCallError("SESSION_NOT_FOUND", `session not found: ${params.sessionId}`);
     }
+    const workspaceRoot = (await this.options.storage.workspaceRootOf(meta.id)) ?? process.cwd();
     const loop = new SessionTurnLoop({
       sessionId: meta.id,
       mode: meta.mode,
@@ -246,15 +308,43 @@ export class AgentService {
       storage: this.options.storage,
       publish: this.publisher(),
       systemPrompt: this.options.systemPrompt,
+      tools: this.toolDeps,
+      workspaceRoot,
       initialHistory: replay.history,
       // 跨进程 rpc seq 连续性为 best-effort：delta 不落盘导致原 seq 不可完全重建；
       // 以持久事件/检查点的最大行号续起点，端层以 snapshot.lastSeq 为准继续消费（06 §3.3）。
       initialEventSeq: seedEventSeq(replay),
       onDiagnostic: (message, err) => console.error(`[novacode/server] ${message}`, err ?? ""),
     });
-    const entry: SessionEntry = { loop, workspaceHash: meta.workspaceId, mode: meta.mode };
+    const entry: SessionEntry = {
+      loop,
+      workspaceHash: meta.workspaceId,
+      mode: meta.mode,
+      workspaceRoot,
+    };
     this.sessions.set(meta.id, entry);
     return { sessionId: meta.id, snapshot: await this.buildSnapshot(meta.id, entry) };
+  }
+
+  // ---------------------------------------------------------------------------
+  // tool 域（06 §2.7：工具发现 + 后台任务管理；直接调用 tool.call 随受限调用波次）
+  // ---------------------------------------------------------------------------
+
+  private async listTools(params: ToolToolsListParams): Promise<unknown> {
+    return { tools: this.toolDeps.registry.list(params.source !== undefined ? { source: params.source } : undefined) };
+  }
+
+  private async listBackgroundTasks(_params: ToolBackgroundListParams): Promise<unknown> {
+    // 会话级过滤随任务归属波次补齐（registry 当前全局共享，02 §5.3）
+    return { tasks: this.toolDeps.background.list() };
+  }
+
+  private async killBackgroundTask(params: ToolBackgroundKillParams): Promise<unknown> {
+    return this.toolDeps.background.kill(params.taskId);
+  }
+
+  private async readBackgroundOutput(params: ToolBackgroundOutputParams): Promise<unknown> {
+    return this.toolDeps.background.readOutput(params.taskId, params.tail !== undefined ? { tail: params.tail } : undefined);
   }
 
   // ---------------------------------------------------------------------------

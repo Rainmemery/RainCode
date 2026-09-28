@@ -22,6 +22,12 @@ export type ChatRequestMessage =
   | { role: "assistant"; content: string | null; tool_calls?: ChatFunctionToolCall[] }
   | { role: "tool"; tool_call_id: string; content: string };
 
+/** 请求侧 function 工具描述（OpenAI tools 线格式；parameters 由调用方投影为 JSON Schema）。 */
+export interface LlmFunctionTool {
+  type: "function";
+  function: { name: string; description?: string; parameters: unknown };
+}
+
 // ---------------------------------------------------------------------------
 // 流式 chunk 线格式（仅声明本包消费的字段，未知字段忽略）
 // ---------------------------------------------------------------------------
@@ -72,6 +78,11 @@ export type LlmStreamEvent =
       toolName?: string;
       argsPartial?: string;
     }
+  | {
+      /** 流式 tool_call delta 累积完成（index 分组、name/arguments 增量拼接，finish tool_calls 时发出）。 */
+      type: "tool_calls.completed";
+      calls: Array<{ toolCallId: string; toolName: string; argumentsJSON: string }>;
+    }
   | { type: "finish"; finishReason: string | null }
   | { type: "usage"; usage: TokenUsage }
   | { type: "done" };
@@ -102,6 +113,8 @@ export interface ChatCompletionStreamRequest {
   /** 缺省取 provider.model。 */
   model?: string;
   messages: ChatRequestMessage[];
+  /** 可用 function 工具（OpenAI tools 线格式；缺省不携带）。 */
+  tools?: LlmFunctionTool[];
   maxTokens?: number;
   temperature?: number;
   /** true 时请求 stream_options.include_usage，末尾 chunk 携带 usage。 */

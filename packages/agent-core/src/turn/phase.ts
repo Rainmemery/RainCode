@@ -1,10 +1,5 @@
 /**
- * TurnPhase 状态机（02-module-design §1.2.1）——walking skeleton 子集。
- *
- * 本波实现 Idle → ProcessingInput → ModelRequest → Streaming → TurnComplete 五态；
- * ToolSchedule / ToolExecution / AggregatingResults 三态与 T6/T9–T14 随工具系统波次补齐
- * （偏差已在交付报告申报）。未列出的 (状态, 触发) 组合一律非法：transitionPhase 抛
- * IllegalPhaseTransitionError（fail-fast，02 §1.4：不尝试自动纠偏）。
+ * TurnPhase 状态机（02-module-design §1.2.1）——本波补齐工具三态，8 态全集。
  *
  * 迁移表对照（02 §1.2.1）：
  *   T1 Idle --command.submitted--> ProcessingInput
@@ -12,30 +7,43 @@
  *   T3 ProcessingInput --turn.cancelled--> TurnComplete
  *   T4 ModelRequest --stream.opened--> Streaming
  *   T5 ModelRequest --request.failed--> TurnComplete
- *   T7 Streaming --message.completed(stop)--> TurnComplete（本波无工具，T6 的 ToolSchedule 分支不存在）
+ *   T6 Streaming --message.completed(tool_calls)--> ToolSchedule
+ *   T7 Streaming --message.completed(stop)--> TurnComplete
  *   T8 Streaming --turn.cancelled--> TurnComplete
- *   T5' Streaming --request.failed--> TurnComplete（02 §1.4「流式中途断连按 T5 收束」的表格补全）
+ *   T9 ToolSchedule --schedule.ready--> ToolExecution
+ *   T10 ToolSchedule --schedule.all_blocked--> AggregatingResults
+ *   T11 ToolExecution --batch.settled--> AggregatingResults
+ *   T12 ToolExecution --turn.cancelled--> AggregatingResults
+ *   T13 AggregatingResults --followup.required--> ModelRequest
+ *   T14 AggregatingResults --followup.not_required--> TurnComplete
  *   T15 TurnComplete --settle.done--> Idle
  *
  * 说明：ModelRequest 阶段的取消经 abort 使请求以 request.failed 失败，走 T5（02 表格未列
  * ModelRequest --turn.cancelled-->，语义上取消即请求失败，不新增迁移）。
+ * 未列出的 (状态, 触发) 组合一律非法：transitionPhase 抛 IllegalPhaseTransitionError
+ * （fail-fast，02 §1.4：不尝试自动纠偏）。
  */
 import type { TurnPhase as ProtocolTurnPhase } from "@novacode/shared";
 
-/** 本波实现的状态子集（协议全集见 @novacode/shared turnPhaseSchema，8 态）。 */
 export type TurnPhase =
   | "Idle"
   | "ProcessingInput"
   | "ModelRequest"
   | "Streaming"
+  | "ToolSchedule"
+  | "ToolExecution"
+  | "AggregatingResults"
   | "TurnComplete";
 
-/** 编译期锚点：核心子集必须落在协议 TurnPhase 全集内（事件 payload 直接使用协议类型）。 */
+/** 编译期锚点：内核相位必须落在协议 TurnPhase 全集内（事件 payload 直接使用协议类型）。 */
 const PROTOCOL_PHASES: readonly ProtocolTurnPhase[] = [
   "Idle",
   "ProcessingInput",
   "ModelRequest",
   "Streaming",
+  "ToolSchedule",
+  "ToolExecution",
+  "AggregatingResults",
   "TurnComplete",
 ];
 void PROTOCOL_PHASES;
@@ -44,10 +52,16 @@ void PROTOCOL_PHASES;
 export type TurnTrigger =
   | "command.submitted" // T1
   | "context.assembled" // T2
-  | "turn.cancelled" // T3 / T8
+  | "turn.cancelled" // T3 / T8 / T12
   | "stream.opened" // T4
   | "request.failed" // T5 / T5'
-  | "message.completed" // T7（stop 收尾；tool_calls 分支本波按失败收束）
+  | "message.completed.stop" // T7（纯文本 stop 收尾）
+  | "message.completed.tool_calls" // T6（模型发出工具调用）
+  | "schedule.ready" // T9
+  | "schedule.all_blocked" // T10
+  | "batch.settled" // T11
+  | "followup.required" // T13
+  | "followup.not_required" // T14
   | "settle.done"; // T15
 
 const TRANSITIONS: Readonly<Record<TurnPhase, Partial<Record<TurnTrigger, TurnPhase>>>> = {
@@ -61,9 +75,22 @@ const TRANSITIONS: Readonly<Record<TurnPhase, Partial<Record<TurnTrigger, TurnPh
     "request.failed": "TurnComplete",
   },
   Streaming: {
-    "message.completed": "TurnComplete",
+    "message.completed.stop": "TurnComplete",
+    "message.completed.tool_calls": "ToolSchedule",
     "turn.cancelled": "TurnComplete",
     "request.failed": "TurnComplete",
+  },
+  ToolSchedule: {
+    "schedule.ready": "ToolExecution",
+    "schedule.all_blocked": "AggregatingResults",
+  },
+  ToolExecution: {
+    "batch.settled": "AggregatingResults",
+    "turn.cancelled": "AggregatingResults",
+  },
+  AggregatingResults: {
+    "followup.required": "ModelRequest",
+    "followup.not_required": "TurnComplete",
   },
   TurnComplete: { "settle.done": "Idle" },
 };

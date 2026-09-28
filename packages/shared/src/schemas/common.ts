@@ -146,6 +146,19 @@ export const attachmentSchema = z.object({
 export type Attachment = z.infer<typeof attachmentSchema>;
 
 /**
+ * 工具权限元数据摘要（tool_call.started 事件与 permission.requested 共用的 4 字段投影）。
+ * 跨域复用结构：完整 ToolMetadata 属 tool 域（schemas/tool.ts），此处只放事件/审批共用摘要
+ * （06 §5：复用结构属主域定义、引用方经 common.ts 提升共用）。
+ */
+export const toolMetadataSummarySchema = z.object({
+  readOnly: z.boolean(),
+  destructive: z.boolean(),
+  sideEffectScope: sideEffectScopeSchema,
+  riskLevel: riskLevelSchema,
+});
+export type ToolMetadataSummary = z.infer<typeof toolMetadataSummarySchema>;
+
+/**
  * 审批单 payload 主体（06 §3.2 permission.requested）。
  * 跨域复用结构：SessionSnapshotPayload.pendingApprovals 引用之（06 §3.2 A 组），
  * 按 06 §5 提升到 common.ts；permission 域落地后由 permission.ts re-export。
@@ -156,12 +169,7 @@ export const permissionRequestedPayloadSchema = z.object({
   toolCallId: z.string().optional(),
   toolName: z.string(),
   normalizedInput: z.unknown(),
-  metadata: z.object({
-    readOnly: z.boolean(),
-    destructive: z.boolean(),
-    sideEffectScope: sideEffectScopeSchema,
-    riskLevel: riskLevelSchema,
-  }),
+  metadata: toolMetadataSummarySchema,
   mode: collaborationModeSchema,
   matchedBy: z.enum(["metadata", "mode", "session-rule", "project-rule", "global-rule", "default"]),
   reason: z.string(),

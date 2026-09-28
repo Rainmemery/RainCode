@@ -26,6 +26,43 @@ import type { ChatCompletionUsage } from "./types.js";
 
 const DONE_SENTINEL = "[DONE]";
 
+/**
+ * 流式 tool_call delta 累积器（本波最小扩展）：index 分组、function.name / arguments
+ * 增量拼接；finish_reason=tool_calls 或流收尾时产出 tool_calls.completed 事件
+ * （一次请求至多发出一次，避免部分兼容端 finish 缺失时的重复交付）。
+ */
+class ToolCallAccumulator {
+  private readonly groups = new Map<number, { id?: string; name?: string; args: string }>();
+  private emitted = false;
+
+  add(delta: { index: number; id?: string; name?: string; argsPartial?: string }): void {
+    const group = this.groups.get(delta.index) ?? { args: "" };
+    if (delta.id !== undefined) group.id = delta.id;
+    if (delta.name !== undefined) group.name = delta.name;
+    if (delta.argsPartial !== undefined) group.args += delta.argsPartial;
+    this.groups.set(delta.index, group);
+  }
+
+  get size(): number {
+    return this.groups.size;
+  }
+
+  /** 产出按 index 升序的完整调用列表；幂等（第二次调用返回 null）。 */
+  complete(): Array<{ toolCallId: string; toolName: string; argumentsJSON: string }> | null {
+    if (this.emitted || this.groups.size === 0) {
+      return null;
+    }
+    this.emitted = true;
+    return [...this.groups.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([index, group]) => ({
+        toolCallId: group.id ?? `call_${String(index)}`,
+        toolName: group.name ?? "",
+        argumentsJSON: group.args,
+      }));
+  }
+}
+
 /** 归一 baseURL：去尾斜杠；仅原点时补 /v1。 */
 export function normalizeBaseUrl(raw: string): string {
   const trimmed = raw.trim().replace(/\/+$/, "");
@@ -79,6 +116,9 @@ export class LlmClient {
     if (request.includeUsage) {
       body.stream_options = { include_usage: true };
     }
+    if (request.tools !== undefined && request.tools.length > 0) {
+      body.tools = request.tools;
+    }
 
     const headers: Record<string, string> = {
       "content-type": "application/json",
@@ -118,6 +158,14 @@ export class LlmClient {
     const decoder = new TextDecoder();
     const reader = response.body.getReader();
     const result: LlmStreamResult = { finishReason: null };
+    const toolCallAccumulator = new ToolCallAccumulator();
+
+    const flushToolCalls = async (): Promise<void> => {
+      const calls = toolCallAccumulator.complete();
+      if (calls !== null) {
+        await onEvent({ type: "tool_calls.completed", calls });
+      }
+    };
 
     try {
       for (;;) {
@@ -127,16 +175,18 @@ export class LlmClient {
         }
         const frames = parser.push(decoder.decode(chunk.value, { stream: true }));
         for (const frame of frames) {
-          const finished = await this.handleData(frame.data, onEvent, result);
+          const finished = await this.handleData(frame.data, onEvent, result, toolCallAccumulator);
           if (finished) {
+            await flushToolCalls(); // [DONE] 收尾兜底（finish 缺失的兼容端）
             return result; // [DONE]：标准结束点，直接收束
           }
         }
       }
       // 流未以 [DONE] 收尾（部分兼容端如此）：交付残余帧后正常返回
       for (const frame of parser.flush()) {
-        await this.handleData(frame.data, onEvent, result);
+        await this.handleData(frame.data, onEvent, result, toolCallAccumulator);
       }
+      await flushToolCalls();
       return result;
     } catch (reason: unknown) {
       if (reason instanceof LlmError) {
@@ -157,6 +207,7 @@ export class LlmClient {
     data: string,
     onEvent: ChatCompletionStreamRequest["onEvent"],
     result: LlmStreamResult,
+    toolCallAccumulator: ToolCallAccumulator,
   ): Promise<boolean> {
     if (data === DONE_SENTINEL) {
       await onEvent({ type: "done" });
@@ -183,6 +234,12 @@ export class LlmClient {
       }
       if (delta?.tool_calls) {
         for (const call of delta.tool_calls) {
+          toolCallAccumulator.add({
+            index: call.index,
+            ...(call.id !== undefined && { id: call.id }),
+            ...(call.function?.name !== undefined && { name: call.function.name }),
+            ...(call.function?.arguments !== undefined && { argsPartial: call.function.arguments }),
+          });
           await onEvent({
             type: "delta.tool_call",
             index: call.index,
@@ -195,6 +252,13 @@ export class LlmClient {
       if (choice.finish_reason !== undefined && choice.finish_reason !== null) {
         result.finishReason = choice.finish_reason;
         await onEvent({ type: "finish", finishReason: choice.finish_reason });
+        // finish tool_calls：立即交付累积完成的调用列表（幂等；[DONE]/流收尾兜底不再重复）
+        if (choice.finish_reason === "tool_calls") {
+          const calls = toolCallAccumulator.complete();
+          if (calls !== null) {
+            await onEvent({ type: "tool_calls.completed", calls });
+          }
+        }
       }
     }
 

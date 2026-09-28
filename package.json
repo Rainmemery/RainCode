@@ -9,6 +9,7 @@
   "scripts": {
     "typecheck": "pnpm -r run typecheck",
     "smoke:e2e": "tsx scripts/smoke-e2e.mts",
+    "smoke:tools": "tsx scripts/smoke-tools.mts",
     "smoke:remote": "tsx scripts/smoke-remote.mts"
   },
   "devDependencies": {
