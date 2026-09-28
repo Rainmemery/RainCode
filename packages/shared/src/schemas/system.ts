@@ -24,3 +24,32 @@ export const V1_CAPABILITIES = [
   "mcp.transport.http",
   "memory.promote",
 ] as const satisfies readonly string[];
+
+// ---------------------------------------------------------------------------
+// system.version（06 §2.8：详细版本信息，用于诊断与「关于」页）
+// ---------------------------------------------------------------------------
+
+export const systemVersionParamsSchema = z.strictObject({});
+export type SystemVersionParams = z.infer<typeof systemVersionParamsSchema>;
+
+export const systemVersionResultSchema = z.object({
+  protocolVersion: z.string(),
+  appVersion: z.string(),
+  configVersion: z.number().int(),
+  nodeVersion: z.string().optional(),
+});
+export type SystemVersionResult = z.infer<typeof systemVersionResultSchema>;
+
+// ---------------------------------------------------------------------------
+// system.shutdown（06 §2.8：优雅停机——取消运行中 turn → flush → 关闭存储与传输）
+// ---------------------------------------------------------------------------
+
+export const systemShutdownParamsSchema = z.strictObject({
+  reason: z.string().optional(),
+});
+export type SystemShutdownParams = z.infer<typeof systemShutdownParamsSchema>;
+
+export const systemShutdownResultSchema = z.object({
+  shuttingDown: z.literal(true),
+});
+export type SystemShutdownResult = z.infer<typeof systemShutdownResultSchema>;

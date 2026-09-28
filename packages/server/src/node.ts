@@ -42,12 +42,21 @@ export async function createAgentServiceNode(
 ): Promise<AgentServiceNode> {
   const storage =
     options.storage ?? (await Storage.open({ dataRoot: options.dataRoot, env: options.env }));
+  // 存储关闭单次化：system.shutdown（经 AgentService.onShutdown）与 node.close() 共用同一守卫，
+  // 保证 shutdown 应答仍可经 transport 投递后再由持有方收尾（06 §6.2 CLI 行映射）。
+  let storageClosed = false;
+  const closeStorage = async (): Promise<void> => {
+    if (storageClosed) return;
+    storageClosed = true;
+    await storage.close();
+  };
   const service = new AgentService({
     storage,
     provider: options.provider ?? null,
     systemPrompt: options.systemPrompt,
     tools: options.tools,
     permission: options.permission,
+    onShutdown: closeStorage,
   });
   const binding = service.attach(transport);
   let closed = false;
@@ -59,7 +68,7 @@ export async function createAgentServiceNode(
       if (closed) return;
       closed = true;
       service.close();
-      await storage.close();
+      await closeStorage();
     },
   };
 }

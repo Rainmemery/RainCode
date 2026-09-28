@@ -20,11 +20,32 @@ import type {
   CheckpointResult,
   CheckpointState,
 } from "@novacode/storage";
-import type { CollaborationMode, MessageRecord } from "@novacode/shared";
+import type { CollaborationMode, MessageRecord, TokenUsage } from "@novacode/shared";
+import type { TurnPhase } from "./turn/phase.js";
 
 /** 模型流式端口（@novacode/llm LlmClient 的唯一被消费方法）。 */
 export interface LlmPort {
   streamChat(request: ChatCompletionStreamRequest): Promise<LlmStreamResult>;
+}
+
+/** Turn 输入（06 §2.1 session.send / session.steer 的 input 投影）。 */
+export interface TurnInput {
+  text: string;
+  attachments?: Array<{ path: string; mediaType?: string }>;
+}
+
+/** Turn 终态（02 §1.2.1：completed / cancelled[T3/T5/T8/T12] / failed）。 */
+export type TurnOutcome =
+  | { status: "completed"; usage?: TokenUsage; rounds: number }
+  | { status: "cancelled"; at: TurnPhase }
+  | { status: "failed"; error: { code: string; message: string } };
+
+/** submit/steer 受理结果（06 §2.1：受理即返，turn 进展全部走事件）。 */
+export interface TurnAdmission {
+  turnId: string;
+  admission: "started" | "queued";
+  queuePosition?: number;
+  done: Promise<TurnOutcome>;
 }
 
 /** 持久化端口（@novacode/storage Storage 的写路径子集；历史常驻内存，恢复由 server 完成）。 */

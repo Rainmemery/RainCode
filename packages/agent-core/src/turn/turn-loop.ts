@@ -9,10 +9,10 @@ import { LlmAbortedError, LlmError } from "@novacode/llm";
 import type { LlmStreamEvent } from "@novacode/llm";
 import { ulid } from "@novacode/storage";
 import type { CheckpointState } from "@novacode/storage";
-import type { MessageRecord, TokenUsage } from "@novacode/shared";
+import type { CollaborationMode, MessageRecord, TokenUsage } from "@novacode/shared";
 import type { BackgroundTaskRegistry } from "@novacode/tools";
 import { CommandInbox } from "../inbox/command-inbox.js";
-import type { LlmPort, SessionEventPublisher, StoragePort, ToolPhaseDeps } from "../ports.js";
+import type { LlmPort, SessionEventPublisher, StoragePort, ToolPhaseDeps, TurnAdmission, TurnInput, TurnOutcome } from "../ports.js";
 import { assembleChatMessages } from "./context.js";
 import { DeltaBatcher } from "./delta-batcher.js";
 import { LoopEvents } from "./loop-events.js";
@@ -21,25 +21,16 @@ import type { TurnPhase, TurnTrigger } from "./phase.js";
 import { buildAssistantRecord, errorMessage, mergeUsage, toLlmFunctionTools } from "./round-helpers.js";
 import { ToolPhaseRunner } from "./tool-phase.js";
 import type { PlannedToolCall } from "./tool-phase.js";
+// TurnOutcome/TurnInput/TurnAdmission 真源在 ../ports.ts（行数治理拆出）；再导出保持兼容
+export type { TurnAdmission, TurnInput, TurnOutcome } from "../ports.js";
 
 const DEFAULT_DELTA_FLUSH_MS = 50; // message.delta 批量节流窗口（06 §3.4：≤50ms）
 const DEFAULT_MAX_ROUNDS = 32; // turn 内模型↔工具往返轮次上限（02 §1.2.1）
-export type TurnOutcome =
-  | { status: "completed"; usage?: TokenUsage; rounds: number }
-  | { status: "cancelled"; at: TurnPhase }
-  | { status: "failed"; error: { code: string; message: string } };
 
-export interface TurnInput {
-  text: string;
-  attachments?: Array<{ path: string; mediaType?: string }>;
-}
-
-/** submit 受理结果（06 §2.1 session.send：受理即返，turn 进展全部走事件）。 */
-export interface TurnAdmission {
+interface InboxEntry {
   turnId: string;
-  admission: "started" | "queued";
-  queuePosition?: number;
-  done: Promise<TurnOutcome>;
+  input: TurnInput;
+  resolve: (outcome: TurnOutcome) => void;
 }
 export interface SessionTurnLoopOptions {
   sessionId: string;
@@ -90,8 +81,11 @@ export class SessionTurnLoop {
   private cancelRequested = false;
   private controller: AbortController | null = null;
   private assistantText = "";
+  /** 协作模式（可运行时切换：session.setMode → setMode()，对运行中 turn 的后续判定立即生效）。 */
+  private mode: CollaborationMode;
 
   constructor(private readonly options: SessionTurnLoopOptions) {
+    this.mode = options.mode;
     this.history = [...(options.initialHistory ?? [])];
     this.events = new LoopEvents(
       {
@@ -137,13 +131,19 @@ export class SessionTurnLoop {
     };
   }
 
-  /** steering 正交通道（02 §1.2.3）：运行中注入 steeringBuffer；空闲按 turn.new 处理。 */
-  steer(text: string): "injected" | "started" | "queued" {
+  /** steering 正交通道（02 §1.2.3）：运行中注入 steeringBuffer（汇入当前 turn 下轮上下文）；空闲按 turn.new 处理。 */
+  steer(text: string): { result: "injected" | "started" | "queued"; turnId?: string } {
     if (this.running !== null || this._phase !== "Idle") {
       this.steeringBuffer.push(text);
-      return "injected";
+      return { result: "injected", turnId: this.running?.turnId };
     }
-    return this.submit({ text }).admission;
+    const admission = this.submit({ text });
+    return { result: admission.admission, turnId: admission.turnId };
+  }
+
+  /** 协作模式运行时切换（06 §2.1 session.setMode：对运行中 turn 的后续判定立即生效）。 */
+  setMode(mode: CollaborationMode): void {
+    this.mode = mode;
   }
 
   /** 取消当前 turn（06 §2.1 session.cancel：幂等——无运行中 turn 返回 cancelled:false）。 */
@@ -376,7 +376,7 @@ export class SessionTurnLoop {
         workspaceRoot,
         cwd: workspaceRoot,
         sessionKey: this.options.sessionId,
-        mode: this.options.mode,
+        mode: this.mode,
         workspaceId: this.options.workspaceId ?? "",
         background: tools.background,
         persistRecord: async (toolRecord) => {
@@ -467,7 +467,7 @@ export class SessionTurnLoop {
 
   private async writeTurnCheckpoint(usage: TokenUsage | undefined): Promise<void> {
     const state: CheckpointState = {
-      mode: this.options.mode,
+      mode: this.mode,
       todo: [],
       messageCount: this.history.length,
       ...(usage !== undefined && { usage }),

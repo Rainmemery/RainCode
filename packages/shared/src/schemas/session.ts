@@ -193,6 +193,73 @@ export const sessionResumeResultSchema = z.object({
 export type SessionResumeResult = z.infer<typeof sessionResumeResultSchema>;
 
 // ---------------------------------------------------------------------------
+// session.steer（06 §2.1：运行中注入 steeringBuffer 不开新 turn；空闲按 turn.new 处理）
+// ---------------------------------------------------------------------------
+
+export const sessionSteerParamsSchema = z.strictObject({
+  sessionId: z.string(),
+  input: z.object({ text: z.string().min(1) }),
+});
+export type SessionSteerParams = z.infer<typeof sessionSteerParamsSchema>;
+
+export const sessionSteerResultSchema = z.object({
+  result: z.enum(["injected", "started", "queued"]),
+  turnId: z.string().optional(),
+});
+export type SessionSteerResult = z.infer<typeof sessionSteerResultSchema>;
+
+// ---------------------------------------------------------------------------
+// session.archive（06 §2.1：flush + 标记只读；后台任务阻塞见 SESSION_BACKGROUND_TASKS）
+// ---------------------------------------------------------------------------
+
+export const sessionArchiveParamsSchema = z.strictObject({
+  sessionId: z.string(),
+  force: z.boolean().optional(),
+});
+export type SessionArchiveParams = z.infer<typeof sessionArchiveParamsSchema>;
+
+export const sessionArchiveResultSchema = z.object({
+  archived: z.boolean(),
+});
+export type SessionArchiveResult = z.infer<typeof sessionArchiveResultSchema>;
+
+// ---------------------------------------------------------------------------
+// session.setMode（06 §2.1：切协作模式，影响权限判定链层级 2，对运行中 turn 立即生效）
+// ---------------------------------------------------------------------------
+
+export const sessionSetModeParamsSchema = z.strictObject({
+  sessionId: z.string(),
+  mode: collaborationModeSchema,
+});
+export type SessionSetModeParams = z.infer<typeof sessionSetModeParamsSchema>;
+
+export const sessionSetModeResultSchema = z.object({
+  mode: collaborationModeSchema,
+});
+export type SessionSetModeResult = z.infer<typeof sessionSetModeResultSchema>;
+
+// ---------------------------------------------------------------------------
+// session.created 事件（07 §2.1 P0 事件第 12 个：05-database JSONL 头行同名事件的 rpc 投影；
+// 06 §3.2 未列属文档缺口，按 §7.4 新事件名追加兼容）
+// ---------------------------------------------------------------------------
+
+export const sessionCreatedEventPayloadSchema = eventBaseSchema.extend({
+  sessionId: z.string(),
+  title: z.string(),
+  workspaceRoot: z.string(),
+  mode: collaborationModeSchema,
+  createdAt: z.number(),
+});
+export type SessionCreatedEventPayload = z.infer<typeof sessionCreatedEventPayloadSchema>;
+
+/** 事件构造函数：出口即合法（06 §5）；seq 由服务端分配（create 路径为 1），ts 缺省取当前时刻。 */
+export function buildSessionCreatedEvent(
+  input: Omit<SessionCreatedEventPayload, "ts"> & { ts?: number },
+): SessionCreatedEventPayload {
+  return sessionCreatedEventPayloadSchema.parse({ ...input, ts: input.ts ?? Date.now() });
+}
+
+// ---------------------------------------------------------------------------
 // session.snapshot 事件 payload（06 §3.2 A 组：EventBase + 快照主体）
 // ---------------------------------------------------------------------------
 

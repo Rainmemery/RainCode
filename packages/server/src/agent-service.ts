@@ -4,6 +4,7 @@
  * - 组装 Storage + LlmClient + SessionTurnLoop（agent-core），经 createServiceBinding 暴露控制面；
  *   transport 由端层注入（CLI in-memory / 未来桌面 stdio），server 不选择传输载体；
  * - 方法表 schema 全部引用 @novacode/shared METHOD_SCHEMAS（04 ADR-07：未登记即无法暴露）；
+ *   M1 P0 22 方法全集：system 3 + session 8 + permission 2 + config 5（ConfigDomain 承接）+ tool 4；
  * - 会话事件（06 §3 数据面）由 agent-core 构造 payload（seq 会话内单调），经 binding.publish 发出；
  * - 业务错误以 RpcCallError(code, message) 抛出，binding 转换为 06 §4 结构化 error 应答。
  */
@@ -12,46 +13,41 @@ import {
   METHOD_SCHEMAS,
   PROTOCOL_VERSION,
   V1_CAPABILITIES,
-  sessionSnapshotPayloadSchema,
+  buildSessionCreatedEvent,
 } from "@novacode/shared";
 import type {
   CollaborationMode,
+  SessionArchiveParams,
   SessionCreateParams,
   SessionListParams,
   SessionResumeParams,
   SessionSendParams,
+  SessionSetModeParams,
   SessionSnapshotPayload,
-  SessionSummary,
-  ToolBackgroundKillParams,
-  ToolBackgroundListParams,
-  ToolBackgroundOutputParams,
-  ToolToolsListParams,
-  PermissionDecisionsListParams,
-  PermissionRespondParams,
-  PermissionRulesAddParams,
-  PermissionRulesListParams,
-  PermissionRulesRemoveParams,
+  SessionSteerParams,
+  SystemShutdownParams,
 } from "@novacode/shared";
 import { RpcCallError, createServiceBinding } from "@novacode/rpc";
 import type { IMessageTransport, RpcMethodHandler, RpcServiceBinding } from "@novacode/rpc";
 import { LlmClient } from "@novacode/llm";
-import { Storage, StorageError, computeWorkspaceHash } from "@novacode/storage";
+import { Storage, StorageError } from "@novacode/storage";
 import type { SessionResume } from "@novacode/storage";
 import { createBuiltinTools, ToolExecutor } from "@novacode/tools";
 import type { BackgroundTaskRegistry, ToolRegistry } from "@novacode/tools";
+import { alwaysAllowApprover, alwaysDenyApprover, createMetadataPermissionPort } from "@novacode/agent-core";
+import type { LlmPort, PermissionPort, SessionEventPublisher, SessionTurnLoop, ToolPhaseDeps, TurnOutcome } from "@novacode/agent-core";
+import { ConfigDomain } from "./config-domain.js";
+import { ConfigStore } from "./config-store.js";
+import { ToolDomain } from "./tool-domain.js";
+import { appVersion } from "./app-version.js";
 import {
-  SessionTurnLoop,
-  alwaysAllowApprover,
-  alwaysDenyApprover,
-  createMetadataPermissionPort,
-} from "@novacode/agent-core";
-import type {
-  LlmPort,
-  PermissionPort,
-  SessionEventPublisher,
-  ToolPhaseDeps,
-  TurnOutcome,
-} from "@novacode/agent-core";
+  assertNoRunningBackgroundTasks,
+  buildSessionSnapshot,
+  createSessionLoop,
+  listSessions,
+  recordUsage,
+  seedEventSeq,
+} from "./session-support.js";
 import { PermissionRuntime } from "./permission-runtime.js";
 import type { PermissionPolicy, PermissionRuntimeOptions } from "./permission-runtime.js";
 
@@ -91,23 +87,37 @@ export interface AgentServiceOptions {
   tools?: ToolRuntimeConfig;
   /** 权限策略；缺省 normal（五级判定链 + 审批闭环）。 */
   permission?: PermissionConfig;
+  /** system.shutdown 的存储关闭回调（node 注入；缺省跳过——传输关闭由持有方承担）。 */
+  onShutdown?: () => Promise<void>;
 }
 
 interface SessionEntry {
   loop: SessionTurnLoop;
+  /** 会话绑定 LLM 端口（create 的 providerId 决定；resume 绑默认 Provider——限制申报见 resume）。 */
+  llm: LlmPort | null;
+  providerId: string;
   workspaceHash: string;
   mode: CollaborationMode;
   /** 工具执行 ctx 基准（session.create 传入；resume 经 storage 回查）。 */
   workspaceRoot: string;
+  /** 最近一次 submit 的 turn 终态句柄（archive / shutdown 的等待点）。 */
+  pending: Promise<TurnOutcome> | null;
 }
 
 export class AgentService {
   private readonly sessions = new Map<string, SessionEntry>();
   private readonly llm: LlmPort | null;
+  /** config 域 Provider 的按需 LLM 客户端缓存（session.create providerId 绑定路径）。 */
+  private readonly llmByProvider = new Map<string, LlmPort>();
   private readonly toolDeps: ToolPhaseDeps & { background: BackgroundTaskRegistry };
   /** normal 策略的权限域装配（default-allow 策略下为 null）。 */
   private readonly permission: PermissionRuntime | null;
+  /** config 域（全局 config.json + providers CRUD，06 §2.3）。 */
+  private readonly config: ConfigDomain;
+  /** tool 域（06 §2.7 P0 4 方法）。 */
+  private readonly toolDomain: ToolDomain;
   private binding: RpcServiceBinding | null = null;
+  private shuttingDown = false;
 
   readonly providerModel: string;
   readonly providerId: string;
@@ -131,6 +141,7 @@ export class AgentService {
     this.providerModel = provider?.model ?? "";
     this.providerId = provider?.id ?? "default";
     this.maxContextTokens = provider?.maxContextTokens ?? 32768;
+    this.config = new ConfigDomain(new ConfigStore({ dataRoot: options.storage.dataRoot }));
 
     // 工具系统组装（server 是唯一组装点；tools→shared、agent-core→tools 依赖方向不变）
     const builtin = createBuiltinTools();
@@ -155,6 +166,7 @@ export class AgentService {
       permission,
       background: builtin.background,
     };
+    this.toolDomain = new ToolDomain({ registry, background: builtin.background });
   }
 
   /** 绑定传输并暴露方法表（一次服务可多次 attach 到不同 transport）。 */
@@ -182,7 +194,16 @@ export class AgentService {
       if (!schemas) {
         throw new Error(`method missing in METHOD_SCHEMAS: ${method}`);
       }
-      return { schema: schemas.request, handler };
+      return {
+        schema: schemas.request,
+        handler: async (params: unknown): Promise<unknown> => {
+          if (this.shuttingDown) {
+            // 06 §4.3 段 8：停机中再收请求返回 CANCELLED
+            throw new RpcCallError("CANCELLED", `server is shutting down: ${method} rejected`);
+          }
+          return handler(params);
+        },
+      };
     };
     return {
       "system.ping": register("system.ping", async () => ({
@@ -190,31 +211,30 @@ export class AgentService {
         capabilities: [...V1_CAPABILITIES],
         serverTime: Date.now(),
       })),
+      "system.version": register("system.version", async () => ({
+        protocolVersion: PROTOCOL_VERSION, appVersion: appVersion(),
+        configVersion: this.config.configVersion(), nodeVersion: process.version,
+      })),
+      "system.shutdown": register("system.shutdown", (params) =>
+        this.shutdown(params as SystemShutdownParams)),
       "session.create": register("session.create", (params) => this.createSession(params as SessionCreateParams)),
       "session.send": register("session.send", (params) => this.send(params as SessionSendParams)),
+      "session.steer": register("session.steer", (params) => this.steer(params as SessionSteerParams)),
       "session.cancel": register("session.cancel", (params) => this.cancel(params as { sessionId: string; reason?: string })),
       "session.list": register("session.list", (params) => this.list(params as SessionListParams)),
       "session.resume": register("session.resume", (params) => this.resume(params as SessionResumeParams)),
-      "tool.tools.list": register("tool.tools.list", (params) =>
-        this.listTools(params as ToolToolsListParams)),
-      "tool.background.list": register("tool.background.list", (params) =>
-        this.listBackgroundTasks(params as ToolBackgroundListParams)),
-      "tool.background.kill": register("tool.background.kill", (params) =>
-        this.killBackgroundTask(params as ToolBackgroundKillParams)),
-      "tool.background.output": register("tool.background.output", (params) =>
-        this.readBackgroundOutput(params as ToolBackgroundOutputParams)),
-      "permission.respond": register("permission.respond", (params) =>
-        this.requirePermission().respond(params as PermissionRespondParams)),
-      "permission.rules.list": register("permission.rules.list", (params) =>
-        this.requirePermission().listRules(params as PermissionRulesListParams)),
-      "permission.rules.add": register("permission.rules.add", (params) =>
-        this.requirePermission().addRule(params as PermissionRulesAddParams)),
-      "permission.rules.remove": register("permission.rules.remove", (params) =>
-        this.requirePermission().removeRule(params as PermissionRulesRemoveParams)),
-      "permission.decisions.list": register("permission.decisions.list", (params) =>
-        this.requirePermission().listDecisions(params as PermissionDecisionsListParams)),
+      "session.archive": register("session.archive", (params) => this.archive(params as SessionArchiveParams)),
+      "session.setMode": register("session.setMode", (params) => this.setMode(params as SessionSetModeParams)),
+      ...this.config.methods(register),
+      ...this.toolDomain.methods(register),
+      // default-allow 策略未装配 permission 域（requirePermission 在调用期报 PC_GRANT_NOT_FOUND）
+      ...(this.permission !== null ? this.permission.methods(register) : {}),
     };
   }
+
+  // ---------------------------------------------------------------------------
+  // session 域（06 §2.1）
+  // ---------------------------------------------------------------------------
 
   private async createSession(params: SessionCreateParams): Promise<unknown> {
     // workspaceRoot 必须为已存在目录（06 §2.1）；只读存在性探测，不读写任何数据，
@@ -227,6 +247,7 @@ export class AgentService {
         workspaceRoot: params.workspaceRoot,
       });
     }
+    const llm = this.llmFor(params.providerId); // 显式 providerId 未知 → CONFIG_PROVIDER_NOT_FOUND
     const workspace = await this.options.storage.ensureWorkspace(params.workspaceRoot);
     const meta = await this.options.storage.createSession({
       workspaceHash: workspace.hash,
@@ -236,41 +257,48 @@ export class AgentService {
     });
     // project 权限规则判定域（首个会话的 workspace；02 §6.2 判定链第 4 级）
     this.permission?.setDefaultWorkspace(workspace.hash);
-    const loop = new SessionTurnLoop({
-      sessionId: meta.id,
-      mode: meta.mode,
-      llm: this.llm,
-      storage: this.options.storage,
-      publish: this.publisher(),
-      systemPrompt: this.options.systemPrompt,
-      tools: this.toolDeps,
-      workspaceRoot: params.workspaceRoot,
-      workspaceId: workspace.hash,
-      onDiagnostic: (message, err) => console.error(`[novacode/server] ${message}`, err ?? ""),
+    const publish = this.publisher();
+    // session.created（P0 事件；seq=1——JSONL 头行即创建事实的落盘形态，rpc 侧同序号广播）
+    publish({
+      name: "session.created",
+      payload: buildSessionCreatedEvent({
+        seq: 1, sessionId: meta.id, title: meta.title, workspaceRoot: params.workspaceRoot,
+        mode: meta.mode, createdAt: meta.createdAt,
+      }),
+    });
+    const loop = createSessionLoop({
+      sessionId: meta.id, mode: meta.mode, llm, storage: this.options.storage, publish,
+      ...(this.options.systemPrompt !== undefined && { systemPrompt: this.options.systemPrompt }),
+      tools: this.toolDeps, workspaceRoot: params.workspaceRoot, workspaceId: workspace.hash,
+      initialEventSeq: 1,
     });
     this.sessions.set(meta.id, {
       loop,
+      llm,
+      providerId: params.providerId ?? this.providerId,
       workspaceHash: workspace.hash,
       mode: meta.mode,
       workspaceRoot: params.workspaceRoot,
+      pending: null,
     });
     return { sessionId: meta.id, state: "Active", createdAt: meta.createdAt };
   }
 
   private async send(params: SessionSendParams): Promise<unknown> {
-    const entry = this.requireActive(params.sessionId);
-    if (!this.llm) {
+    const entry = await this.requireActive(params.sessionId);
+    if (entry.llm === null) {
       throw new RpcCallError(
         "CONFIG_PROVIDER_NOT_FOUND",
-        "no provider configured: set --base-url/--model, NOVACODE_PROVIDER_* env, or config/providers.local.json",
+        "no provider configured: set --base-url/--model, NOVACODE_PROVIDER_* env, config/providers.local.json, or config.providers.add",
       );
     }
     const admission = entry.loop.submit({ text: params.input.text, attachments: params.input.attachments });
+    entry.pending = admission.done;
     // turn 结果的旁路消费：usage 累计进 sessions 投影列（session.list 的 contextUsage 数据源）
     void admission.done.then((outcome: TurnOutcome) => {
       if (outcome.status === "completed" && outcome.usage !== undefined) {
-        void this.recordUsage(params.sessionId, outcome.usage).catch((err: unknown) =>
-          console.error("[novacode/server] failed to record usage", err),
+        void recordUsage(this.options.storage, params.sessionId, outcome.usage).catch(
+          (err: unknown) => console.error("[novacode/server] failed to record usage", err),
         );
       }
     });
@@ -281,54 +309,74 @@ export class AgentService {
     };
   }
 
+  /** turn.steer（06 §2.1）：运行中注入 steeringBuffer（下一轮上下文合并）；空闲按 turn.new 处理。 */
+  private async steer(params: SessionSteerParams): Promise<unknown> {
+    const entry = await this.requireActive(params.sessionId);
+    const result = entry.loop.steer(params.input.text);
+    return { result: result.result, ...(result.turnId !== undefined && { turnId: result.turnId }) };
+  }
+
   private async cancel(params: { sessionId: string; reason?: string }): Promise<unknown> {
-    const entry = this.requireActive(params.sessionId);
+    const entry = await this.requireActive(params.sessionId);
     const result = entry.loop.cancel(params.reason);
     return { cancelled: result.cancelled, ...(result.at !== undefined && { at: result.at }) };
   }
 
-  private async list(params: SessionListParams): Promise<unknown> {
-    const filter = params.filter;
-    const rows = await this.options.storage.sessions.list({
-      workspaceHash:
-        filter?.workspaceRoot !== undefined ? computeWorkspaceHash(filter.workspaceRoot) : undefined,
-      status: filter?.state !== undefined ? (filter.state === "Active" ? "active" : "archived") : undefined,
-    });
-    const keyword = filter?.keyword?.toLowerCase();
-    const filtered = keyword
-      ? rows.filter(
-          (row) => row.title.toLowerCase().includes(keyword) || row.preview.toLowerCase().includes(keyword),
-        )
-      : rows;
+  /** 协作模式切换（06 §2.1）：运行中 turn 后续判定立即生效 + sessions.mode 落库。 */
+  private async setMode(params: SessionSetModeParams): Promise<unknown> {
+    const entry = await this.requireActive(params.sessionId);
+    entry.loop.setMode(params.mode);
+    entry.mode = params.mode;
+    await this.options.storage.sessions.updateMeta(params.sessionId, { mode: params.mode });
+    return { mode: params.mode };
+  }
 
-    const limit = params.page?.limit ?? 50;
-    const offset = parseCursor(params.page?.cursor);
-    const paged = filtered.slice(offset, offset + limit);
-    const items: SessionSummary[] = paged.map((row) => ({
-      id: row.id,
-      title: row.title,
-      state: row.status === "active" ? "Active" : "Archived",
-      createdAt: row.createdAt,
-      lastActiveAt: row.lastActiveAt,
-      model: this.providerModel,
-      contextUsage: {
-        tokens: row.inputTokens + row.outputTokens,
-        maxTokens: this.maxContextTokens,
-      },
-    }));
-    return {
-      items,
-      ...(offset + limit < filtered.length && { nextCursor: `o${String(offset + limit)}` }),
-    };
+  /** 归档（06 §2.1 / 02 C4）：取消运行中 turn → flush → 后台任务检查 → status=archived（JSONL 不删除）。 */
+  private async archive(params: SessionArchiveParams): Promise<unknown> {
+    const meta = await this.options.storage.sessions.get(params.sessionId);
+    if (!meta) {
+      throw new RpcCallError("SESSION_NOT_FOUND", `session not found: ${params.sessionId}`);
+    }
+    if (meta.status === "archived") {
+      return { archived: true }; // 幂等（06 §2.0 写方法幂等约定）
+    }
+    const entry = this.sessions.get(params.sessionId);
+    if (entry) {
+      entry.loop.cancel("archive"); // 运行中 turn 收敛（事件事实先行落 JSONL）
+      if (entry.pending !== null) await entry.pending.catch(() => undefined);
+    }
+    assertNoRunningBackgroundTasks(this.toolDeps.background.list(), params.force);
+    await this.options.storage.sessions.updateMeta(params.sessionId, {
+      status: "archived",
+      archivedAt: Date.now(),
+    });
+    this.sessions.delete(params.sessionId); // 只读化：写入类方法经 requireActive 以 SESSION_ARCHIVED 拒绝
+    return { archived: true };
+  }
+
+  private async list(params: SessionListParams): Promise<unknown> {
+    return listSessions({
+      storage: this.options.storage,
+      params,
+      providerModel: this.providerModel,
+      maxContextTokens: this.maxContextTokens,
+    });
   }
 
   private async resume(params: SessionResumeParams): Promise<unknown> {
     const existing = this.sessions.get(params.sessionId);
     if (existing) {
       // 幂等：会话已 Active 直接返回当前快照（06 §2.1；多端收敛单写者）
-      return { sessionId: params.sessionId, snapshot: await this.buildSnapshot(params.sessionId, existing) };
+      return { sessionId: params.sessionId, snapshot: await this.snapshotOf(params.sessionId, existing) };
     }
-
+    const meta = await this.options.storage.sessions.get(params.sessionId);
+    if (!meta) {
+      throw new RpcCallError("SESSION_NOT_FOUND", `session not found: ${params.sessionId}`);
+    }
+    if (meta.status === "archived") {
+      // 归档会话不可恢复（本波口径；06 §2.1 未定义归档恢复路径）
+      throw new RpcCallError("SESSION_NOT_FOUND", `session is archived: ${params.sessionId}`);
+    }
     let replay: SessionResume;
     try {
       replay = await this.options.storage.resumeSession(params.sessionId);
@@ -338,56 +386,46 @@ export class AgentService {
       }
       throw reason;
     }
-    const meta = await this.options.storage.sessions.get(params.sessionId);
-    if (!meta) {
-      throw new RpcCallError("SESSION_NOT_FOUND", `session not found: ${params.sessionId}`);
-    }
     const workspaceRoot = (await this.options.storage.workspaceRootOf(meta.id)) ?? process.cwd();
-    const loop = new SessionTurnLoop({
-      sessionId: meta.id,
-      mode: meta.mode,
-      llm: this.llm,
-      storage: this.options.storage,
-      publish: this.publisher(),
-      systemPrompt: this.options.systemPrompt,
-      tools: this.toolDeps,
-      workspaceRoot,
-      workspaceId: meta.workspaceId,
+    // P0 限制：会话级 Provider 绑定未持久化，resume 绑定默认 Provider（config.providers.switch 属 P1）
+    const llm = this.llmFor(undefined);
+    const publish = this.publisher();
+    const loop = createSessionLoop({
+      sessionId: meta.id, mode: meta.mode, llm, storage: this.options.storage, publish,
+      ...(this.options.systemPrompt !== undefined && { systemPrompt: this.options.systemPrompt }),
+      tools: this.toolDeps, workspaceRoot, workspaceId: meta.workspaceId,
       initialHistory: replay.history,
-      // 跨进程 rpc seq 连续性为 best-effort：delta 不落盘导致原 seq 不可完全重建；
-      // 以持久事件/检查点的最大行号续起点，端层以 snapshot.lastSeq 为准继续消费（06 §3.3）。
+      // rpc seq 续起点 best-effort（delta 不落盘）；端层以 snapshot.lastSeq 为准继续消费（06 §3.3）
       initialEventSeq: seedEventSeq(replay),
-      onDiagnostic: (message, err) => console.error(`[novacode/server] ${message}`, err ?? ""),
     });
     const entry: SessionEntry = {
       loop,
+      llm,
+      providerId: this.providerId,
       workspaceHash: meta.workspaceId,
       mode: meta.mode,
       workspaceRoot,
+      pending: null,
     };
     this.sessions.set(meta.id, entry);
-    return { sessionId: meta.id, snapshot: await this.buildSnapshot(meta.id, entry) };
+    return { sessionId: meta.id, snapshot: await this.snapshotOf(meta.id, entry) };
   }
 
   // ---------------------------------------------------------------------------
-  // tool 域（06 §2.7：工具发现 + 后台任务管理；直接调用 tool.call 随受限调用波次）
+  // system 域（06 §2.8）
   // ---------------------------------------------------------------------------
 
-  private async listTools(params: ToolToolsListParams): Promise<unknown> {
-    return { tools: this.toolDeps.registry.list(params.source !== undefined ? { source: params.source } : undefined) };
-  }
-
-  private async listBackgroundTasks(_params: ToolBackgroundListParams): Promise<unknown> {
-    // 会话级过滤随任务归属波次补齐（registry 当前全局共享，02 §5.3）
-    return { tasks: this.toolDeps.background.list() };
-  }
-
-  private async killBackgroundTask(params: ToolBackgroundKillParams): Promise<unknown> {
-    return this.toolDeps.background.kill(params.taskId);
-  }
-
-  private async readBackgroundOutput(params: ToolBackgroundOutputParams): Promise<unknown> {
-    return this.toolDeps.background.readOutput(params.taskId, params.tail !== undefined ? { tail: params.tail } : undefined);
+  /** 优雅停机：取消活动 turn → 等待收敛（flush）→ 关闭存储 → 应答 shuttingDown。 */
+  private async shutdown(params: SystemShutdownParams): Promise<unknown> {
+    this.shuttingDown = true;
+    const pending: Array<Promise<unknown>> = [];
+    for (const entry of this.sessions.values()) {
+      entry.loop.cancel(params.reason ?? "shutdown");
+      if (entry.pending !== null) pending.push(entry.pending.catch(() => undefined));
+    }
+    await Promise.all(pending);
+    await this.options.onShutdown?.();
+    return { shuttingDown: true as const };
   }
 
   // ---------------------------------------------------------------------------
@@ -404,68 +442,56 @@ export class AgentService {
     };
   }
 
-  /** permission 域方法的前置（default-allow 策略下未装配，返回结构化业务错误）。 */
-  private requirePermission(): PermissionRuntime {
-    if (this.permission === null) {
-      throw new RpcCallError(
-        "PC_GRANT_NOT_FOUND",
-        "permission domain not enabled: policy is default-allow",
-      );
+  /** 会话 Provider 绑定：缺省/命中默认 → 构造期实例；config 域 Provider → 按需构建并缓存。 */
+  private llmFor(providerId: string | undefined): LlmPort | null {
+    if (providerId === undefined || providerId === this.providerId) {
+      return this.llm;
     }
-    return this.permission;
+    const cached = this.llmByProvider.get(providerId);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const runtime = this.config.providerRuntime(providerId); // 未知 id → CONFIG_PROVIDER_NOT_FOUND
+    if (runtime === null) {
+      throw new RpcCallError("CONFIG_PROVIDER_NOT_FOUND", `provider not found: ${providerId}`);
+    }
+    const client = new LlmClient({
+      provider: {
+        id: runtime.id,
+        name: runtime.name,
+        baseURL: runtime.baseURL,
+        model: runtime.model,
+        maxContextTokens: runtime.maxContextTokens ?? 32768,
+        apiKeyRef: null,
+      },
+      apiKey: runtime.apiKey ?? null,
+    });
+    this.llmByProvider.set(providerId, client);
+    return client;
   }
 
-  private requireActive(sessionId: string): SessionEntry {
+  /** 活动会话解析：内存缺失时回查存储——归档 → SESSION_ARCHIVED；不存在 → SESSION_NOT_FOUND。 */
+  private async requireActive(sessionId: string): Promise<SessionEntry> {
     const entry = this.sessions.get(sessionId);
-    if (!entry) {
-      throw new RpcCallError("SESSION_NOT_FOUND", `session not found or not resumed: ${sessionId}`);
+    if (entry) {
+      return entry;
     }
-    return entry;
+    const meta = await this.options.storage.sessions.get(sessionId);
+    if (meta?.status === "archived") {
+      throw new RpcCallError("SESSION_ARCHIVED", `session is archived (read-only): ${sessionId}`);
+    }
+    throw new RpcCallError("SESSION_NOT_FOUND", `session not found or not resumed: ${sessionId}`);
   }
 
-  private async buildSnapshot(sessionId: string, entry: SessionEntry): Promise<SessionSnapshotPayload> {
-    const meta = await this.options.storage.sessions.get(sessionId);
-    // session.snapshot（06 §3.2）：恢复完成/重连补推的端层状态重建数据源；
-    // 内存态会话的增量消息为空（客户端被认为已跟进到 lastSeq）。
-    return sessionSnapshotPayloadSchema.parse({
+  private async snapshotOf(sessionId: string, entry: SessionEntry): Promise<SessionSnapshotPayload> {
+    return buildSessionSnapshot({
+      storage: this.options.storage,
+      sessionId,
       lastSeq: entry.loop.lastEventSeq,
       phase: entry.loop.phase,
       model: this.providerModel,
       activeProviderId: this.providerId,
-      contextUsage: {
-        tokens: (meta?.inputTokens ?? 0) + (meta?.outputTokens ?? 0),
-        maxTokens: this.maxContextTokens,
-      },
-      messages: [],
-      pendingApprovals: [],
+      maxContextTokens: this.maxContextTokens,
     });
   }
-
-  private async recordUsage(sessionId: string, usage: { inputTokens: number; outputTokens: number }): Promise<void> {
-    const meta = await this.options.storage.sessions.get(sessionId);
-    if (!meta) return;
-    await this.options.storage.sessions.updateMeta(sessionId, {
-      inputTokens: meta.inputTokens + usage.inputTokens,
-      outputTokens: meta.outputTokens + usage.outputTokens,
-    });
-  }
-}
-
-/** resume 场景 rpc seq 续起点：持久事件行与 checkpoint 的最大行号。 */
-function seedEventSeq(replay: SessionResume): number {
-  let max = 0;
-  for (const event of replay.events) {
-    max = Math.max(max, event.seq);
-  }
-  if (replay.checkpoint) {
-    max = Math.max(max, replay.checkpoint.seq);
-  }
-  return max;
-}
-
-/** 简单偏移游标：`o<number>`；非法/缺省回退 0（06 §2.0 分页约定的最小落地）。 */
-function parseCursor(cursor: string | undefined): number {
-  if (cursor === undefined || !cursor.startsWith("o")) return 0;
-  const parsed = Number.parseInt(cursor.slice(1), 10);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : 0;
 }

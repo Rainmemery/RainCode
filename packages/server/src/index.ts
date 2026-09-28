@@ -23,6 +23,11 @@ export type {
 export { createAgentServiceNode } from "./node.js";
 export type { AgentServiceNode, AgentServiceNodeOptions } from "./node.js";
 
+export { ConfigDomain } from "./config-domain.js";
+export { ConfigStore, ConfigStoreError, CONFIG_VERSION } from "./config-store.js";
+export type { ConfigStoreErrorCode, ConfigStoreOptions } from "./config-store.js";
+export { ToolDomain } from "./tool-domain.js";
+
 export { resolveProviderConfig, DEFAULT_MAX_CONTEXT_TOKENS } from "./provider-config.js";
 export type {
   ProviderCliArgs,

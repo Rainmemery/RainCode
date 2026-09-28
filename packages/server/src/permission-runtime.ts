@@ -194,6 +194,22 @@ export class PermissionRuntime {
     this.broker.close();
   }
 
+  /** 方法表接线（agent-service buildMethods 展开；schema 校验由 METHOD_SCHEMAS 单点承担）。 */
+  methods(register: (method: string, handler: (params: unknown) => Promise<unknown>) => unknown): Record<string, unknown> {
+    return {
+      "permission.respond": register("permission.respond", async (params) =>
+        this.respond(params as PermissionRespondParams)),
+      "permission.rules.list": register("permission.rules.list", async (params) =>
+        this.listRules(params as PermissionRulesListParams)),
+      "permission.rules.add": register("permission.rules.add", async (params) =>
+        this.addRule(params as PermissionRulesAddParams)),
+      "permission.rules.remove": register("permission.rules.remove", async (params) =>
+        this.removeRule(params as PermissionRulesRemoveParams)),
+      "permission.decisions.list": register("permission.decisions.list", async (params) =>
+        this.listDecisions(params as PermissionDecisionsListParams)),
+    };
+  }
+
   // ---------------------------------------------------------------------------
 }
 

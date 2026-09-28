@@ -14,7 +14,14 @@ export * from "./schemas/system.js";
 export * from "./schemas/tool.js";
 
 import type { ZodTypeAny } from "zod";
-import { systemPingParamsSchema, systemPingResultSchema } from "./schemas/system.js";
+import {
+  systemPingParamsSchema,
+  systemPingResultSchema,
+  systemShutdownParamsSchema,
+  systemShutdownResultSchema,
+  systemVersionParamsSchema,
+  systemVersionResultSchema,
+} from "./schemas/system.js";
 import {
   sessionCancelParamsSchema,
   sessionCancelResultSchema,
@@ -26,8 +33,27 @@ import {
   sessionResumeResultSchema,
   sessionSendParamsSchema,
   sessionSendResultSchema,
+  sessionSetModeParamsSchema,
+  sessionSetModeResultSchema,
   sessionSnapshotEventPayloadSchema,
+  sessionSteerParamsSchema,
+  sessionSteerResultSchema,
+  sessionArchiveParamsSchema,
+  sessionArchiveResultSchema,
+  sessionCreatedEventPayloadSchema,
 } from "./schemas/session.js";
+import {
+  configGetParamsSchema,
+  configGetResultSchema,
+  configProvidersAddParamsSchema,
+  configProvidersAddResultSchema,
+  configProvidersListParamsSchema,
+  configProvidersListResultSchema,
+  configProvidersRemoveParamsSchema,
+  configProvidersRemoveResultSchema,
+  configSetParamsSchema,
+  configSetResultSchema,
+} from "./schemas/config.js";
 import {
   doneEventPayloadSchema,
   errorEventPayloadSchema,
@@ -73,15 +99,36 @@ export interface MethodSchemas {
 
 /**
  * 方法 schema 注册表（06 §5 index.ts）：方法未登记 schema 即无法在 server 暴露（04 ADR-07 强制机制）。
- * 当前覆盖：system.ping；session.create/send/cancel/list/resume；tool.tools.list + 后台任务三方法。
+ * 当前覆盖（07 §2.1 M1 P0 22 方法全集 + P1 permission.rules.* 3 方法）：
+ * system.ping/version/shutdown；session.create/send/steer/cancel/list/resume/archive/setMode；
+ * config.get/set/providers.list/add/remove；tool.tools.list + 后台任务三方法；permission 5 方法。
  */
 export const METHOD_SCHEMAS: Readonly<Record<string, MethodSchemas>> = {
   "system.ping": { request: systemPingParamsSchema, response: systemPingResultSchema },
+  "system.version": { request: systemVersionParamsSchema, response: systemVersionResultSchema },
+  "system.shutdown": { request: systemShutdownParamsSchema, response: systemShutdownResultSchema },
   "session.create": { request: sessionCreateParamsSchema, response: sessionCreateResultSchema },
   "session.send": { request: sessionSendParamsSchema, response: sessionSendResultSchema },
+  "session.steer": { request: sessionSteerParamsSchema, response: sessionSteerResultSchema },
   "session.cancel": { request: sessionCancelParamsSchema, response: sessionCancelResultSchema },
   "session.list": { request: sessionListParamsSchema, response: sessionListResultSchema },
   "session.resume": { request: sessionResumeParamsSchema, response: sessionResumeResultSchema },
+  "session.archive": { request: sessionArchiveParamsSchema, response: sessionArchiveResultSchema },
+  "session.setMode": { request: sessionSetModeParamsSchema, response: sessionSetModeResultSchema },
+  "config.get": { request: configGetParamsSchema, response: configGetResultSchema },
+  "config.set": { request: configSetParamsSchema, response: configSetResultSchema },
+  "config.providers.list": {
+    request: configProvidersListParamsSchema,
+    response: configProvidersListResultSchema,
+  },
+  "config.providers.add": {
+    request: configProvidersAddParamsSchema,
+    response: configProvidersAddResultSchema,
+  },
+  "config.providers.remove": {
+    request: configProvidersRemoveParamsSchema,
+    response: configProvidersRemoveResultSchema,
+  },
   "tool.tools.list": { request: toolToolsListParamsSchema, response: toolToolsListResultSchema },
   "tool.background.list": {
     request: toolBackgroundListParamsSchema,
@@ -122,6 +169,7 @@ export const METHOD_SCHEMAS: Readonly<Record<string, MethodSchemas>> = {
  * 客户端校验仅为开发模式断言（04 §4.3）。
  */
 export const EVENT_SCHEMAS: Readonly<Record<string, ZodTypeAny>> = {
+  "session.created": sessionCreatedEventPayloadSchema,
   "message.delta": messageDeltaEventPayloadSchema,
   "message.completed": messageCompletedEventPayloadSchema,
   "turn.phase_changed": turnPhaseChangedEventPayloadSchema,

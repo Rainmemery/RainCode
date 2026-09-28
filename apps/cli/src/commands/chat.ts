@@ -1,5 +1,5 @@
 /**
- * novacode chat：readline 交互 REPL（最小命令集 /exit /sessions /resume <id>）。
+ * novacode chat：readline 交互 REPL（最小命令集 /exit /sessions /resume <id> /mode /archive /providers）。
  * 首条输入自动创建会话；/resume 切换活动会话后续输入续接该会话历史（session.resume 幂等）。
  * 审批：permission.requested 交互四级决策（[1]仅本次 [2]本会话始终 [3]项目始终 [4]拒绝），
  * 选项[2]写 session 规则、[3]写 project 规则、[4]respond deny（02 §6.2 审批闭环）。
@@ -9,10 +9,18 @@ import { createInterface } from "node:readline/promises";
 import { resolve } from "node:path";
 import { RpcCallError } from "@novacode/rpc";
 import type { RpcClient } from "@novacode/rpc";
-import type { SessionCreateResult, SessionListResult, SessionResumeResult } from "@novacode/shared";
+import type {
+  CollaborationMode,
+  ConfigProvidersListResult,
+  SessionCreateResult,
+  SessionListResult,
+  SessionResumeResult,
+} from "@novacode/shared";
 import { parseCliArgs, startServiceNode, teardown } from "../context.js";
 import { sendAndStream } from "../stream.js";
 import type { ApprovalChoice } from "../stream.js";
+
+const MODES: readonly CollaborationMode[] = ["normal", "plan", "auto-accept"];
 
 export async function chatCommand(argv: string[]): Promise<number> {
   const parsed = parseCliArgs(argv);
@@ -37,7 +45,9 @@ export async function chatCommand(argv: string[]): Promise<number> {
   try {
     await context.client.call("system.ping", {});
     process.stdout.write(
-      `NovaCode chat · workspace ${workspaceRoot}\n命令: /exit /sessions /resume <id>；其余输入直接发送\n`,
+      `NovaCode chat · workspace ${workspaceRoot}\n` +
+        "命令: /exit /sessions /resume <id> /mode <normal|plan|auto-accept> /archive [--force] /providers\n" +
+        "其余输入直接发送\n",
     );
 
     for (;;) {
@@ -70,8 +80,62 @@ export async function chatCommand(argv: string[]): Promise<number> {
         }
         continue;
       }
+      if (trimmed.startsWith("/mode")) {
+        const arg = trimmed.slice("/mode".length).trim();
+        if (currentSessionId === null) {
+          process.stdout.write("no active session\n");
+          continue;
+        }
+        if (!MODES.includes(arg as CollaborationMode)) {
+          process.stdout.write(`usage: /mode <${MODES.join("|")}>\n`);
+          continue;
+        }
+        try {
+          await context.client.call("session.setMode", { sessionId: currentSessionId, mode: arg });
+          process.stdout.write(`mode → ${arg}\n`);
+        } catch (reason: unknown) {
+          printRpcError(reason);
+        }
+        continue;
+      }
+      if (trimmed.startsWith("/archive")) {
+        if (currentSessionId === null) {
+          process.stdout.write("no active session\n");
+          continue;
+        }
+        const force = /(--force|\bforce\b)/.test(trimmed);
+        try {
+          await context.client.call("session.archive", {
+            sessionId: currentSessionId,
+            ...(force && { force: true }),
+          });
+          process.stdout.write(`archived ${currentSessionId}\n`);
+          currentSessionId = null;
+        } catch (reason: unknown) {
+          printRpcError(reason);
+        }
+        continue;
+      }
+      if (trimmed === "/providers") {
+        try {
+          const result = await context.client.call<ConfigProvidersListResult>("config.providers.list", {});
+          if (result.providers.length === 0) {
+            process.stdout.write("(no providers; use config.providers.add)\n");
+          }
+          for (const p of result.providers) {
+            const active = p.id === result.activeProviderId ? "*" : " ";
+            const key = p.apiKeyConfigured ? "key:configured" : "key:missing";
+            process.stdout.write(`${active} ${p.id}  ${p.name}  ${p.model}  ${key}\n`);
+          }
+        } catch (reason: unknown) {
+          printRpcError(reason);
+        }
+        continue;
+      }
       if (trimmed.startsWith("/")) {
-        process.stdout.write("unknown command; available: /exit /sessions /resume <id>\n");
+        process.stdout.write(
+          "unknown command; available: /exit /sessions /resume <id> /mode <mode> /archive [--force] /providers\n",
+        );
         continue;
       }
 
