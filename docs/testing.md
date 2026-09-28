@@ -1,0 +1,75 @@
+# NovaCode 测试说明
+
+> 本文档描述 NovaCode 的测试体系：冒烟测试、NFR 基准、工程门禁。测试脚本变更时**必须同步更新本文档**（见 CONTRIBUTING 文档更新协议）。
+
+## 1. 测试策略总览
+
+NovaCode 采用「**冒烟 + 基准 + 门禁**」三层验证体系，全部可从仓库根目录一条命令运行：
+
+| 层 | 目的 | 运行方式 | 密钥/外呼 |
+| --- | --- | --- | --- |
+| 冒烟（smoke） | 功能链路端到端正确性 | `pnpm smoke:*` | ✅ 全程本机回环 mock，无外呼、无真实密钥 |
+| 基准（bench） | NFR 性能指标验收与防劣化 | `pnpm bench:*` | ✅ 同上（LLM 为本机 mock SSE 服务器） |
+| 门禁（gate） | 代码质量与架构治理 | `pnpm typecheck` / `lint` / `architecture:check` | — |
+
+另有一个**可选真实冒烟** `pnpm smoke:remote`，走完整 CLI 路径调用真实 Provider（需要 `config/test-provider.local.json`，已被 .gitignore 隔离）。该脚本对全部 stdout/stderr 断言无密钥泄露；网络不通时如实报告 FAILED，不影响本地冒烟结论。
+
+## 2. 冒烟测试
+
+所有冒烟脚本共享同一模式：`node:http` 本机 mock OpenAI SSE 服务器（脚本化多轮回复，tool_call delta 分片下发以覆盖 llm 侧累积）→ 临时 `NOVACODE_HOME` → 进程内创建 Agent Service（in-memory RPC 绑定）→ RPC 驱动 → 断言落盘数据与事件流。
+
+| 命令 | 脚本 | 覆盖范围 |
+| --- | --- | --- |
+| `pnpm smoke:e2e` | [scripts/smoke-e2e.mts](../scripts/smoke-e2e.mts) | 端到端主链路：`session.send` → llm 流式回复（SSE delta 累积 + usage + `[DONE]`）→ 事件流/JSONL 落盘 → 会话列表与恢复 |
+| `pnpm smoke:tools` | [scripts/smoke-tools.mts](../scripts/smoke-tools.mts) | 工具调用系统：用例 A（allow）read+write 多轮工具调用、`tool_call.started/completed` 事件、结果文件落盘、最终回复无工具泄露；用例 B（deny）`needsApproval` 工具被 always-deny 审批拒绝 → 模型收到 `TOOL_PERMISSION_DENIED` 并继续收束 |
+| `pnpm smoke:permission` | [scripts/smoke-permission.mts](../scripts/smoke-permission.mts) | 权限判定链 12 轮脚本化场景：五级判定优先级、bash argv 求值与只读白名单、grantId 审批闭环（allow once/always、deny）、规则持久化、审计落盘 |
+| `pnpm smoke:p0` | [scripts/smoke-p0.mts](../scripts/smoke-p0.mts) | **M1 P0 控制面全集**（并回归上面三个 smoke）：① 协议注册表对照（22 方法 / 12 事件）② Provider 密钥引用制（明文 key → 密钥文件 + apiKeyRef，响应零明文；移除活跃 Provider 报错）③ `session.steer` 运行中注入 ④ `session.setMode` 模式级 deny/恢复 ⑤ `session.archive` 归档语义与 events.jsonl 保留 ⑥ 明文密钥不落入任何响应/落盘/日志 |
+
+**运行全部**：
+
+```bash
+pnpm smoke:p0   # 内部已并复 smoke:e2e / smoke:tools / smoke:permission
+```
+
+**预期输出**：各脚本末尾打印 `SMOKE OK`，退出码 0。
+
+## 3. NFR 基准测试
+
+实现入口 [scripts/bench.mts](../scripts/bench.mts)（共享逻辑 [scripts/bench-lib.mts](../scripts/bench-lib.mts)），口径对照 01-PRD §6.1 性能指标基线表。
+
+| 命令 | 指标 | M1 实测（详见 [benchmarks/m1-2026-09-28.md](benchmarks/m1-2026-09-28.md)） |
+| --- | --- | --- |
+| `pnpm bench:start` | NFR-1 CLI 冷启动 ≤ 2s（20 次中位数） | ✅ 509.2ms |
+| `pnpm bench:send` | NFR-2 输入→模型请求本地开销 ≤ 300ms（P95，n=100） | ✅ 16.7ms |
+| `pnpm bench:render` | NFR-3 工具结果本地渲染延迟 ≤ 100ms（P95，n=100） | ✅ 0.0ms |
+| `pnpm bench:resume` | NFR-5 万条消息会话恢复 ≤ 1s（10 次中位数） | ✅ 93.3ms |
+| `pnpm bench:crash` | NFR-7 崩溃恢复专项（`taskkill /F /T` 强杀 → 四项断言） | ✅ PASS |
+| `pnpm bench:all` | 全部五项 | ✅ |
+
+NFR-4（桌面端空载内存）、NFR-6（压缩异步不阻塞）属 M2 验收范围，M2 波次补齐。
+
+**里程碑验收时**必须在 `docs/benchmarks/` 新增留存报告（含环境说明与复现命令，格式参照 m1-2026-09-28.md）。
+
+## 4. 工程门禁
+
+| 命令 | 工具 | 检查内容 |
+| --- | --- | --- |
+| `pnpm typecheck` | tsc --noEmit strict（逐 workspace 项目） | 全仓类型正确性 |
+| `pnpm lint` | oxlint | Lint 规则（当前基线：0 错误，6 条既有 warning，其中 rpc 层 2 条为刻意快照不修） |
+| `pnpm architecture:check` | [scripts/architecture-check.mjs](../scripts/architecture-check.mjs) | 五项架构策略（依据 [architecture/policy.yaml](../architecture/policy.yaml)）：跨包依赖白名单、Tarjan 循环依赖、单文件 ≤ 500 行、深导入禁令（跨包只能从 `index.ts` 导入）、managedOnly |
+
+**提交前必须全绿**。`architecture:check` 含 gate 自测（注入越权 import 可被拦截）。
+
+## 5. 已知边界与注意事项
+
+- 冒烟/基准全部使用**临时 NOVACODE_HOME** 与临时工作区，不污染真实用户数据；测试数据即用即弃。
+- `smoke:remote` 读取的 `config/*.local.json` 含真实密钥，已被 `.gitignore` 隔离（`config/*.local.json` 模式）——**任何测试脚本不得将密钥写入被跟踪文件或输出**，这是架构级安全约束（04-architecture §5.3）。
+- NFR-7 崩溃基准默认单轮专项口径；全量验收口径（强杀 ×20）可用 `--times 20` 扩展。
+- Windows 专用实现（如进程树终止 `taskkill /F /T`）在非 Windows 平台的行为未经验证。
+
+## 6. 新增测试的约定
+
+1. 新功能合入前补对应冒烟用例：功能级断言放既有脚本对应用例组，新领域新建 `scripts/smoke-<domain>.mts` 并在 `package.json` 注册 `smoke:<domain>`，同时更新本表。
+2. 头部注释必须说明：链路、用例清单、隔离方式（参照现有脚本格式）。
+3. 性能相关改动合入后复跑 `pnpm bench:all`，与上一里程碑基准对比不劣化（±10% 内）。
+4. 测试文档（本文档）与测试脚本同 PR 变更。
