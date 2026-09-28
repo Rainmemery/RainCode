@@ -11,11 +11,11 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 当前里程碑 | **M1 已完成 ✅**（P0：Agent 内核 + CLI 可用） |
-| 下一里程碑 | M2（P1：压缩 / MCP / 子代理 / 记忆 + 桌面端 Alpha） |
-| 最新提交 | `58c17fd` feat: M1 收尾（NFR 基准脚本五项达标 + architecture:check/oxlint 门禁 + 基准数据留存） |
-| 工作区状态 | clean（无未提交变更） |
-| 门禁状态 | typecheck ✅ / oxlint ✅ / architecture:check ✅ / smoke-p0 ✅ / bench 五项达标 ✅ |
+| 当前里程碑 | **M2 进行中**（P1：压缩 / MCP / 子代理 / 记忆 + 桌面端 Alpha） |
+| 已完成任务 | T2.1 auto-compact ✅ |
+| 最新提交 | 见 `git log -1`（T2.1 auto-compact 提交） |
+| 工作区状态 | clean |
+| 门禁状态 | typecheck ✅ / oxlint ✅（0 错误，6 条既有 warning）/ architecture:check ✅ / smoke:p0（含 compact 回归）✅ / bench 五项达标无劣化 ✅ |
 | 快照日期 | 2026-09-28 |
 
 ---
@@ -34,6 +34,9 @@
 ## 3. 已完成任务日志（倒序追加）
 
 > 格式：`[日期] 任务 — 结果`（含关键产出物与提交号）。**新条目插在本节最上方。**
+
+### M2 · P1（能力补全 + 桌面端 Alpha）
+- [2026-09-28] T2.1 auto-compact — CompactionService（阈值 80% 触发 / 异步不阻塞 / in-flight 去重锁 / 失败阈值上调 90% + 连续 3 次停机）；提交协议 = `compaction.applied` 事件行（summary + summarizedCount）+ epoch+1 checkpoint，重放语义落地 storage（resume 后历史与内存态一致）；协议新增 `session.compact` 方法与 `compact.started/completed` 事件（22+1 方法 / 14 事件）；CLI `/compact`；NFR-6 专项冒烟 `smoke:compact`（A auto 触发+不阻塞+resume 连续性 / B 失败保留原历史+阈值上调 / C 手动+幂等+INVALID_PARAMS）并纳入 smoke:p0 回归。
 
 ### 文档管理与开源准备
 - [2026-09-28] 文档管理与进度持久化体系落地 — 新增 `PROGRESS.md`（进度唯一事实来源 + 更新协议）、根 `README.md`（功能清单/快速开始/vibecoding 标注）、`docs/testing.md`（测试体系说明）、`docs/README.md`（文档索引）、`LICENSE`（MIT）、`CONTRIBUTING.md`（含文档更新协议）。提交 `94bad1d`。
@@ -67,12 +70,11 @@
 
 > 取任务时**必须**回读 `docs/07-dev-plan.md` 对应任务行获取完整验收标准。
 
-1. **T2.1 auto-compact** — CompactionService，阈值 80% 触发、epoch 守卫、保留区（系统提示 + 最近 20 条）、失败阈值上调 90%。验收：NFR-6 专项用例。
-2. **T2.2 mcp 包** — stdio / http / sse 三 transport、连接状态机 M1~M8、`mcp__<serverKey>__<toolName>` 命名空间、失败隔离与重连退避。
-3. **T2.3 子代理** — profile 解析校验、spawn / 并发槽 / 级联取消、事件镜像（500ms 合并）、`agent` 工具注册。
-4. **T2.4 memory 包** — MEMORY.md 模板初始化与注入、会话结束/compact 抽取落盘、FTS5 trigram 检索 + LIKE 兜底、promote 单向晋升。
-5. **T2.5 permission 持久化与危险命令** — project/global 规则 CRUD、层级合并、高危根命令禁止通配 allow。
-6. **T2.6~T2.10** — 内核增强（AC-9~12）、工具增强与 P1 工具、rpc stdio + headless、桌面端 Alpha（Electron 三泳道 + stdio RPC 绑定）、M2 验收与基准留存。
+1. **T2.2 mcp 包** — stdio / http / sse 三 transport、连接状态机 M1~M8、`mcp__<serverKey>__<toolName>` 命名空间、失败隔离与重连退避。
+2. **T2.3 子代理** — profile 解析校验、spawn / 并发槽 / 级联取消、事件镜像（500ms 合并）、`agent` 工具注册。
+3. **T2.4 memory 包** — MEMORY.md 模板初始化与注入、会话结束/compact 抽取落盘、FTS5 trigram 检索 + LIKE 兜底、promote 单向晋升。
+4. **T2.5 permission 持久化与危险命令** — project/global 规则 CRUD、层级合并、高危根命令禁止通配 allow。
+5. **T2.6~T2.10** — 内核增强（AC-9~12）、工具增强与 P1 工具、rpc stdio + headless、桌面端 Alpha（Electron 三泳道 + stdio RPC 绑定）、M2 验收与基准留存（含 NFR-6 计时测量）。
 
 ---
 

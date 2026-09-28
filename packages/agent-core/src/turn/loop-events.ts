@@ -25,6 +25,8 @@ export type PersistedEventName =
   | "tool_call.completed"
   | "permission.requested"
   | "permission.resolved"
+  | "compact.started"
+  | "compact.completed"
   | "done"
   | "error";
 

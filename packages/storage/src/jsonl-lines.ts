@@ -58,6 +58,32 @@ export interface CheckpointLine {
 
 export type JsonlLine = MessageLine | EventLine | CheckpointLine;
 
+/**
+ * 压缩提交标记（05 §4.2 event 行「压缩报告」的持久形态；02 §1.2.5）。
+ * payload：{ compactionId, epoch, summary, summarizedCount, tokensBefore? }；
+ * 重放语义（05 §4.4）：历史重建遇到该行时，以摘要消息替换其前 summarizedCount 条消息
+ * （[0..summarizedCount) 为触发时被摘要的前缀，窗口期新增消息在其后，不受影响）。
+ */
+export const COMPACTION_EVENT_NAME = "compaction.applied";
+
+export interface CompactionMarkerPayload {
+  compactionId: string;
+  epoch: number;
+  summary: string;
+  /** 触发时被摘要替换的历史前缀长度（成对安全调整后；重放按此截断）。 */
+  summarizedCount: number;
+  tokensBefore?: number;
+}
+
+/** 压缩摘要消息（内存提交与重放共用同一构造，保证两侧 id/内容一致）。 */
+export function compactionSummaryRecord(marker: CompactionMarkerPayload): MessageRecord {
+  return {
+    id: `msg_compact_${marker.compactionId}`,
+    role: "user",
+    content: `[上下文压缩] 以下是此前会话历史的结构化摘要，后续对话以本摘要为早期上下文：\n${marker.summary}`,
+  };
+}
+
 export function serializeLine(line: JsonlLine): string {
   return JSON.stringify(line);
 }

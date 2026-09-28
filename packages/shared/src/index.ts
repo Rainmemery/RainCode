@@ -41,6 +41,12 @@ import {
   sessionArchiveParamsSchema,
   sessionArchiveResultSchema,
   sessionCreatedEventPayloadSchema,
+  sessionCompactParamsSchema,
+  sessionCompactResultSchema,
+  compactStartedEventPayloadSchema,
+  compactCompletedEventPayloadSchema,
+  buildCompactStartedEvent,
+  buildCompactCompletedEvent,
 } from "./schemas/session.js";
 import {
   configGetParamsSchema,
@@ -115,6 +121,7 @@ export const METHOD_SCHEMAS: Readonly<Record<string, MethodSchemas>> = {
   "session.resume": { request: sessionResumeParamsSchema, response: sessionResumeResultSchema },
   "session.archive": { request: sessionArchiveParamsSchema, response: sessionArchiveResultSchema },
   "session.setMode": { request: sessionSetModeParamsSchema, response: sessionSetModeResultSchema },
+  "session.compact": { request: sessionCompactParamsSchema, response: sessionCompactResultSchema },
   "config.get": { request: configGetParamsSchema, response: configGetResultSchema },
   "config.set": { request: configSetParamsSchema, response: configSetResultSchema },
   "config.providers.list": {
@@ -181,6 +188,9 @@ export const EVENT_SCHEMAS: Readonly<Record<string, ZodTypeAny>> = {
   "session.snapshot": sessionSnapshotEventPayloadSchema,
   "permission.requested": permissionRequestedEventPayloadSchema,
   "permission.resolved": permissionResolvedEventPayloadSchema,
+  "compact.started": compactStartedEventPayloadSchema,
+  "compact.completed": compactCompletedEventPayloadSchema,
 };
 
 export { buildPermissionRequestedEvent, buildPermissionResolvedEvent };
+export { buildCompactStartedEvent, buildCompactCompletedEvent };

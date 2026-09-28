@@ -1,12 +1,7 @@
 /**
  * AgentService：服务层唯一组装点（04-architecture §2.4 铁律 4 / 06-api-spec §2）。
- *
- * - 组装 Storage + LlmClient + SessionTurnLoop（agent-core），经 createServiceBinding 暴露控制面；
- *   transport 由端层注入（CLI in-memory / 未来桌面 stdio），server 不选择传输载体；
- * - 方法表 schema 全部引用 @novacode/shared METHOD_SCHEMAS（04 ADR-07：未登记即无法暴露）；
- *   M1 P0 22 方法全集：system 3 + session 8 + permission 2 + config 5（ConfigDomain 承接）+ tool 4；
- * - 会话事件（06 §3 数据面）由 agent-core 构造 payload（seq 会话内单调），经 binding.publish 发出；
- * - 业务错误以 RpcCallError(code, message) 抛出，binding 转换为 06 §4 结构化 error 应答。
+ * 组装 Storage + LlmClient + SessionTurnLoop（agent-core），经 createServiceBinding 暴露控制面；
+ * 方法表 schema 全部引用 @novacode/shared METHOD_SCHEMAS（04 ADR-07）；事件由 agent-core 构造 payload。
  */
 import { stat } from "node:fs/promises";
 import {
@@ -18,6 +13,7 @@ import {
 import type {
   CollaborationMode,
   SessionArchiveParams,
+  SessionCompactParams,
   SessionCreateParams,
   SessionListParams,
   SessionResumeParams,
@@ -35,7 +31,7 @@ import type { SessionResume } from "@novacode/storage";
 import { createBuiltinTools, ToolExecutor } from "@novacode/tools";
 import type { BackgroundTaskRegistry, ToolRegistry } from "@novacode/tools";
 import { alwaysAllowApprover, alwaysDenyApprover, createMetadataPermissionPort } from "@novacode/agent-core";
-import type { LlmPort, PermissionPort, SessionEventPublisher, SessionTurnLoop, ToolPhaseDeps, TurnOutcome } from "@novacode/agent-core";
+import type { CompactionOptions, LlmPort, PermissionPort, SessionEventPublisher, SessionTurnLoop, ToolPhaseDeps, TurnOutcome } from "@novacode/agent-core";
 import { ConfigDomain } from "./config-domain.js";
 import { ConfigStore } from "./config-store.js";
 import { ToolDomain } from "./tool-domain.js";
@@ -43,6 +39,7 @@ import { appVersion } from "./app-version.js";
 import {
   assertNoRunningBackgroundTasks,
   buildSessionSnapshot,
+  compactSession,
   createSessionLoop,
   listSessions,
   recordUsage,
@@ -62,10 +59,8 @@ export interface ProviderRuntimeConfig {
 }
 
 /**
- * 工具系统装配（本波）：
- * - registry/executor 由 server 组装注入 AgentService（02 §0.2 依赖方向 server→tools）；
- * - approval 为 default-allow 策略下的测试审批实现（always-allow / always-deny）；
- *   normal（默认）策略走 PermissionRuntime（五级判定链 + 审批闭环，02 §6）。
+ * 工具系统装配（本波）：registry/executor 由 server 组装注入；approval 为 default-allow
+ * 策略下的测试审批实现（always-allow / always-deny）；normal（默认）走 PermissionRuntime（02 §6）。
  */
 export interface ToolRuntimeConfig {
   /** 仅 default-allow 策略生效（normal 策略下忽略，走真实权限链）。 */
@@ -87,6 +82,8 @@ export interface AgentServiceOptions {
   tools?: ToolRuntimeConfig;
   /** 权限策略；缺省 normal（五级判定链 + 审批闭环）。 */
   permission?: PermissionConfig;
+  /** auto-compact 选项（02 §1.2.5；缺省 = 不启用；contextWindowTokens 取 Provider maxContextTokens）。 */
+  compaction?: { thresholdRatio?: number; keepRecentCount?: number };
   /** system.shutdown 的存储关闭回调（node 注入；缺省跳过——传输关闭由持有方承担）。 */
   onShutdown?: () => Promise<void>;
 }
@@ -122,6 +119,8 @@ export class AgentService {
   readonly providerModel: string;
   readonly providerId: string;
   readonly maxContextTokens: number;
+  /** auto-compact 装配（02 §1.2.5；undefined = 不启用）。 */
+  private readonly compaction: CompactionOptions | undefined;
 
   constructor(private readonly options: AgentServiceOptions) {
     const provider = options.provider ?? null;
@@ -141,6 +140,7 @@ export class AgentService {
     this.providerModel = provider?.model ?? "";
     this.providerId = provider?.id ?? "default";
     this.maxContextTokens = provider?.maxContextTokens ?? 32768;
+    this.compaction = this.buildCompaction();
     this.config = new ConfigDomain(new ConfigStore({ dataRoot: options.storage.dataRoot }));
 
     // 工具系统组装（server 是唯一组装点；tools→shared、agent-core→tools 依赖方向不变）
@@ -184,10 +184,7 @@ export class AgentService {
     this.sessions.clear();
   }
 
-  // ---------------------------------------------------------------------------
   // 方法表（schema 真源 METHOD_SCHEMAS；handler 内不再校验传输结构，04 §4.3）
-  // ---------------------------------------------------------------------------
-
   private buildMethods(): Record<string, RpcMethodHandler> {
     const register = (method: string, handler: (params: unknown) => Promise<unknown>) => {
       const schemas = METHOD_SCHEMAS[method];
@@ -207,9 +204,7 @@ export class AgentService {
     };
     return {
       "system.ping": register("system.ping", async () => ({
-        protocolVersion: PROTOCOL_VERSION,
-        capabilities: [...V1_CAPABILITIES],
-        serverTime: Date.now(),
+        protocolVersion: PROTOCOL_VERSION, capabilities: [...V1_CAPABILITIES], serverTime: Date.now(),
       })),
       "system.version": register("system.version", async () => ({
         protocolVersion: PROTOCOL_VERSION, appVersion: appVersion(),
@@ -225,6 +220,7 @@ export class AgentService {
       "session.resume": register("session.resume", (params) => this.resume(params as SessionResumeParams)),
       "session.archive": register("session.archive", (params) => this.archive(params as SessionArchiveParams)),
       "session.setMode": register("session.setMode", (params) => this.setMode(params as SessionSetModeParams)),
+      "session.compact": register("session.compact", (params) => this.compact(params as SessionCompactParams)),
       ...this.config.methods(register),
       ...this.toolDomain.methods(register),
       // default-allow 策略未装配 permission 域（requirePermission 在调用期报 PC_GRANT_NOT_FOUND）
@@ -232,13 +228,9 @@ export class AgentService {
     };
   }
 
-  // ---------------------------------------------------------------------------
   // session 域（06 §2.1）
-  // ---------------------------------------------------------------------------
-
   private async createSession(params: SessionCreateParams): Promise<unknown> {
-    // workspaceRoot 必须为已存在目录（06 §2.1）；只读存在性探测，不读写任何数据，
-    // 不构成对 storage「唯一持久化出口」的绕越（04 §2.4 铁律 2 注记）。
+    // workspaceRoot 必须为已存在目录（06 §2.1）；只读存在性探测，不读写任何数据（04 §2.4 铁律 2 注记）
     try {
       const info = await stat(params.workspaceRoot);
       if (!info.isDirectory()) throw new Error("not a directory");
@@ -271,15 +263,11 @@ export class AgentService {
       ...(this.options.systemPrompt !== undefined && { systemPrompt: this.options.systemPrompt }),
       tools: this.toolDeps, workspaceRoot: params.workspaceRoot, workspaceId: workspace.hash,
       initialEventSeq: 1,
+      ...(this.compaction !== undefined && { compaction: this.compaction }),
     });
     this.sessions.set(meta.id, {
-      loop,
-      llm,
-      providerId: params.providerId ?? this.providerId,
-      workspaceHash: workspace.hash,
-      mode: meta.mode,
-      workspaceRoot: params.workspaceRoot,
-      pending: null,
+      loop, llm, providerId: params.providerId ?? this.providerId,
+      workspaceHash: workspace.hash, mode: meta.mode, workspaceRoot: params.workspaceRoot, pending: null,
     });
     return { sessionId: meta.id, state: "Active", createdAt: meta.createdAt };
   }
@@ -329,6 +317,11 @@ export class AgentService {
     entry.mode = params.mode;
     await this.options.storage.sessions.updateMeta(params.sessionId, { mode: params.mode });
     return { mode: params.mode };
+  }
+
+  /** 手动压缩（06 §2.1）：受理即返 ticket；完成/失败经 compact.started/completed 事件。 */
+  private compact(params: SessionCompactParams): Promise<unknown> {
+    return this.requireActive(params.sessionId).then((entry) => compactSession(entry));
   }
 
   /** 归档（06 §2.1 / 02 C4）：取消运行中 turn → flush → 后台任务检查 → status=archived（JSONL 不删除）。 */
@@ -397,24 +390,18 @@ export class AgentService {
       initialHistory: replay.history,
       // rpc seq 续起点 best-effort（delta 不落盘）；端层以 snapshot.lastSeq 为准继续消费（06 §3.3）
       initialEventSeq: seedEventSeq(replay),
+      initialEpoch: replay.epoch,
+      ...(this.compaction !== undefined && { compaction: this.compaction }),
     });
     const entry: SessionEntry = {
-      loop,
-      llm,
-      providerId: this.providerId,
-      workspaceHash: meta.workspaceId,
-      mode: meta.mode,
-      workspaceRoot,
-      pending: null,
+      loop, llm, providerId: this.providerId,
+      workspaceHash: meta.workspaceId, mode: meta.mode, workspaceRoot, pending: null,
     };
     this.sessions.set(meta.id, entry);
     return { sessionId: meta.id, snapshot: await this.snapshotOf(meta.id, entry) };
   }
 
-  // ---------------------------------------------------------------------------
   // system 域（06 §2.8）
-  // ---------------------------------------------------------------------------
-
   /** 优雅停机：取消活动 turn → 等待收敛（flush）→ 关闭存储 → 应答 shuttingDown。 */
   private async shutdown(params: SystemShutdownParams): Promise<unknown> {
     this.shuttingDown = true;
@@ -428,10 +415,7 @@ export class AgentService {
     return { shuttingDown: true as const };
   }
 
-  // ---------------------------------------------------------------------------
   // 内部
-  // ---------------------------------------------------------------------------
-
   private publisher(): SessionEventPublisher {
     return (event) => {
       if (!this.binding) {
@@ -439,6 +423,19 @@ export class AgentService {
         return;
       }
       this.binding.publish(event);
+    };
+  }
+
+  /** auto-compact 装配：contextWindowTokens 取默认 Provider 窗口（02 §1.2.5）。 */
+  private buildCompaction(): CompactionOptions | undefined {
+    const raw = this.options.compaction;
+    if (raw === undefined) {
+      return undefined;
+    }
+    return {
+      contextWindowTokens: this.maxContextTokens,
+      ...(raw.thresholdRatio !== undefined && { thresholdRatio: raw.thresholdRatio }),
+      ...(raw.keepRecentCount !== undefined && { keepRecentCount: raw.keepRecentCount }),
     };
   }
 
@@ -473,9 +470,7 @@ export class AgentService {
   /** 活动会话解析：内存缺失时回查存储——归档 → SESSION_ARCHIVED；不存在 → SESSION_NOT_FOUND。 */
   private async requireActive(sessionId: string): Promise<SessionEntry> {
     const entry = this.sessions.get(sessionId);
-    if (entry) {
-      return entry;
-    }
+    if (entry) return entry;
     const meta = await this.options.storage.sessions.get(sessionId);
     if (meta?.status === "archived") {
       throw new RpcCallError("SESSION_ARCHIVED", `session is archived (read-only): ${sessionId}`);

@@ -50,13 +50,23 @@ export { SessionStream } from "./jsonl-stream.js";
 export type { AppendResult, CheckpointResult, SessionStreamOptions } from "./jsonl-stream.js";
 
 export {
+  COMPACTION_EVENT_NAME,
   HEADER_EVENT_NAME,
   JSONL_SCHEMA_VERSION,
   NOVACODE_VERSION,
+  compactionSummaryRecord,
   parseLine,
   serializeLine,
 } from "./jsonl-lines.js";
-export type { CheckpointLine, CheckpointState, EventLine, JsonlLine, MessageLine, ParsedLine } from "./jsonl-lines.js";
+export type {
+  CheckpointLine,
+  CheckpointState,
+  CompactionMarkerPayload,
+  EventLine,
+  JsonlLine,
+  MessageLine,
+  ParsedLine,
+} from "./jsonl-lines.js";
 
 export { replaySessionFile, repairDanglingTail, scanTailState } from "./jsonl-resume.js";
 export type { CheckpointSource, ResumeReplay, ResumeReadOptions, TailState } from "./jsonl-resume.js";

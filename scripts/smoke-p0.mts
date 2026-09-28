@@ -10,7 +10,7 @@
  * d) session.setMode(plan) → write 工具被 deny（matchedBy=mode）→ setMode(normal) 恢复审批放行；
  * e) session.archive → 默认 list 不再显示（filter=Archived 可查、state=Archived）→ resume 报
  *    SESSION_NOT_FOUND → send 报 SESSION_ARCHIVED；events.jsonl 不删除；
- * f) 回归：spawn smoke-e2e / smoke-tools / smoke-permission 子进程，全部退出码 0。
+ * f) 回归：spawn smoke-e2e / smoke-tools / smoke-permission / smoke-compact 子进程，全部退出码 0。
  *
  * 全程仅本机回环与临时目录：无外呼、无真实密钥；明文 key 断言不落入任何响应/落盘/日志。
  */
@@ -284,7 +284,7 @@ async function main(): Promise<void> {
   // ---- f) 既有 smoke 回归（子进程，隔离 env）------------------------------
   const cleanEnv: NodeJS.ProcessEnv = { ...process.env };
   delete cleanEnv["NOVACODE_HOME"];
-  for (const script of ["smoke-e2e.mts", "smoke-tools.mts", "smoke-permission.mts"]) {
+  for (const script of ["smoke-e2e.mts", "smoke-tools.mts", "smoke-permission.mts", "smoke-compact.mts"]) {
     const result = spawnSync(process.execPath, ["--import", "tsx", join(REPO_ROOT, "scripts", script)], {
       cwd: REPO_ROOT,
       env: cleanEnv,

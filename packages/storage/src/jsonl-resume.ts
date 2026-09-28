@@ -10,9 +10,12 @@ import { open as openFile, writeFile } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
 import type { MessageRecord } from "@novacode/shared";
 import {
+  COMPACTION_EVENT_NAME,
   HEADER_EVENT_NAME,
+  compactionSummaryRecord,
   parseLine,
   type CheckpointLine,
+  type CompactionMarkerPayload,
   type EventLine,
 } from "./jsonl-lines.js";
 
@@ -154,6 +157,39 @@ function scanTailForCheckpoint(buf: Buffer, tailStart: number): number | null {
 }
 
 /**
+ * 压缩标记应用（05 §4.4 重放语义）：以摘要消息替换历史前 summarizedCount 条。
+ * payload 宽松校验，缺字段/非法值时忽略该标记（不中断重放，§4.5 宽松读原则）。
+ */
+function applyCompactionMarker(history: MessageRecord[], payload: unknown): MessageRecord[] {
+  if (typeof payload !== "object" || payload === null) {
+    return history;
+  }
+  const record = payload as Record<string, unknown>;
+  const compactionId = record["compactionId"];
+  const summary = record["summary"];
+  const summarizedCount = record["summarizedCount"];
+  if (
+    typeof compactionId !== "string" ||
+    compactionId.length === 0 ||
+    typeof summary !== "string" ||
+    typeof summarizedCount !== "number" ||
+    !Number.isInteger(summarizedCount) ||
+    summarizedCount < 0 ||
+    summarizedCount >= history.length
+  ) {
+    return history;
+  }
+  const marker: CompactionMarkerPayload = {
+    compactionId,
+    epoch: typeof record["epoch"] === "number" ? record["epoch"] : 0,
+    summary,
+    summarizedCount,
+    ...(typeof record["tokensBefore"] === "number" ? { tokensBefore: record["tokensBefore"] as number } : {}),
+  };
+  return [compactionSummaryRecord(marker), ...history.slice(summarizedCount)];
+}
+
+/**
  * 恢复重放主流程（05 §4.4 第 1~5 步的文件侧；对账回写由 Storage 完成）。
  * 文件不存在（新会话/空目录）返回空重放，不视为错误。
  */
@@ -172,7 +208,7 @@ export async function replaySessionFile(eventsFile: string, options: ResumeReadO
       return emptyReplay(options.epoch ?? 0);
     }
 
-    // 全文件消息（includeHistory 时同读一份完整历史）
+    // 全文件消息（includeHistory 时同读一份完整历史；压缩标记按重放语义就地应用）
     let history: MessageRecord[] = [];
     if (includeHistory) {
       const whole = await readRange(fh, 0, size);
@@ -180,6 +216,8 @@ export async function replaySessionFile(eventsFile: string, options: ResumeReadO
         const parsed = parseLine(whole.subarray(range.start, range.end).toString("utf8"));
         if (parsed.ok && parsed.line.type === "message") {
           history.push(parsed.line.message);
+        } else if (parsed.ok && parsed.line.type === "event" && parsed.line.name === COMPACTION_EVENT_NAME) {
+          history = applyCompactionMarker(history, parsed.line.payload);
         }
       }
     }

@@ -23,12 +23,13 @@ NovaCode 采用「**冒烟 + 基准 + 门禁**」三层验证体系，全部可�
 | `pnpm smoke:e2e` | [scripts/smoke-e2e.mts](../scripts/smoke-e2e.mts) | 端到端主链路：`session.send` → llm 流式回复（SSE delta 累积 + usage + `[DONE]`）→ 事件流/JSONL 落盘 → 会话列表与恢复 |
 | `pnpm smoke:tools` | [scripts/smoke-tools.mts](../scripts/smoke-tools.mts) | 工具调用系统：用例 A（allow）read+write 多轮工具调用、`tool_call.started/completed` 事件、结果文件落盘、最终回复无工具泄露；用例 B（deny）`needsApproval` 工具被 always-deny 审批拒绝 → 模型收到 `TOOL_PERMISSION_DENIED` 并继续收束 |
 | `pnpm smoke:permission` | [scripts/smoke-permission.mts](../scripts/smoke-permission.mts) | 权限判定链 12 轮脚本化场景：五级判定优先级、bash argv 求值与只读白名单、grantId 审批闭环（allow once/always、deny）、规则持久化、审计落盘 |
-| `pnpm smoke:p0` | [scripts/smoke-p0.mts](../scripts/smoke-p0.mts) | **M1 P0 控制面全集**（并回归上面三个 smoke）：① 协议注册表对照（22 方法 / 12 事件）② Provider 密钥引用制（明文 key → 密钥文件 + apiKeyRef，响应零明文；移除活跃 Provider 报错）③ `session.steer` 运行中注入 ④ `session.setMode` 模式级 deny/恢复 ⑤ `session.archive` 归档语义与 events.jsonl 保留 ⑥ 明文密钥不落入任何响应/落盘/日志 |
+| `pnpm smoke:p0` | [scripts/smoke-p0.mts](../scripts/smoke-p0.mts) | **M1 P0 控制面全集**（并回归其余三个 smoke）：① 协议注册表对照（22 方法 / 12 事件）② Provider 密钥引用制（明文 key → 密钥文件 + apiKeyRef，响应零明文；移除活跃 Provider 报错）③ `session.steer` 运行中注入 ④ `session.setMode` 模式级 deny/恢复 ⑤ `session.archive` 归档语义与 events.jsonl 保留 ⑥ 明文密钥不落入任何响应/落盘/日志 |
+| `pnpm smoke:compact` | [scripts/smoke-compact.mts](../scripts/smoke-compact.mts) | **auto-compact（M2 T2.1 / NFR-6 专项）**：用例 A auto 触发 + 压缩窗口内 send 不阻塞 + `compaction.applied`/epoch+1 提交 + 窗口期消息合并 + resume 连续性；用例 B 空摘要失败 → 保留原历史 + 阈值临时上调 90%；用例 C 手动 compact 低于阈值可用 + in-flight 幂等复用 ticket + 空历史 INVALID_PARAMS |
 
 **运行全部**：
 
 ```bash
-pnpm smoke:p0   # 内部已并复 smoke:e2e / smoke:tools / smoke:permission
+pnpm smoke:p0   # 内部已并复 smoke:e2e / smoke:tools / smoke:permission / smoke:compact
 ```
 
 **预期输出**：各脚本末尾打印 `SMOKE OK`，退出码 0。

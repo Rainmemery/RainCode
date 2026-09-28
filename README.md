@@ -12,7 +12,7 @@ NovaCode 的功能定位与 Claude Code / Codex 对齐：整合**代码生成、
 
 ## 当前状态
 
-**M1（P0：Agent 内核 + CLI 可用）已完成** ✅ —— 可在真实仓库中端到端完成对话、工具调用、权限审批闭环。M2（压缩 / MCP / 子代理 / 记忆 + 桌面端 Alpha）尚未开始。进度详情见 [PROGRESS.md](PROGRESS.md)。
+**M1（P0：Agent 内核 + CLI 可用）已完成** ✅ —— 可在真实仓库中端到端完成对话、工具调用、权限审批闭环。**M2 进行中**：auto-compact 已落地，MCP / 子代理 / 记忆 / 桌面端 Alpha 待开发。进度详情见 [PROGRESS.md](PROGRESS.md)。
 
 | 能力 | 状态 |
 | --- | --- |
@@ -20,7 +20,7 @@ NovaCode 的功能定位与 Claude Code / Codex 对齐：整合**代码生成、
 | 工具调用（8 内置工具 / 声明式权限元数据 / Schedule-Execution 状态） | ✅ M1 |
 | 命令权限控制（五级判定链 / bash argv 求值 / grantId 审批闭环 / 审计） | ✅ M1 |
 | 控制面协议（22 方法 / 12 事件 / 密钥引用制） | ✅ M1 |
-| 上下文压缩 compact（80% 阈值 / 异步 / epoch 单调） | ⬜ M2 |
+| 上下文压缩 compact（80% 阈值 / 异步 / epoch 单调） | ✅ M2 |
 | MCP 接入（stdio/HTTP/SSE，`mcp__<server>__<tool>` 命名空间） | ⬜ M2 |
 | 子代理管理（spawn / 并发槽 / 事件镜像） | ⬜ M2 |
 | 项目记忆（MEMORY.md + FTS5 检索 + 单向晋升） | ⬜ M2 |
@@ -59,7 +59,7 @@ pnpm --filter @novacode/cli novacode run "解释这个仓库的目录结构"
 pnpm --filter @novacode/cli novacode chat     # 交互 REPL
 ```
 
-`chat` REPL 内置命令：`/exit` `/sessions` `/resume` `/mode` `/archive` `/providers`；写操作等敏感工具会触发交互式审批。
+`chat` REPL 内置命令：`/exit` `/sessions` `/resume` `/mode` `/archive` `/compact` `/providers`；写操作等敏感工具会触发交互式审批。
 
 > ⚠️ API Key 只存在于内存与本地配置文件，绝不写入任何被跟踪文件、日志或输出（架构安全约束，见 docs/04-architecture §5.3）。
 

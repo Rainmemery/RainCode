@@ -35,6 +35,9 @@ export type RuleId = string;
 export type EntryId = string;
 export type TaskId = string;
 
+/** 不透明 ID schema（协议层不作格式强校验，仅约束为字符串）。 */
+export const opaqueIdSchema = z.string();
+
 // ---------------------------------------------------------------------------
 // RpcError 与 RpcFrame（04 §4.1 逐字段一致；error 含可选 details，06 §1.2）
 // ---------------------------------------------------------------------------

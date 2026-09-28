@@ -16,7 +16,7 @@ import type { BackgroundTaskRegistry } from "@novacode/tools";
 import type { SessionResume, Storage } from "@novacode/storage";
 import { computeWorkspaceHash } from "@novacode/storage";
 import { SessionTurnLoop } from "@novacode/agent-core";
-import type { LlmPort, SessionEventPublisher, ToolPhaseDeps } from "@novacode/agent-core";
+import type { CompactionOptions, LlmPort, SessionEventPublisher, ToolPhaseDeps } from "@novacode/agent-core";
 
 /** SessionTurnLoop 构造依赖（agent-service 组装后注入；create/resume 两个入口共用）。 */
 export interface SessionLoopDeps {
@@ -32,6 +32,10 @@ export interface SessionLoopDeps {
   workspaceId: string;
   initialHistory?: MessageRecord[];
   initialEventSeq?: number;
+  /** resume 场景的压缩代次起点（文件内最大 epoch）。 */
+  initialEpoch?: number;
+  /** auto-compact 选项（contextWindowTokens 已由 server 按 Provider maxContextTokens 补齐）。 */
+  compaction?: CompactionOptions;
 }
 
 export function createSessionLoop(deps: SessionLoopDeps): SessionTurnLoop {
@@ -47,8 +51,19 @@ export function createSessionLoop(deps: SessionLoopDeps): SessionTurnLoop {
     workspaceId: deps.workspaceId,
     ...(deps.initialHistory !== undefined && { initialHistory: deps.initialHistory }),
     ...(deps.initialEventSeq !== undefined && { initialEventSeq: deps.initialEventSeq }),
+    ...(deps.initialEpoch !== undefined && { initialEpoch: deps.initialEpoch }),
+    ...(deps.compaction !== undefined && { compaction: deps.compaction }),
     onDiagnostic: (message, err) => console.error(`[novacode/server] ${message}`, err ?? ""),
   });
+}
+
+/** session.compact（06 §2.1）：手动压缩受理即返；无可摘要前缀 → INVALID_PARAMS。 */
+export async function compactSession(entry: { loop: SessionTurnLoop }): Promise<unknown> {
+  const ticket = entry.loop.compact();
+  if (ticket === null) {
+    throw new RpcCallError("INVALID_PARAMS", "nothing to compact: history is within the retention zone");
+  }
+  return { compactionId: ticket.compactionId, epoch: ticket.epoch, alreadyRunning: ticket.alreadyRunning };
 }
 
 /** session.snapshot 投影（06 §3.2；内存态会话增量消息为空，端层被认为已跟进 lastSeq）。 */

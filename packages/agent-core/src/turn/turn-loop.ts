@@ -11,6 +11,8 @@ import { ulid } from "@novacode/storage";
 import type { CheckpointState } from "@novacode/storage";
 import type { CollaborationMode, MessageRecord, TokenUsage } from "@novacode/shared";
 import type { BackgroundTaskRegistry } from "@novacode/tools";
+import { estimateContextTokens, createCompactionService } from "../compact/service.js";
+import type { CompactionOptions, CompactionService, CompactionTicket } from "../compact/service.js";
 import { CommandInbox } from "../inbox/command-inbox.js";
 import type { LlmPort, SessionEventPublisher, StoragePort, ToolPhaseDeps, TurnAdmission, TurnInput, TurnOutcome } from "../ports.js";
 import { assembleChatMessages } from "./context.js";
@@ -19,9 +21,9 @@ import { LoopEvents } from "./loop-events.js";
 import { transitionPhase } from "./phase.js";
 import type { TurnPhase, TurnTrigger } from "./phase.js";
 import { buildAssistantRecord, errorMessage, mergeUsage, toLlmFunctionTools } from "./round-helpers.js";
+import { TurnSettler } from "./settle.js";
 import { ToolPhaseRunner } from "./tool-phase.js";
 import type { PlannedToolCall } from "./tool-phase.js";
-// TurnOutcome/TurnInput/TurnAdmission 真源在 ../ports.ts（行数治理拆出）；再导出保持兼容
 export type { TurnAdmission, TurnInput, TurnOutcome } from "../ports.js";
 
 const DEFAULT_DELTA_FLUSH_MS = 50; // message.delta 批量节流窗口（06 §3.4：≤50ms）
@@ -45,6 +47,8 @@ export interface SessionTurnLoopOptions {
   initialHistory?: MessageRecord[];
   /** resume 场景的 rpc 事件 seq 续起点（best-effort，见 server 侧注释）。 */
   initialEventSeq?: number;
+  /** resume 场景的压缩代次起点（文件内最大 epoch；auto-compact epoch 单调合并基准）。 */
+  initialEpoch?: number;
   deltaFlushMs?: number;
   /** 诊断出口（server 注入 stderr；默认 console.error）。 */
   onDiagnostic?: (message: string, err?: unknown) => void;
@@ -56,12 +60,8 @@ export interface SessionTurnLoopOptions {
   workspaceId?: string;
   /** turn 内模型轮次上限（02 §1.2.1：默认 32）。 */
   maxRoundsPerTurn?: number;
-}
-
-interface InboxEntry {
-  turnId: string;
-  input: TurnInput;
-  resolve: (outcome: TurnOutcome) => void;
+  /** auto-compact 选项（02 §1.2.5；缺省 = 不启用压缩）。 */
+  compaction?: CompactionOptions;
 }
 
 /** 模型 tool_call 完成形态（@novacode/llm tool_calls.completed 事件的 calls 元素）。 */
@@ -73,7 +73,7 @@ type RoundOutcome = { kind: "settled"; result: TurnOutcome } | { kind: "continue
 export class SessionTurnLoop {
   private _phase: TurnPhase = "Idle";
   private readonly inbox = new CommandInbox<InboxEntry>();
-  private readonly history: MessageRecord[];
+  private history: MessageRecord[];
   private readonly events: LoopEvents;
   private readonly steeringBuffer: string[] = [];
   private running: InboxEntry | null = null;
@@ -83,10 +83,18 @@ export class SessionTurnLoop {
   private assistantText = "";
   /** 协作模式（可运行时切换：session.setMode → setMode()，对运行中 turn 的后续判定立即生效）。 */
   private mode: CollaborationMode;
+  private readonly settler: TurnSettler;
+  /** auto-compact（options.compaction 且配置了 Provider 时启用；null = 不压缩）。 */
+  private readonly compaction: CompactionService | null;
+  /** 压缩代次（resume 起点 + 每次 accepted checkpoint / 压缩提交后同步）。 */
+  private compactionEpoch: number;
+  /** 最近一轮真实 promptTokens（usage 事件回传；压缩估算优先数据源）。 */
+  private lastPromptTokens = 0;
 
   constructor(private readonly options: SessionTurnLoopOptions) {
     this.mode = options.mode;
     this.history = [...(options.initialHistory ?? [])];
+    this.compactionEpoch = options.initialEpoch ?? 0;
     this.events = new LoopEvents(
       {
         sessionId: options.sessionId,
@@ -96,6 +104,29 @@ export class SessionTurnLoop {
       },
       options.initialEventSeq ?? 0,
     );
+    this.settler = new TurnSettler(
+      {
+        phase: () => this._phase,
+        toPhase: (from, trigger, turnId) => this.toPhase(from, trigger, turnId),
+        assistantText: () => this.assistantText,
+        persistPartialText: () => this.persistPartialText(),
+      },
+      this.events,
+    );
+    this.compaction =
+      options.compaction !== undefined && options.llm !== null
+        ? createCompactionService(
+            this,
+            {
+              sessionId: options.sessionId,
+              llm: options.llm,
+              storage: options.storage,
+              ...(options.systemPrompt !== undefined && { systemPrompt: options.systemPrompt }),
+              events: this.events,
+            },
+            options.compaction,
+          )
+        : null;
   }
 
   get phase(): TurnPhase {
@@ -189,7 +220,7 @@ export class SessionTurnLoop {
     } catch (reason: unknown) {
       // 基础设施异常收敛 failed 终态，防 inbox 死锁（02 §1.2.3 门在异常路径必须释放）
       this.diag("turn crashed", reason);
-      outcome = await this.settleAbnormal(entry, "TURN_INTERNAL", errorMessage(reason));
+      outcome = await this.settler.abnormal(entry.turnId, "TURN_INTERNAL", errorMessage(reason));
     } finally {
       this.controller = null;
     }
@@ -214,14 +245,15 @@ export class SessionTurnLoop {
     this.history.push(userRecord);
 
     if (this.cancelRequested) {
-      return this.settleCancelledEarly(entry); // T3
+      return this.settler.cancelledEarly(entry.turnId); // T3
     }
     if (!this.options.llm) {
-      return this.settleAbnormal(entry, "LLM_NOT_CONFIGURED", "no LLM client configured for this session");
+      return this.settler.abnormal(entry.turnId, "LLM_NOT_CONFIGURED", "no LLM client configured for this session");
     }
 
     let usageTotal: TokenUsage | undefined;
     const maxRounds = this.options.maxRoundsPerTurn ?? DEFAULT_MAX_ROUNDS;
+    this.compaction?.maybeTrigger(estimateContextTokens(this.history, this.lastPromptTokens)); // 组装上下文前
     for (let round = 1; round <= maxRounds; round += 1) {
       const outcome = await this.runModelRound(entry, controller, round, usageTotal);
       if (outcome.kind === "settled") {
@@ -231,9 +263,10 @@ export class SessionTurnLoop {
       if (round === maxRounds) {
         break; // 轮次耗尽：超限异常收敛（02 §1.2.1 补充约束）
       }
+      this.compaction?.maybeTrigger(estimateContextTokens(this.history, this.lastPromptTokens)); // T13 聚合后触发点
     }
     const reason = `tool rounds exceeded maxRoundsPerTurn=${String(maxRounds)}`;
-    return this.settleAbnormal(entry, "TURN_MAX_ROUNDS_EXCEEDED", reason);
+    return this.settler.abnormal(entry.turnId, "TURN_MAX_ROUNDS_EXCEEDED", reason);
   }
 
   private async runModelRound(
@@ -244,7 +277,7 @@ export class SessionTurnLoop {
   ): Promise<RoundOutcome> {
     const llm = this.options.llm;
     if (llm === null) {
-      const result = await this.settleAbnormal(entry, "LLM_NOT_CONFIGURED", "no LLM client configured");
+      const result = await this.settler.abnormal(entry.turnId, "LLM_NOT_CONFIGURED", "no LLM client configured");
       return { kind: "settled", result };
     }
     const requestMessages = assembleChatMessages({
@@ -281,6 +314,7 @@ export class SessionTurnLoop {
           break;
         case "usage":
           roundUsage = event.usage;
+          this.lastPromptTokens = event.usage.inputTokens;
           break;
         default:
           break; // role / finish / done / delta.tool_call（片段已聚合）：透传
@@ -301,10 +335,10 @@ export class SessionTurnLoop {
     } catch (reason: unknown) {
       batcher.flush();
       if (reason instanceof LlmAbortedError || this.cancelRequested || controller.signal.aborted) {
-        return { kind: "settled", result: await this.settleAborted(entry) }; // T5（取消）/ T8
+        return { kind: "settled", result: await this.settler.aborted(entry.turnId) }; // T5（取消）/ T8
       }
       const code = reason instanceof LlmError ? reason.code : "LLM_UNEXPECTED";
-      return { kind: "settled", result: await this.settleFailed(entry, code, errorMessage(reason)) };
+      return { kind: "settled", result: await this.settler.failed(entry.turnId, code, errorMessage(reason)) };
     } finally {
       batcher.dispose();
     }
@@ -344,8 +378,8 @@ export class SessionTurnLoop {
     this.toPhase("Streaming", "message.completed.tool_calls", entry.turnId);
     const tools = this.options.tools;
     if (tools === undefined) {
-      const result = await this.settleFailed(
-        entry,
+      const result = await this.settler.failed(
+        entry.turnId,
         "TOOL_CALLS_UNSUPPORTED",
         "model requested tool calls, but no tool system is configured for this session",
       );
@@ -401,69 +435,30 @@ export class SessionTurnLoop {
     return { kind: "continue", usage: roundUsage };
   }
 
-  // settle 家族：TurnComplete 段 + T15 回 Idle --------------------------------
-
-  private settleCancelledEarly(entry: InboxEntry): TurnOutcome {
-    this.toPhase("ProcessingInput", "turn.cancelled", entry.turnId); // T3
-    this.events.emitDone(entry.turnId, { outcome: "cancelled", at: "ProcessingInput" });
-    this.toPhase("TurnComplete", "settle.done", entry.turnId); // T15
-    return { status: "cancelled", at: "ProcessingInput" };
+  // auto-compact：手动入口（06 §2.1 session.compact）+ CompactionHost 实现（compact/service.ts）
+  compact(): CompactionTicket | null {
+    return this.compaction?.compactNow() ?? null;
   }
 
-  private async settleAborted(entry: InboxEntry): Promise<TurnOutcome> {
-    const at = this._phase; // ModelRequest（请求期取消，T5）| Streaming（流式中断，T8）
-    this.toPhase(at, at === "Streaming" ? "turn.cancelled" : "request.failed", entry.turnId); // T8 / T5
-    if (this.assistantText.length > 0) {
-      await this.persistPartialText(); // 部分正文落库不丢（02 §1.4）
-    }
-    this.events.emitDone(entry.turnId, { outcome: "cancelled", at });
-    this.toPhase("TurnComplete", "settle.done", entry.turnId); // T15
-    return { status: "cancelled", at };
+  replaceWith(prefix: MessageRecord[], count: number): void {
+    this.history = [...prefix, ...this.history.slice(count)];
   }
 
-  private async settleFailed(entry: InboxEntry, code: string, message: string): Promise<TurnOutcome> {
-    const at = this._phase; // ModelRequest | Streaming（T5 / T5'）
-    this.toPhase(at, "request.failed", entry.turnId);
-    if (this.assistantText.length > 0) {
-      await this.persistPartialText();
-    }
-    this.events.emitError(entry.turnId, code, message); // error（scope=turn）
-    this.events.emitDone(entry.turnId, { outcome: "failed", at });
-    this.toPhase("TurnComplete", "settle.done", entry.turnId); // T15
-    return { status: "failed", error: { code, message } };
+  historyLength(): number {
+    return this.history.length;
   }
 
-  /** 基础设施异常 / 未配置 Provider / 轮次超限的兜底收束：经合法迁移收敛到 TurnComplete。 */
-  private async settleAbnormal(entry: InboxEntry, code: string, message: string): Promise<TurnOutcome> {
-    if (this._phase === "ToolSchedule") {
-      this.toPhase("ToolSchedule", "schedule.all_blocked", entry.turnId);
-    }
-    if (this._phase === "ToolExecution") {
-      this.toPhase("ToolExecution", "batch.settled", entry.turnId);
-    }
-    if (this._phase === "AggregatingResults") {
-      this.toPhase("AggregatingResults", "followup.not_required", entry.turnId); // T14 异常收敛
-    }
-    switch (this._phase) {
-      case "ProcessingInput":
-        this.toPhase("ProcessingInput", "turn.cancelled", entry.turnId); // T3 收敛
-        break;
-      case "ModelRequest":
-      case "Streaming":
-        this.toPhase(this._phase, "request.failed", entry.turnId);
-        break;
-      default:
-        break; // TurnComplete / Idle：已收束或未开始
-    }
-    if (this._phase === "TurnComplete") {
-      this.events.emitError(entry.turnId, code, message);
-      this.events.emitDone(entry.turnId, { outcome: "failed", at: "TurnComplete" });
-      this.toPhase("TurnComplete", "settle.done", entry.turnId); // T15
-    }
-    return { status: "failed", error: { code, message } };
+  currentEpoch(): number {
+    return this.compactionEpoch;
   }
 
-  // 持久化与事件（出口实现见 turn/loop-events.ts）-----------------------------
+  updateEpoch(epoch: number): void {
+    this.compactionEpoch = epoch;
+  }
+
+  checkpointBase(): Pick<CheckpointState, "mode" | "todo"> {
+    return { mode: this.mode, todo: [] };
+  }
 
   private async writeTurnCheckpoint(usage: TokenUsage | undefined): Promise<void> {
     const state: CheckpointState = {
@@ -475,7 +470,11 @@ export class SessionTurnLoop {
     const result = await this.serialWrite(() =>
       this.options.storage.writeCheckpoint(this.options.sessionId, state),
     );
-    if (!result.accepted) this.diag("checkpoint rejected (stale epoch)");
+    if (result.accepted) {
+      this.compactionEpoch = result.epoch; // 压缩代次与文件内流保持同步（epoch 单调合并基准）
+    } else {
+      this.diag("checkpoint rejected (stale epoch)");
+    }
   }
 
   private persistPartialText(): Promise<unknown> {

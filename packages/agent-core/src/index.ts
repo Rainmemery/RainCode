@@ -34,6 +34,18 @@ export type {
 export { LoopEvents } from "./turn/loop-events.js";
 export type { PersistedEventName, TransientEventName } from "./turn/loop-events.js";
 
+export { CompactionService, estimateContextTokens, createCompactionService } from "./compact/service.js";
+export type {
+  CompactionDeps,
+  CompactionHost,
+  CompactionOptions,
+  CompactionReport,
+  CompactionTicket,
+} from "./compact/service.js";
+
+export { TurnSettler } from "./turn/settle.js";
+export type { SettleHost } from "./turn/settle.js";
+
 export type {
   LlmPort,
   ApprovePort,

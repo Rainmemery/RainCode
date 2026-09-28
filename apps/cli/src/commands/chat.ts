@@ -12,6 +12,7 @@ import type { RpcClient } from "@novacode/rpc";
 import type {
   CollaborationMode,
   ConfigProvidersListResult,
+  SessionCompactResult,
   SessionCreateResult,
   SessionListResult,
   SessionResumeResult,
@@ -46,7 +47,7 @@ export async function chatCommand(argv: string[]): Promise<number> {
     await context.client.call("system.ping", {});
     process.stdout.write(
       `NovaCode chat · workspace ${workspaceRoot}\n` +
-        "命令: /exit /sessions /resume <id> /mode <normal|plan|auto-accept> /archive [--force] /providers\n" +
+        "命令: /exit /sessions /resume <id> /mode <normal|plan|auto-accept> /archive [--force] /compact /providers\n" +
         "其余输入直接发送\n",
     );
 
@@ -116,6 +117,23 @@ export async function chatCommand(argv: string[]): Promise<number> {
         }
         continue;
       }
+      if (trimmed.startsWith("/compact")) {
+        if (currentSessionId === null) {
+          process.stdout.write("no active session\n");
+          continue;
+        }
+        try {
+          const result = await context.client.call<SessionCompactResult>("session.compact", {
+            sessionId: currentSessionId,
+          });
+          process.stdout.write(
+            `compaction ${result.compactionId} → ${result.alreadyRunning ? "already running" : "scheduled"} · epoch ${String(result.epoch)}\n`,
+          );
+        } catch (reason: unknown) {
+          printRpcError(reason);
+        }
+        continue;
+      }
       if (trimmed === "/providers") {
         try {
           const result = await context.client.call<ConfigProvidersListResult>("config.providers.list", {});
@@ -134,7 +152,7 @@ export async function chatCommand(argv: string[]): Promise<number> {
       }
       if (trimmed.startsWith("/")) {
         process.stdout.write(
-          "unknown command; available: /exit /sessions /resume <id> /mode <mode> /archive [--force] /providers\n",
+          "unknown command; available: /exit /sessions /resume <id> /mode <mode> /archive [--force] /compact /providers\n",
         );
         continue;
       }

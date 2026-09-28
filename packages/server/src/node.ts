@@ -8,6 +8,7 @@ import { Storage } from "@novacode/storage";
 import type { IMessageTransport, RpcServiceBinding } from "@novacode/rpc";
 import { AgentService } from "./agent-service.js";
 import type {
+  AgentServiceOptions,
   PermissionConfig,
   ProviderRuntimeConfig,
   ToolRuntimeConfig,
@@ -26,6 +27,8 @@ export interface AgentServiceNodeOptions {
   tools?: ToolRuntimeConfig;
   /** 权限策略（缺省 normal：五级判定链 + 审批闭环；default-allow 仅开发）。 */
   permission?: PermissionConfig;
+  /** auto-compact 选项（02 §1.2.5；缺省 = 不启用；contextWindowTokens 取 Provider maxContextTokens）。 */
+  compaction?: AgentServiceOptions["compaction"];
 }
 
 export interface AgentServiceNode {
@@ -56,6 +59,7 @@ export async function createAgentServiceNode(
     systemPrompt: options.systemPrompt,
     tools: options.tools,
     permission: options.permission,
+    ...(options.compaction !== undefined && { compaction: options.compaction }),
     onShutdown: closeStorage,
   });
   const binding = service.attach(transport);

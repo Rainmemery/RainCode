@@ -1,8 +1,9 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 import {
   attachmentSchema,
   collaborationModeSchema,
   eventBaseSchema,
+  opaqueIdSchema,
   pageParamsSchema,
   permissionRequestedPayloadSchema,
   turnPhaseSchema,
@@ -237,6 +238,59 @@ export const sessionSetModeResultSchema = z.object({
   mode: collaborationModeSchema,
 });
 export type SessionSetModeResult = z.infer<typeof sessionSetModeResultSchema>;
+
+// ---------------------------------------------------------------------------
+// session.compact（06 §2.1：手动压缩，异步执行 NFR-6；in-flight 幂等复用既有 ticket）
+// ---------------------------------------------------------------------------
+
+export const sessionCompactParamsSchema = z.strictObject({
+  sessionId: z.string(),
+});
+export type SessionCompactParams = z.infer<typeof sessionCompactParamsSchema>;
+
+export const sessionCompactResultSchema = z.object({
+  compactionId: opaqueIdSchema,
+  epoch: z.number().int().nonnegative(),
+  alreadyRunning: z.boolean(),
+});
+export type SessionCompactResult = z.infer<typeof sessionCompactResultSchema>;
+
+// ---------------------------------------------------------------------------
+// compact.started / compact.completed 事件（06 §3.5 C 组：压缩生命周期）
+// ---------------------------------------------------------------------------
+
+export const compactStartedEventPayloadSchema = eventBaseSchema.extend({
+  sessionId: z.string(),
+  compactionId: opaqueIdSchema,
+  epoch: z.number().int().nonnegative(),
+  trigger: z.enum(["auto", "manual"]),
+});
+export type CompactStartedEventPayload = z.infer<typeof compactStartedEventPayloadSchema>;
+
+export const compactCompletedEventPayloadSchema = eventBaseSchema.extend({
+  sessionId: z.string(),
+  compactionId: opaqueIdSchema,
+  epoch: z.number().int().nonnegative(),
+  ok: z.boolean(),
+  tokensBefore: z.number().optional(),
+  tokensAfter: z.number().optional(),
+  failure: z.object({ reason: z.string() }).optional(),
+});
+export type CompactCompletedEventPayload = z.infer<typeof compactCompletedEventPayloadSchema>;
+
+/** 事件构造函数：出口即合法（06 §5）；seq 由会话事件流分配，ts 缺省取当前时刻。 */
+export function buildCompactStartedEvent(
+  input: Omit<CompactStartedEventPayload, "ts"> & { ts?: number },
+): CompactStartedEventPayload {
+  return compactStartedEventPayloadSchema.parse({ ...input, ts: input.ts ?? Date.now() });
+}
+
+/** 事件构造函数：出口即合法（06 §5）；seq 由会话事件流分配，ts 缺省取当前时刻。 */
+export function buildCompactCompletedEvent(
+  input: Omit<CompactCompletedEventPayload, "ts"> & { ts?: number },
+): CompactCompletedEventPayload {
+  return compactCompletedEventPayloadSchema.parse({ ...input, ts: input.ts ?? Date.now() });
+}
 
 // ---------------------------------------------------------------------------
 // session.created 事件（07 §2.1 P0 事件第 12 个：05-database JSONL 头行同名事件的 rpc 投影；
