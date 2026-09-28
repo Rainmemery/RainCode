@@ -8,6 +8,14 @@
   },
   "scripts": {
     "typecheck": "pnpm -r run typecheck",
+    "lint": "oxlint packages apps scripts",
+    "architecture:check": "node scripts/architecture-check.mjs",
+    "bench:start": "tsx scripts/bench.mts start",
+    "bench:send": "tsx scripts/bench.mts send",
+    "bench:render": "tsx scripts/bench.mts render",
+    "bench:resume": "tsx scripts/bench.mts resume",
+    "bench:crash": "tsx scripts/bench.mts crash",
+    "bench:all": "tsx scripts/bench.mts all",
     "smoke:e2e": "tsx scripts/smoke-e2e.mts",
     "smoke:tools": "tsx scripts/smoke-tools.mts",
     "smoke:permission": "tsx scripts/smoke-permission.mts",
@@ -15,6 +23,7 @@
     "smoke:remote": "tsx scripts/smoke-remote.mts"
   },
   "devDependencies": {
+    "oxlint": "^1.85.0",
     "tsx": "^4.19.2"
   }
 }

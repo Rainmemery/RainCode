@@ -104,6 +104,8 @@ export interface MockLlmServer {
   /** 自 setScript 以来的请求序号（0 起始）。 */
   served: () => number;
   bodies: CapturedBody[];
+  /** 与 bodies 同序的请求到达时刻（performance.now()，同进程时钟，供 bench NFR-2 计时）。 */
+  bodyTimes: number[];
   setScript: (script: SseScript[]) => void;
   close: () => Promise<void>;
 }
@@ -153,6 +155,7 @@ export function startMockLlmServer(): Promise<MockLlmServer> {
   let script: SseScript[] = [];
   let servedSinceScript = 0;
   const bodies: CapturedBody[] = [];
+  const bodyTimes: number[] = [];
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     const chunks: Buffer[] = [];
     req.on("data", (chunk: Buffer) => chunks.push(chunk));
@@ -162,8 +165,10 @@ export function startMockLlmServer(): Promise<MockLlmServer> {
       try {
         const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { messages?: CapturedBody["messages"] };
         bodies.push({ messages: parsed.messages ?? [] });
+        bodyTimes.push(performance.now());
       } catch {
         bodies.push({ messages: [] });
+        bodyTimes.push(performance.now());
       }
       const respond = (): void => {
         res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
@@ -191,6 +196,7 @@ export function startMockLlmServer(): Promise<MockLlmServer> {
         url: `http://127.0.0.1:${String(port)}/v1`,
         served: () => servedSinceScript,
         bodies,
+        bodyTimes,
         setScript: (next: SseScript[]) => {
           script = next;
           servedSinceScript = 0;

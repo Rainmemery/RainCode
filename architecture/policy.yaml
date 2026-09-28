@@ -71,5 +71,13 @@ modules:
     roots: [apps/desktop/src]
     managed: true
     requires: []            # 占位包（未落码），落码波次按 04 §2.1 改为 [server, rpc, shared]
+  - id: memory
+    roots: [packages/memory/src]
+    managed: true
+    requires: []            # 占位包（未落码，07 §8.1 目录与 policy 同步登记），落码波次按 04 §2.1 扩入
+  - id: mcp
+    roots: [packages/mcp/src]
+    managed: true
+    requires: []            # 占位包（未落码，07 §8.1 目录与 policy 同步登记），落码波次按 04 §2.1 扩入
 
 exceptions: []               # 白名单外豁免必须显式登记并附理由，随 PR 评审
