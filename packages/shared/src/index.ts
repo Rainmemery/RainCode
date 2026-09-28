@@ -8,6 +8,7 @@
 export * from "./schemas/common.js";
 export * from "./schemas/config.js";
 export * from "./schemas/events-turn.js";
+export * from "./schemas/mcp.js";
 export * from "./schemas/permission.js";
 export * from "./schemas/session.js";
 export * from "./schemas/system.js";
@@ -96,6 +97,22 @@ import {
   permissionRulesRemoveParamsSchema,
   permissionRulesRemoveResultSchema,
 } from "./schemas/permission.js";
+import {
+  buildMcpServerStatusChangedEvent,
+  mcpServersAddParamsSchema,
+  mcpServersAddResultSchema,
+  mcpServersListParamsSchema,
+  mcpServersListResultSchema,
+  mcpServersRemoveParamsSchema,
+  mcpServersRemoveResultSchema,
+  mcpServersRetryParamsSchema,
+  mcpServersRetryResultSchema,
+  mcpToolsCallParamsSchema,
+  mcpToolsCallResultSchema,
+  mcpToolsListParamsSchema,
+  mcpToolsListResultSchema,
+  mcpServerStatusChangedEventPayloadSchema,
+} from "./schemas/mcp.js";
 
 /** 方法表条目：入参 / 出参 schema 对（server 方法表的数据源，04 §4.1）。 */
 export interface MethodSchemas {
@@ -169,6 +186,12 @@ export const METHOD_SCHEMAS: Readonly<Record<string, MethodSchemas>> = {
     request: permissionDecisionsListParamsSchema,
     response: permissionDecisionsListResultSchema,
   },
+  "mcp.servers.list": { request: mcpServersListParamsSchema, response: mcpServersListResultSchema },
+  "mcp.servers.add": { request: mcpServersAddParamsSchema, response: mcpServersAddResultSchema },
+  "mcp.servers.remove": { request: mcpServersRemoveParamsSchema, response: mcpServersRemoveResultSchema },
+  "mcp.servers.retry": { request: mcpServersRetryParamsSchema, response: mcpServersRetryResultSchema },
+  "mcp.tools.list": { request: mcpToolsListParamsSchema, response: mcpToolsListResultSchema },
+  "mcp.tools.call": { request: mcpToolsCallParamsSchema, response: mcpToolsCallResultSchema },
 };
 
 /**
@@ -190,7 +213,9 @@ export const EVENT_SCHEMAS: Readonly<Record<string, ZodTypeAny>> = {
   "permission.resolved": permissionResolvedEventPayloadSchema,
   "compact.started": compactStartedEventPayloadSchema,
   "compact.completed": compactCompletedEventPayloadSchema,
+  "mcp.server_status_changed": mcpServerStatusChangedEventPayloadSchema,
 };
 
 export { buildPermissionRequestedEvent, buildPermissionResolvedEvent };
 export { buildCompactStartedEvent, buildCompactCompletedEvent };
+export { buildMcpServerStatusChangedEvent };

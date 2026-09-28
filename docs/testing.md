@@ -25,11 +25,12 @@ NovaCode 采用「**冒烟 + 基准 + 门禁**」三层验证体系，全部可�
 | `pnpm smoke:permission` | [scripts/smoke-permission.mts](../scripts/smoke-permission.mts) | 权限判定链 12 轮脚本化场景：五级判定优先级、bash argv 求值与只读白名单、grantId 审批闭环（allow once/always、deny）、规则持久化、审计落盘 |
 | `pnpm smoke:p0` | [scripts/smoke-p0.mts](../scripts/smoke-p0.mts) | **M1 P0 控制面全集**（并回归其余三个 smoke）：① 协议注册表对照（22 方法 / 12 事件）② Provider 密钥引用制（明文 key → 密钥文件 + apiKeyRef，响应零明文；移除活跃 Provider 报错）③ `session.steer` 运行中注入 ④ `session.setMode` 模式级 deny/恢复 ⑤ `session.archive` 归档语义与 events.jsonl 保留 ⑥ 明文密钥不落入任何响应/落盘/日志 |
 | `pnpm smoke:compact` | [scripts/smoke-compact.mts](../scripts/smoke-compact.mts) | **auto-compact（M2 T2.1 / NFR-6 专项）**：用例 A auto 触发 + 压缩窗口内 send 不阻塞 + `compaction.applied`/epoch+1 提交 + 窗口期消息合并 + resume 连续性；用例 B 空摘要失败 → 保留原历史 + 阈值临时上调 90%；用例 C 手动 compact 低于阈值可用 + in-flight 幂等复用 ticket + 空历史 INVALID_PARAMS |
+| `pnpm smoke:mcp` | [scripts/smoke-mcp.mts](../scripts/smoke-mcp.mts) | **MCP 接入（M2 T2.2）**：与手写 JSON-RPC fixture server（[mcp-fixture-stdio.mjs](../scripts/mcp-fixture-stdio.mjs) / [mcp-fixture-http.mjs](../scripts/mcp-fixture-http.mjs)，node 直跑）真实互操作——连接状态机（Connected/Failed 失败隔离）、命名空间工具注册、控制面直调（ToolExecutor 链路）、turn 内模型调用（权限链）、进程崩溃 → M4 重连 → 工具恢复、HTTP transport add/call/remove + mcp.json 持久化 |
 
 **运行全部**：
 
 ```bash
-pnpm smoke:p0   # 内部已并复 smoke:e2e / smoke:tools / smoke:permission / smoke:compact
+pnpm smoke:p0   # 内部已并复 smoke:e2e / smoke:tools / smoke:permission / smoke:compact / smoke:mcp
 ```
 
 **预期输出**：各脚本末尾打印 `SMOKE OK`，退出码 0。

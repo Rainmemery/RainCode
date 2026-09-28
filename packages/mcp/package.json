@@ -12,6 +12,13 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
     "typescript": "^5.6.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "@novacode/shared": "workspace:*",
+    "@novacode/tools": "workspace:*",
+    "zod": "^3.25.0"
   }
 }

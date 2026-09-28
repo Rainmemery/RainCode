@@ -36,6 +36,11 @@ export class ToolRegistry {
     return this.tools.has(name);
   }
 
+  /** 注销工具（MCP 失败隔离/server 移除时使用；不存在返回 false）。 */
+  unregister(name: string): boolean {
+    return this.tools.delete(name);
+  }
+
   sourceOf(name: string): ToolSource | undefined {
     return this.tools.get(name)?.source;
   }
@@ -51,7 +56,8 @@ export class ToolRegistry {
         description: tool.description,
         source,
         metadata: tool.metadata,
-        parametersSchema: zodToJsonSchema(tool.parametersSchema),
+        // MCP 工具优先直通原始 inputSchema（02 §3.3：JSON Schema 转换保留原始 schema）
+        parametersSchema: tool.parametersJsonSchema ?? zodToJsonSchema(tool.parametersSchema),
       });
     }
     return out;

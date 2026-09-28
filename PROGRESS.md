@@ -12,10 +12,10 @@
 | 项目 | 值 |
 | --- | --- |
 | 当前里程碑 | **M2 进行中**（P1：压缩 / MCP / 子代理 / 记忆 + 桌面端 Alpha） |
-| 已完成任务 | T2.1 auto-compact ✅ |
-| 最新提交 | 见 `git log -1`（T2.1 auto-compact 提交） |
+| 已完成任务 | T2.1 auto-compact ✅ · T2.2 mcp 包 ✅ |
+| 最新提交 | 见 `git log -1`（T2.2 mcp 包提交） |
 | 工作区状态 | clean |
-| 门禁状态 | typecheck ✅ / oxlint ✅（0 错误，6 条既有 warning）/ architecture:check ✅ / smoke:p0（含 compact 回归）✅ / bench 五项达标无劣化 ✅ |
+| 门禁状态 | typecheck ✅ / oxlint ✅（0 错误，6 条既有 warning）/ architecture:check ✅ / smoke:p0（含 compact+mcp 回归）✅ |
 | 快照日期 | 2026-09-28 |
 
 ---
@@ -36,6 +36,7 @@
 > 格式：`[日期] 任务 — 结果`（含关键产出物与提交号）。**新条目插在本节最上方。**
 
 ### M2 · P1（能力补全 + 桌面端 Alpha）
+- [2026-09-28] T2.2 mcp 包 — MCP 三 transport 接入（stdio 子进程 / Streamable HTTP / SSE，协议交互复用官方 SDK `@modelcontextprotocol/sdk@1.29.0`）；连接状态机 M1~M8（指数退避 1/2/4/8/16s，耗尽 5 次 → Failed）；失败隔离（单 server 故障仅影响自身命名空间）；`mcp__<serverKey>__<toolName>` 命名空间工具（原始 inputSchema 直通 + 从严 metadata needsApproval=true）；mcp.json 双层配置（global + project，冲突拒绝）与 add/remove 持久化；mcp 域 6 方法 + `mcp.server_status_changed` 全局事件；验收冒烟 `smoke:mcp`（手写 JSON-RPC fixture server 真实互操作：连接/命名空间/控制面直调/turn 内模型调用/进程崩溃重连/HTTP add-remove）并纳入 smoke:p0 回归。教训：Connected 事件与 listTools 完成存在竞态 → refreshTools 重试兜底。
 - [2026-09-28] T2.1 auto-compact — CompactionService（阈值 80% 触发 / 异步不阻塞 / in-flight 去重锁 / 失败阈值上调 90% + 连续 3 次停机）；提交协议 = `compaction.applied` 事件行（summary + summarizedCount）+ epoch+1 checkpoint，重放语义落地 storage（resume 后历史与内存态一致）；协议新增 `session.compact` 方法与 `compact.started/completed` 事件（22+1 方法 / 14 事件）；CLI `/compact`；NFR-6 专项冒烟 `smoke:compact`（A auto 触发+不阻塞+resume 连续性 / B 失败保留原历史+阈值上调 / C 手动+幂等+INVALID_PARAMS）并纳入 smoke:p0 回归。
 
 ### 文档管理与开源准备
@@ -70,11 +71,10 @@
 
 > 取任务时**必须**回读 `docs/07-dev-plan.md` 对应任务行获取完整验收标准。
 
-1. **T2.2 mcp 包** — stdio / http / sse 三 transport、连接状态机 M1~M8、`mcp__<serverKey>__<toolName>` 命名空间、失败隔离与重连退避。
-2. **T2.3 子代理** — profile 解析校验、spawn / 并发槽 / 级联取消、事件镜像（500ms 合并）、`agent` 工具注册。
-3. **T2.4 memory 包** — MEMORY.md 模板初始化与注入、会话结束/compact 抽取落盘、FTS5 trigram 检索 + LIKE 兜底、promote 单向晋升。
-4. **T2.5 permission 持久化与危险命令** — project/global 规则 CRUD、层级合并、高危根命令禁止通配 allow。
-5. **T2.6~T2.10** — 内核增强（AC-9~12）、工具增强与 P1 工具、rpc stdio + headless、桌面端 Alpha（Electron 三泳道 + stdio RPC 绑定）、M2 验收与基准留存（含 NFR-6 计时测量）。
+1. **T2.3 子代理** — profile 解析校验、spawn / 并发槽 / 级联取消、事件镜像（500ms 合并）、`agent` 工具注册。
+2. **T2.4 memory 包** — MEMORY.md 模板初始化与注入、会话结束/compact 抽取落盘、FTS5 trigram 检索 + LIKE 兜底、promote 单向晋升。
+3. **T2.5 permission 持久化与危险命令** — project/global 规则 CRUD、层级合并、高危根命令禁止通配 allow。
+4. **T2.6~T2.10** — 内核增强（AC-9~12）、工具增强与 P1 工具、rpc stdio + headless、桌面端 Alpha（Electron 三泳道 + stdio RPC 绑定）、M2 验收与基准留存（含 NFR-6 计时测量）。
 
 ---
 

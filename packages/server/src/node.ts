@@ -29,6 +29,8 @@ export interface AgentServiceNodeOptions {
   permission?: PermissionConfig;
   /** auto-compact 选项（02 §1.2.5；缺省 = 不启用；contextWindowTokens 取 Provider maxContextTokens）。 */
   compaction?: AgentServiceOptions["compaction"];
+  /** MCP 域装配（02 §3；缺省 = 不启用）。 */
+  mcp?: AgentServiceOptions["mcp"];
 }
 
 export interface AgentServiceNode {
@@ -60,6 +62,7 @@ export async function createAgentServiceNode(
     tools: options.tools,
     permission: options.permission,
     ...(options.compaction !== undefined && { compaction: options.compaction }),
+    ...(options.mcp !== undefined && { mcp: options.mcp }),
     onShutdown: closeStorage,
   });
   const binding = service.attach(transport);

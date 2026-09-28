@@ -18,7 +18,8 @@
     "@novacode/rpc": "workspace:*",
     "@novacode/shared": "workspace:*",
     "@novacode/storage": "workspace:*",
-    "@novacode/tools": "workspace:*"
+    "@novacode/tools": "workspace:*",
+    "@novacode/mcp": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

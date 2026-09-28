@@ -52,6 +52,11 @@ export interface Tool<TInput = unknown, TOutput = unknown> {
   description: string;
   /** 运行时校验 + JSON Schema 投影（见 json-schema.ts，后续可替换 zod-to-json-schema）。 */
   parametersSchema: z.ZodType<TInput>;
+  /**
+   * 原始 JSON Schema 直通（可选；MCP 工具使用——远端 inputSchema 原样作为 provider function
+   * parameters，运行时校验由远端 server 承担，parametersSchema 仅保留宽松 object 形状校验）。
+   */
+  parametersJsonSchema?: Record<string, unknown>;
   metadata: ToolMetadata;
   execute(input: TInput, ctx: ToolExecutionContext): Promise<ToolOutput<TOutput>>;
 }

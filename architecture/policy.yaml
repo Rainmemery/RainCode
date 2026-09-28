@@ -61,7 +61,7 @@ modules:
     # 但第三波任务明确规定 AgentService 经 rpc 的 createServiceBinding 暴露控制面、
     # createAgentServiceNode(transport) 工厂绑定端层注入的 transport——transport 仍由端层选择，
     # server 仅引用绑定装配函数，不选择传输载体。该偏差为任务决策，后续若回归 04 原文需上移绑定装配。
-    requires: [agent-core, llm, permission, rpc, storage, shared, tools]
+    requires: [agent-core, llm, mcp, permission, rpc, storage, shared, tools]
     publicEntrypoints: [packages/server/src/index.ts]
   - id: app-cli
     roots: [apps/cli/src]
@@ -78,6 +78,8 @@ modules:
   - id: mcp
     roots: [packages/mcp/src]
     managed: true
-    requires: []            # 占位包（未落码，07 §8.1 目录与 policy 同步登记），落码波次按 04 §2.1 扩入
+    # M2 T2.2（02 §3）：MCP 连接管理 + 命名空间工具适配；协议交互复用官方 SDK（三方依赖不进 policy）。
+    requires: [shared, tools]
+    publicEntrypoints: [packages/mcp/src/index.ts]
 
 exceptions: []               # 白名单外豁免必须显式登记并附理由，随 PR 评审

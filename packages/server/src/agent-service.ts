@@ -47,6 +47,7 @@ import {
 } from "./session-support.js";
 import { PermissionRuntime } from "./permission-runtime.js";
 import type { PermissionPolicy, PermissionRuntimeOptions } from "./permission-runtime.js";
+import { McpRuntime } from "./mcp-runtime.js";
 
 /** Provider 运行时配置（apiKey 已由调用方解析为明文注入；绝不落日志）。 */
 export interface ProviderRuntimeConfig {
@@ -58,10 +59,7 @@ export interface ProviderRuntimeConfig {
   maxContextTokens?: number;
 }
 
-/**
- * 工具系统装配（本波）：registry/executor 由 server 组装注入；approval 为 default-allow
- * 策略下的测试审批实现（always-allow / always-deny）；normal（默认）走 PermissionRuntime（02 §6）。
- */
+/** 工具系统装配：approval 为 default-allow 策略的测试审批实现（normal 走 PermissionRuntime）。 */
 export interface ToolRuntimeConfig {
   /** 仅 default-allow 策略生效（normal 策略下忽略，走真实权限链）。 */
   approval?: "always-allow" | "always-deny";
@@ -82,20 +80,20 @@ export interface AgentServiceOptions {
   tools?: ToolRuntimeConfig;
   /** 权限策略；缺省 normal（五级判定链 + 审批闭环）。 */
   permission?: PermissionConfig;
-  /** auto-compact 选项（02 §1.2.5；缺省 = 不启用；contextWindowTokens 取 Provider maxContextTokens）。 */
+  /** auto-compact 装配（02 §1.2.5；缺省 = 不启用；contextWindowTokens 取 Provider maxContextTokens）。 */
   compaction?: { thresholdRatio?: number; keepRecentCount?: number };
+  /** MCP 域装配（02 §3；缺省 = 不启用 mcp 域；workspaceRoot 为 project 层 mcp.json 判定域）。 */
+  mcp?: { workspaceRoot?: string };
   /** system.shutdown 的存储关闭回调（node 注入；缺省跳过——传输关闭由持有方承担）。 */
   onShutdown?: () => Promise<void>;
 }
 
 interface SessionEntry {
   loop: SessionTurnLoop;
-  /** 会话绑定 LLM 端口（create 的 providerId 决定；resume 绑默认 Provider——限制申报见 resume）。 */
   llm: LlmPort | null;
   providerId: string;
   workspaceHash: string;
   mode: CollaborationMode;
-  /** 工具执行 ctx 基准（session.create 传入；resume 经 storage 回查）。 */
   workspaceRoot: string;
   /** 最近一次 submit 的 turn 终态句柄（archive / shutdown 的等待点）。 */
   pending: Promise<TurnOutcome> | null;
@@ -113,6 +111,8 @@ export class AgentService {
   private readonly config: ConfigDomain;
   /** tool 域（06 §2.7 P0 4 方法）。 */
   private readonly toolDomain: ToolDomain;
+  /** MCP 域（06 §2.5；缺省未装配）。 */
+  private readonly mcp: McpRuntime | null;
   private binding: RpcServiceBinding | null = null;
   private shuttingDown = false;
 
@@ -167,6 +167,19 @@ export class AgentService {
       background: builtin.background,
     };
     this.toolDomain = new ToolDomain({ registry, background: builtin.background });
+    // MCP 域（02 §3）：命名空间工具进同一 registry；连接异步建立，状态经全局事件
+    this.mcp =
+      options.mcp === undefined
+        ? null
+        : new McpRuntime({
+            registry,
+            background: builtin.background,
+            executor: this.toolDeps.executor,
+            dataRoot: options.storage.dataRoot,
+            workspaceRoot: options.mcp.workspaceRoot,
+            publish: (event) => this.binding?.publish(event),
+          });
+    void this.mcp?.init();
   }
 
   /** 绑定传输并暴露方法表（一次服务可多次 attach 到不同 transport）。 */
@@ -176,11 +189,11 @@ export class AgentService {
     return binding;
   }
 
-  /** 停止受理（transport 生命周期由持有方管理）。 */
   close(): void {
     this.binding?.close();
     this.binding = null;
     this.permission?.close();
+    void this.mcp?.close(); // MCP 子进程/连接异步收敛
     this.sessions.clear();
   }
 
@@ -223,6 +236,8 @@ export class AgentService {
       "session.compact": register("session.compact", (params) => this.compact(params as SessionCompactParams)),
       ...this.config.methods(register),
       ...this.toolDomain.methods(register),
+      // MCP 域未装配时不暴露（METHOD_SCHEMAS 已登记，缺 handler 调用期报 method not found）
+      ...(this.mcp !== null ? this.mcp.methods(register) : {}),
       // default-allow 策略未装配 permission 域（requirePermission 在调用期报 PC_GRANT_NOT_FOUND）
       ...(this.permission !== null ? this.permission.methods(register) : {}),
     };
@@ -247,10 +262,8 @@ export class AgentService {
       title: params.title,
       mode: params.mode,
     });
-    // project 权限规则判定域（首个会话的 workspace；02 §6.2 判定链第 4 级）
-    this.permission?.setDefaultWorkspace(workspace.hash);
+    this.permission?.setDefaultWorkspace(workspace.hash); // project 权限规则判定域（02 §6.2 第 4 级）
     const publish = this.publisher();
-    // session.created（P0 事件；seq=1——JSONL 头行即创建事实的落盘形态，rpc 侧同序号广播）
     publish({
       name: "session.created",
       payload: buildSessionCreatedEvent({
@@ -324,7 +337,6 @@ export class AgentService {
     return this.requireActive(params.sessionId).then((entry) => compactSession(entry));
   }
 
-  /** 归档（06 §2.1 / 02 C4）：取消运行中 turn → flush → 后台任务检查 → status=archived（JSONL 不删除）。 */
   private async archive(params: SessionArchiveParams): Promise<unknown> {
     const meta = await this.options.storage.sessions.get(params.sessionId);
     if (!meta) {
@@ -380,7 +392,6 @@ export class AgentService {
       throw reason;
     }
     const workspaceRoot = (await this.options.storage.workspaceRootOf(meta.id)) ?? process.cwd();
-    // P0 限制：会话级 Provider 绑定未持久化，resume 绑定默认 Provider（config.providers.switch 属 P1）
     const llm = this.llmFor(undefined);
     const publish = this.publisher();
     const loop = createSessionLoop({
@@ -388,7 +399,6 @@ export class AgentService {
       ...(this.options.systemPrompt !== undefined && { systemPrompt: this.options.systemPrompt }),
       tools: this.toolDeps, workspaceRoot, workspaceId: meta.workspaceId,
       initialHistory: replay.history,
-      // rpc seq 续起点 best-effort（delta 不落盘）；端层以 snapshot.lastSeq 为准继续消费（06 §3.3）
       initialEventSeq: seedEventSeq(replay),
       initialEpoch: replay.epoch,
       ...(this.compaction !== undefined && { compaction: this.compaction }),
@@ -402,7 +412,7 @@ export class AgentService {
   }
 
   // system 域（06 §2.8）
-  /** 优雅停机：取消活动 turn → 等待收敛（flush）→ 关闭存储 → 应答 shuttingDown。 */
+  /** 优雅停机：取消活动 turn → 等待收敛（flush）→ 断开 MCP → 关闭存储。 */
   private async shutdown(params: SystemShutdownParams): Promise<unknown> {
     this.shuttingDown = true;
     const pending: Array<Promise<unknown>> = [];
@@ -411,6 +421,7 @@ export class AgentService {
       if (entry.pending !== null) pending.push(entry.pending.catch(() => undefined));
     }
     await Promise.all(pending);
+    await this.mcp?.close();
     await this.options.onShutdown?.();
     return { shuttingDown: true as const };
   }
@@ -426,7 +437,6 @@ export class AgentService {
     };
   }
 
-  /** auto-compact 装配：contextWindowTokens 取默认 Provider 窗口（02 §1.2.5）。 */
   private buildCompaction(): CompactionOptions | undefined {
     const raw = this.options.compaction;
     if (raw === undefined) {
@@ -439,7 +449,6 @@ export class AgentService {
     };
   }
 
-  /** 会话 Provider 绑定：缺省/命中默认 → 构造期实例；config 域 Provider → 按需构建并缓存。 */
   private llmFor(providerId: string | undefined): LlmPort | null {
     if (providerId === undefined || providerId === this.providerId) {
       return this.llm;
@@ -467,7 +476,6 @@ export class AgentService {
     return client;
   }
 
-  /** 活动会话解析：内存缺失时回查存储——归档 → SESSION_ARCHIVED；不存在 → SESSION_NOT_FOUND。 */
   private async requireActive(sessionId: string): Promise<SessionEntry> {
     const entry = this.sessions.get(sessionId);
     if (entry) return entry;
