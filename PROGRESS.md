@@ -35,6 +35,9 @@
 
 > 格式：`[日期] 任务 — 结果`（含关键产出物与提交号）。**新条目插在本节最上方。**
 
+### 文档管理与开源准备
+- [2026-09-28] 文档管理与进度持久化体系落地 — 新增 `PROGRESS.md`（进度唯一事实来源 + 更新协议）、根 `README.md`（功能清单/快速开始/vibecoding 标注）、`docs/testing.md`（测试体系说明）、`docs/README.md`（文档索引）、`LICENSE`（MIT）、`CONTRIBUTING.md`（含文档更新协议）。提交 `94bad1d`。
+
 ### Phase 1 · 产品设计与开发规划
 - [2026-09-28] 7 份设计文档定稿 — `docs/01-PRD.md` ~ `docs/07-dev-plan.md` + 4 份 UI mockup（`docs/ui-mockups/`）。提交 `c48964a`。
 
