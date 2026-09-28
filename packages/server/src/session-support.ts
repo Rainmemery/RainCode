@@ -34,6 +34,8 @@ export interface SessionLoopDeps {
   initialEventSeq?: number;
   /** resume 场景的压缩代次起点（文件内最大 epoch）。 */
   initialEpoch?: number;
+  /** turn 内模型轮次上限（02 §1.2.1：缺省 32；子代理按 profile.maxTurns 传入）。 */
+  maxRoundsPerTurn?: number;
   /** auto-compact 选项（contextWindowTokens 已由 server 按 Provider maxContextTokens 补齐）。 */
   compaction?: CompactionOptions;
 }
@@ -52,6 +54,7 @@ export function createSessionLoop(deps: SessionLoopDeps): SessionTurnLoop {
     ...(deps.initialHistory !== undefined && { initialHistory: deps.initialHistory }),
     ...(deps.initialEventSeq !== undefined && { initialEventSeq: deps.initialEventSeq }),
     ...(deps.initialEpoch !== undefined && { initialEpoch: deps.initialEpoch }),
+    ...(deps.maxRoundsPerTurn !== undefined && { maxRoundsPerTurn: deps.maxRoundsPerTurn }),
     ...(deps.compaction !== undefined && { compaction: deps.compaction }),
     onDiagnostic: (message, err) => console.error(`[novacode/server] ${message}`, err ?? ""),
   });
@@ -167,6 +170,21 @@ export function parseCursor(cursor: string | undefined): number {
   if (cursor === undefined || !cursor.startsWith("o")) return 0;
   const parsed = Number.parseInt(cursor.slice(1), 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 0;
+}
+
+/** auto-compact 选项组装（02 §1.2.5）：contextWindowTokens 由 Provider maxContextTokens 补齐。 */
+export function buildCompactionOptions(
+  raw: { thresholdRatio?: number; keepRecentCount?: number } | undefined,
+  contextWindowTokens: number,
+): CompactionOptions | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  return {
+    contextWindowTokens,
+    ...(raw.thresholdRatio !== undefined && { thresholdRatio: raw.thresholdRatio }),
+    ...(raw.keepRecentCount !== undefined && { keepRecentCount: raw.keepRecentCount }),
+  };
 }
 
 /** 归档阻塞检查：存在运行中后台任务且未 force → SESSION_BACKGROUND_TASKS（details 附 taskIds）。 */

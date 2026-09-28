@@ -11,6 +11,7 @@ export * from "./schemas/events-turn.js";
 export * from "./schemas/mcp.js";
 export * from "./schemas/permission.js";
 export * from "./schemas/session.js";
+export * from "./schemas/subagent.js";
 export * from "./schemas/system.js";
 export * from "./schemas/tool.js";
 
@@ -113,6 +114,22 @@ import {
   mcpToolsListResultSchema,
   mcpServerStatusChangedEventPayloadSchema,
 } from "./schemas/mcp.js";
+import {
+  buildSubagentCompletedEvent,
+  buildSubagentProgressEvent,
+  buildSubagentSpawnedEvent,
+  subagentCompletedEventPayloadSchema,
+  subagentListParamsSchema,
+  subagentListResultSchema,
+  subagentProfilesListParamsSchema,
+  subagentProfilesListResultSchema,
+  subagentProgressEventPayloadSchema,
+  subagentSpawnedEventPayloadSchema,
+  subagentSpawnParamsSchema,
+  subagentSpawnResultSchema,
+  subagentStopParamsSchema,
+  subagentStopResultSchema,
+} from "./schemas/subagent.js";
 
 /** 方法表条目：入参 / 出参 schema 对（server 方法表的数据源，04 §4.1）。 */
 export interface MethodSchemas {
@@ -122,9 +139,10 @@ export interface MethodSchemas {
 
 /**
  * 方法 schema 注册表（06 §5 index.ts）：方法未登记 schema 即无法在 server 暴露（04 ADR-07 强制机制）。
- * 当前覆盖（07 §2.1 M1 P0 22 方法全集 + P1 permission.rules.* 3 方法）：
+ * 当前覆盖（07 §2.1 M1 P0 22 方法全集 + P1 permission.rules.* 3 方法 + T2.3 subagent 4 方法）：
  * system.ping/version/shutdown；session.create/send/steer/cancel/list/resume/archive/setMode；
- * config.get/set/providers.list/add/remove；tool.tools.list + 后台任务三方法；permission 5 方法。
+ * config.get/set/providers.list/add/remove；tool.tools.list + 后台任务三方法；permission 5 方法；
+ * subagent.spawn/stop/list/profiles.list。
  */
 export const METHOD_SCHEMAS: Readonly<Record<string, MethodSchemas>> = {
   "system.ping": { request: systemPingParamsSchema, response: systemPingResultSchema },
@@ -192,6 +210,13 @@ export const METHOD_SCHEMAS: Readonly<Record<string, MethodSchemas>> = {
   "mcp.servers.retry": { request: mcpServersRetryParamsSchema, response: mcpServersRetryResultSchema },
   "mcp.tools.list": { request: mcpToolsListParamsSchema, response: mcpToolsListResultSchema },
   "mcp.tools.call": { request: mcpToolsCallParamsSchema, response: mcpToolsCallResultSchema },
+  "subagent.spawn": { request: subagentSpawnParamsSchema, response: subagentSpawnResultSchema },
+  "subagent.stop": { request: subagentStopParamsSchema, response: subagentStopResultSchema },
+  "subagent.list": { request: subagentListParamsSchema, response: subagentListResultSchema },
+  "subagent.profiles.list": {
+    request: subagentProfilesListParamsSchema,
+    response: subagentProfilesListResultSchema,
+  },
 };
 
 /**
@@ -214,8 +239,12 @@ export const EVENT_SCHEMAS: Readonly<Record<string, ZodTypeAny>> = {
   "compact.started": compactStartedEventPayloadSchema,
   "compact.completed": compactCompletedEventPayloadSchema,
   "mcp.server_status_changed": mcpServerStatusChangedEventPayloadSchema,
+  "subagent.spawned": subagentSpawnedEventPayloadSchema,
+  "subagent.progress": subagentProgressEventPayloadSchema,
+  "subagent.completed": subagentCompletedEventPayloadSchema,
 };
 
 export { buildPermissionRequestedEvent, buildPermissionResolvedEvent };
 export { buildCompactStartedEvent, buildCompactCompletedEvent };
 export { buildMcpServerStatusChangedEvent };
+export { buildSubagentSpawnedEvent, buildSubagentProgressEvent, buildSubagentCompletedEvent };

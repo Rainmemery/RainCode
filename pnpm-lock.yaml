@@ -54,6 +54,9 @@ importers:
       '@novacode/tools':
         specifier: workspace:*
         version: link:../tools
+      zod:
+        specifier: ^3.25.0
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: ^22.0.0

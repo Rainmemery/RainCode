@@ -22,6 +22,7 @@
     "smoke:p0": "tsx scripts/smoke-p0.mts",
     "smoke:compact": "tsx scripts/smoke-compact.mts",
     "smoke:mcp": "tsx scripts/smoke-mcp.mts",
+    "smoke:subagent": "tsx scripts/smoke-subagent.mts",
     "smoke:remote": "tsx scripts/smoke-remote.mts"
   },
   "devDependencies": {

@@ -15,7 +15,8 @@
     "@novacode/llm": "workspace:*",
     "@novacode/shared": "workspace:*",
     "@novacode/storage": "workspace:*",
-    "@novacode/tools": "workspace:*"
+    "@novacode/tools": "workspace:*",
+    "zod": "^3.25.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

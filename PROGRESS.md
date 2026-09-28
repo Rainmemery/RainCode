@@ -12,10 +12,10 @@
 | 项目 | 值 |
 | --- | --- |
 | 当前里程碑 | **M2 进行中**（P1：压缩 / MCP / 子代理 / 记忆 + 桌面端 Alpha） |
-| 已完成任务 | T2.1 auto-compact ✅ · T2.2 mcp 包 ✅ |
-| 最新提交 | 见 `git log -1`（T2.2 mcp 包提交） |
+| 已完成任务 | T2.1 auto-compact ✅ · T2.2 mcp 包 ✅ · T2.3 子代理 ✅ |
+| 最新提交 | 见 `git log -1`（T2.3 子代理提交） |
 | 工作区状态 | clean |
-| 门禁状态 | typecheck ✅ / oxlint ✅（0 错误，6 条既有 warning）/ architecture:check ✅ / smoke:p0（含 compact+mcp 回归）✅ |
+| 门禁状态 | typecheck ✅ / oxlint ✅（0 错误，6 条既有 warning）/ architecture:check ✅ / smoke:p0（含 compact+mcp+subagent 回归）✅ |
 | 快照日期 | 2026-09-28 |
 
 ---
@@ -36,6 +36,7 @@
 > 格式：`[日期] 任务 — 结果`（含关键产出物与提交号）。**新条目插在本节最上方。**
 
 ### M2 · P1（能力补全 + 桌面端 Alpha）
+- [2026-09-28] T2.3 子代理 — profile 解析（markdown + 手写 frontmatter，`[a-z0-9-]` 名校验 + 路径逃逸防护，workspace/global 双源）；SubagentManager 状态机 S1~S6（并发槽默认 4 超限 FIFO 排队 / 级联取消 / TURN_MAX_ROUNDS_EXCEEDED → Stopped 超轮次截断保留已产出内容）；事件镜像（tool_call.started → progress{tool} 等 02 §4.2 映射 + 500ms 惰性窗口合并去重，终态永不合并）；ToolRegistry 白名单投影（闭包委托只读视图，子会话不含 `agent` 工具层级固定 2）；`agent` 工具（阻塞等待子会话终态、结果回传即完成通知注入主循环、ctx.signal abort 级联 stop）；shared 协议 subagent 域 4 方法 + 3 事件；server 装配 SubagentRuntime（SubagentLoopHost 注入，model 覆盖经 llmForModel 按名匹配 Provider，modeOf 继承主会话）；验收冒烟 `smoke:subagent`（A 完成链路 / B 事件镜像 / C 双源 profiles / D 校验错误族 / E stop 幂等 / F 并发排队 queuePosition）并纳入 smoke:p0 回归。附：CLI chat 双 readline 双回显 bug 紧急修复（独立提交 d4090ac）。
 - [2026-09-28] T2.2 mcp 包 — MCP 三 transport 接入（stdio 子进程 / Streamable HTTP / SSE，协议交互复用官方 SDK `@modelcontextprotocol/sdk@1.29.0`）；连接状态机 M1~M8（指数退避 1/2/4/8/16s，耗尽 5 次 → Failed）；失败隔离（单 server 故障仅影响自身命名空间）；`mcp__<serverKey>__<toolName>` 命名空间工具（原始 inputSchema 直通 + 从严 metadata needsApproval=true）；mcp.json 双层配置（global + project，冲突拒绝）与 add/remove 持久化；mcp 域 6 方法 + `mcp.server_status_changed` 全局事件；验收冒烟 `smoke:mcp`（手写 JSON-RPC fixture server 真实互操作：连接/命名空间/控制面直调/turn 内模型调用/进程崩溃重连/HTTP add-remove）并纳入 smoke:p0 回归。教训：Connected 事件与 listTools 完成存在竞态 → refreshTools 重试兜底。
 - [2026-09-28] T2.1 auto-compact — CompactionService（阈值 80% 触发 / 异步不阻塞 / in-flight 去重锁 / 失败阈值上调 90% + 连续 3 次停机）；提交协议 = `compaction.applied` 事件行（summary + summarizedCount）+ epoch+1 checkpoint，重放语义落地 storage（resume 后历史与内存态一致）；协议新增 `session.compact` 方法与 `compact.started/completed` 事件（22+1 方法 / 14 事件）；CLI `/compact`；NFR-6 专项冒烟 `smoke:compact`（A auto 触发+不阻塞+resume 连续性 / B 失败保留原历史+阈值上调 / C 手动+幂等+INVALID_PARAMS）并纳入 smoke:p0 回归。
 
@@ -60,6 +61,7 @@
 
 > 格式：`[日期] 问题 → 根因 → 解决`。同类问题复现时先查此表。
 
+- [2026-09-28] chat REPL 键盘输入双回显（键入 exit 显示 eexxiitt、退格只生效一次）→ `rl` 与 `approvalRl` 两个 terminal=true 的 readline interface 挂同一 stdin，keypress 监听构造时常驻、按键被双消费各自回绘 → 删除 approvalRl，审批 prompt 复用主 rl（审批时主 question 已 resolve，无并发挂起）。教训：**同一 stdin 只允许挂一个 readline interface**（提交 d4090ac）。
 - [2026-09-28] `better-sqlite3` 安装脚本被 pnpm 拦截 → pnpm 默认禁止依赖运行构建脚本 → `pnpm-workspace.yaml` 增加 `allowBuilds: { "better-sqlite3": true }`。
 - [2026-09-28] llm 包类型错误（子类对只读 `code` 重复赋值、`cause` 缺 `override`）→ 前代理遗留编译错误 → 修正子类继承结构。
 - [2026-09-28] `architecture-check` 行数误报 → EOF 换行导致文件行数 +1 → 修正计数逻辑，忽略 EOF 空行。
@@ -71,10 +73,9 @@
 
 > 取任务时**必须**回读 `docs/07-dev-plan.md` 对应任务行获取完整验收标准。
 
-1. **T2.3 子代理** — profile 解析校验、spawn / 并发槽 / 级联取消、事件镜像（500ms 合并）、`agent` 工具注册。
-2. **T2.4 memory 包** — MEMORY.md 模板初始化与注入、会话结束/compact 抽取落盘、FTS5 trigram 检索 + LIKE 兜底、promote 单向晋升。
-3. **T2.5 permission 持久化与危险命令** — project/global 规则 CRUD、层级合并、高危根命令禁止通配 allow。
-4. **T2.6~T2.10** — 内核增强（AC-9~12）、工具增强与 P1 工具、rpc stdio + headless、桌面端 Alpha（Electron 三泳道 + stdio RPC 绑定）、M2 验收与基准留存（含 NFR-6 计时测量）。
+1. **T2.4 memory 包** — MEMORY.md 模板初始化与注入、会话结束/compact 抽取落盘、FTS5 trigram 检索 + LIKE 兜底、promote 单向晋升。
+2. **T2.5 permission 持久化与危险命令** — project/global 规则 CRUD、层级合并、高危根命令禁止通配 allow。
+3. **T2.6~T2.10** — 内核增强（AC-9~12）、工具增强与 P1 工具、rpc stdio + headless、桌面端 Alpha（Electron 三泳道 + stdio RPC 绑定）、M2 验收与基准留存（含 NFR-6 计时测量）。
 
 ---
 

@@ -25,7 +25,6 @@ import type {
 } from "@novacode/shared";
 import { RpcCallError, createServiceBinding } from "@novacode/rpc";
 import type { IMessageTransport, RpcMethodHandler, RpcServiceBinding } from "@novacode/rpc";
-import { LlmClient } from "@novacode/llm";
 import { Storage, StorageError } from "@novacode/storage";
 import type { SessionResume } from "@novacode/storage";
 import { createBuiltinTools, ToolExecutor } from "@novacode/tools";
@@ -36,8 +35,10 @@ import { ConfigDomain } from "./config-domain.js";
 import { ConfigStore } from "./config-store.js";
 import { ToolDomain } from "./tool-domain.js";
 import { appVersion } from "./app-version.js";
+import { buildLlmClient } from "./llm-factory.js";
 import {
   assertNoRunningBackgroundTasks,
+  buildCompactionOptions,
   buildSessionSnapshot,
   compactSession,
   createSessionLoop,
@@ -48,6 +49,7 @@ import {
 import { PermissionRuntime } from "./permission-runtime.js";
 import type { PermissionPolicy, PermissionRuntimeOptions } from "./permission-runtime.js";
 import { McpRuntime } from "./mcp-runtime.js";
+import { SubagentRuntime } from "./subagent-runtime.js";
 
 /** Provider 运行时配置（apiKey 已由调用方解析为明文注入；绝不落日志）。 */
 export interface ProviderRuntimeConfig {
@@ -84,6 +86,8 @@ export interface AgentServiceOptions {
   compaction?: { thresholdRatio?: number; keepRecentCount?: number };
   /** MCP 域装配（02 §3；缺省 = 不启用 mcp 域；workspaceRoot 为 project 层 mcp.json 判定域）。 */
   mcp?: { workspaceRoot?: string };
+  /** 子代理域装配（02 §4；缺省 = 不启用 subagent 域；workspaceRoot 为 workspace 层 profiles 判定域）。 */
+  subagent?: { workspaceRoot?: string };
   /** system.shutdown 的存储关闭回调（node 注入；缺省跳过——传输关闭由持有方承担）。 */
   onShutdown?: () => Promise<void>;
 }
@@ -113,6 +117,8 @@ export class AgentService {
   private readonly toolDomain: ToolDomain;
   /** MCP 域（06 §2.5；缺省未装配）。 */
   private readonly mcp: McpRuntime | null;
+  /** 子代理域（06 §2.5；缺省未装配）。 */
+  private readonly subagent: SubagentRuntime | null;
   private binding: RpcServiceBinding | null = null;
   private shuttingDown = false;
 
@@ -124,23 +130,11 @@ export class AgentService {
 
   constructor(private readonly options: AgentServiceOptions) {
     const provider = options.provider ?? null;
-    this.llm = provider
-      ? new LlmClient({
-          provider: {
-            id: provider.id,
-            name: provider.name,
-            baseURL: provider.baseURL,
-            model: provider.model,
-            maxContextTokens: provider.maxContextTokens ?? 32768,
-            apiKeyRef: null,
-          },
-          apiKey: provider.apiKey ?? null,
-        })
-      : null;
+    this.llm = provider ? buildLlmClient(provider) : null;
     this.providerModel = provider?.model ?? "";
     this.providerId = provider?.id ?? "default";
     this.maxContextTokens = provider?.maxContextTokens ?? 32768;
-    this.compaction = this.buildCompaction();
+    this.compaction = buildCompactionOptions(this.options.compaction, this.maxContextTokens);
     this.config = new ConfigDomain(new ConfigStore({ dataRoot: options.storage.dataRoot }));
 
     // 工具系统组装（server 是唯一组装点；tools→shared、agent-core→tools 依赖方向不变）
@@ -180,6 +174,18 @@ export class AgentService {
             publish: (event) => this.binding?.publish(event),
           });
     void this.mcp?.init();
+    // 子代理域（02 §4）：agent 工具进同一 registry；子会话宿主经 SubagentLoopHost 注入（ADR-06）
+    this.subagent =
+      options.subagent === undefined
+        ? null
+        : new SubagentRuntime({
+            storage: options.storage,
+            toolDeps: this.toolDeps,
+            llmFor: (model) => this.llmForModel(model),
+            dataRoot: options.storage.dataRoot,
+            workspaceRoot: options.subagent.workspaceRoot ?? null,
+            publish: (event) => this.binding?.publish(event),
+          });
   }
 
   /** 绑定传输并暴露方法表（一次服务可多次 attach 到不同 transport）。 */
@@ -194,6 +200,7 @@ export class AgentService {
     this.binding = null;
     this.permission?.close();
     void this.mcp?.close(); // MCP 子进程/连接异步收敛
+    void this.subagent?.dispose(); // 子代理级联停止 + agent 工具注销（异步收敛）
     this.sessions.clear();
   }
 
@@ -238,6 +245,8 @@ export class AgentService {
       ...this.toolDomain.methods(register),
       // MCP 域未装配时不暴露（METHOD_SCHEMAS 已登记，缺 handler 调用期报 method not found）
       ...(this.mcp !== null ? this.mcp.methods(register) : {}),
+      // 子代理域未装配时不暴露（同上；06 §2.5 subagent 域 4 方法）
+      ...(this.subagent !== null ? this.subagent.methods(register) : {}),
       // default-allow 策略未装配 permission 域（requirePermission 在调用期报 PC_GRANT_NOT_FOUND）
       ...(this.permission !== null ? this.permission.methods(register) : {}),
     };
@@ -350,6 +359,7 @@ export class AgentService {
       entry.loop.cancel("archive"); // 运行中 turn 收敛（事件事实先行落 JSONL）
       if (entry.pending !== null) await entry.pending.catch(() => undefined);
     }
+    await this.subagent?.stopAll("archive"); // 子代理级联兜底（02 §4.4：agent 工具 ctx.signal 已覆盖 turn 内路径）
     assertNoRunningBackgroundTasks(this.toolDeps.background.list(), params.force);
     await this.options.storage.sessions.updateMeta(params.sessionId, {
       status: "archived",
@@ -421,6 +431,7 @@ export class AgentService {
       if (entry.pending !== null) pending.push(entry.pending.catch(() => undefined));
     }
     await Promise.all(pending);
+    await this.subagent?.stopAll(params.reason ?? "shutdown"); // 子代理级联兜底（02 §4.4）
     await this.mcp?.close();
     await this.options.onShutdown?.();
     return { shuttingDown: true as const };
@@ -437,18 +448,6 @@ export class AgentService {
     };
   }
 
-  private buildCompaction(): CompactionOptions | undefined {
-    const raw = this.options.compaction;
-    if (raw === undefined) {
-      return undefined;
-    }
-    return {
-      contextWindowTokens: this.maxContextTokens,
-      ...(raw.thresholdRatio !== undefined && { thresholdRatio: raw.thresholdRatio }),
-      ...(raw.keepRecentCount !== undefined && { keepRecentCount: raw.keepRecentCount }),
-    };
-  }
-
   private llmFor(providerId: string | undefined): LlmPort | null {
     if (providerId === undefined || providerId === this.providerId) {
       return this.llm;
@@ -461,19 +460,19 @@ export class AgentService {
     if (runtime === null) {
       throw new RpcCallError("CONFIG_PROVIDER_NOT_FOUND", `provider not found: ${providerId}`);
     }
-    const client = new LlmClient({
-      provider: {
-        id: runtime.id,
-        name: runtime.name,
-        baseURL: runtime.baseURL,
-        model: runtime.model,
-        maxContextTokens: runtime.maxContextTokens ?? 32768,
-        apiKeyRef: null,
-      },
-      apiKey: runtime.apiKey ?? null,
-    });
+    const client = buildLlmClient(runtime);
     this.llmByProvider.set(providerId, client);
     return client;
+  }
+
+  /** 子代理 profile.model（模型名）→ LLM 客户端（02 §4.3）：缺省/同主模型 → 主客户端；否则按模型名匹配 config 域 Provider。 */
+  private llmForModel(model: string | undefined): LlmPort | null {
+    if (model === undefined || model === this.providerModel) return this.llm;
+    const match = this.config.providersList().providers.find((provider) => provider.model === model);
+    if (match === undefined) {
+      throw new RpcCallError("CONFIG_PROVIDER_NOT_FOUND", `no provider serves model: ${model}`);
+    }
+    return this.llmFor(match.id);
   }
 
   private async requireActive(sessionId: string): Promise<SessionEntry> {

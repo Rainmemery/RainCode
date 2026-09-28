@@ -46,6 +46,39 @@ export type {
 export { TurnSettler } from "./turn/settle.js";
 export type { SettleHost } from "./turn/settle.js";
 
+// 子代理（02-module-design §4；子会话宿主经 SubagentLoopHost 由 server 装配注入）
+export { SubagentManager } from "./subagent/manager.js";
+export type {
+  SubagentHandle,
+  SubagentLoopHost,
+  SubagentManagerOptions,
+  SubagentResult,
+  SubagentStatus,
+  Unsubscribe,
+} from "./subagent/manager.js";
+
+export { SubagentMirror, previewText, SUBAGENT_PROGRESS_MERGE_MS } from "./subagent/mirror.js";
+export type { SubagentEvent, SubagentEventListener } from "./subagent/mirror.js";
+
+export {
+  DEFAULT_SUBAGENT_MAX_TURNS,
+  MAX_SUBAGENT_TURNS,
+  SUBAGENT_NAME_PATTERN,
+  SubagentProfileError,
+  parseProfileMarkdown,
+  resolveProfileFile,
+} from "./subagent/profile.js";
+export type {
+  SubagentProfile,
+  SubagentProfileDir,
+  SubagentProfileErrorCode,
+} from "./subagent/profile.js";
+
+export { createAgentTool } from "./subagent/agent-tool.js";
+export type { CreateAgentToolOptions } from "./subagent/agent-tool.js";
+
+export { projectRegistry } from "./subagent/registry-projection.js";
+
 export type {
   LlmPort,
   ApprovePort,

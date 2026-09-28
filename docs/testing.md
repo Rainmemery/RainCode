@@ -23,14 +23,15 @@ NovaCode 采用「**冒烟 + 基准 + 门禁**」三层验证体系，全部可�
 | `pnpm smoke:e2e` | [scripts/smoke-e2e.mts](../scripts/smoke-e2e.mts) | 端到端主链路：`session.send` → llm 流式回复（SSE delta 累积 + usage + `[DONE]`）→ 事件流/JSONL 落盘 → 会话列表与恢复 |
 | `pnpm smoke:tools` | [scripts/smoke-tools.mts](../scripts/smoke-tools.mts) | 工具调用系统：用例 A（allow）read+write 多轮工具调用、`tool_call.started/completed` 事件、结果文件落盘、最终回复无工具泄露；用例 B（deny）`needsApproval` 工具被 always-deny 审批拒绝 → 模型收到 `TOOL_PERMISSION_DENIED` 并继续收束 |
 | `pnpm smoke:permission` | [scripts/smoke-permission.mts](../scripts/smoke-permission.mts) | 权限判定链 12 轮脚本化场景：五级判定优先级、bash argv 求值与只读白名单、grantId 审批闭环（allow once/always、deny）、规则持久化、审计落盘 |
-| `pnpm smoke:p0` | [scripts/smoke-p0.mts](../scripts/smoke-p0.mts) | **M1 P0 控制面全集**（并回归其余三个 smoke）：① 协议注册表对照（22 方法 / 12 事件）② Provider 密钥引用制（明文 key → 密钥文件 + apiKeyRef，响应零明文；移除活跃 Provider 报错）③ `session.steer` 运行中注入 ④ `session.setMode` 模式级 deny/恢复 ⑤ `session.archive` 归档语义与 events.jsonl 保留 ⑥ 明文密钥不落入任何响应/落盘/日志 |
+| `pnpm smoke:p0` | [scripts/smoke-p0.mts](../scripts/smoke-p0.mts) | **M1 P0 控制面全集**（并回归其余五个 smoke）：① 协议注册表对照（22 方法 / 12 事件）② Provider 密钥引用制（明文 key → 密钥文件 + apiKeyRef，响应零明文；移除活跃 Provider 报错）③ `session.steer` 运行中注入 ④ `session.setMode` 模式级 deny/恢复 ⑤ `session.archive` 归档语义与 events.jsonl 保留 ⑥ 明文密钥不落入任何响应/落盘/日志 |
 | `pnpm smoke:compact` | [scripts/smoke-compact.mts](../scripts/smoke-compact.mts) | **auto-compact（M2 T2.1 / NFR-6 专项）**：用例 A auto 触发 + 压缩窗口内 send 不阻塞 + `compaction.applied`/epoch+1 提交 + 窗口期消息合并 + resume 连续性；用例 B 空摘要失败 → 保留原历史 + 阈值临时上调 90%；用例 C 手动 compact 低于阈值可用 + in-flight 幂等复用 ticket + 空历史 INVALID_PARAMS |
 | `pnpm smoke:mcp` | [scripts/smoke-mcp.mts](../scripts/smoke-mcp.mts) | **MCP 接入（M2 T2.2）**：与手写 JSON-RPC fixture server（[mcp-fixture-stdio.mjs](../scripts/mcp-fixture-stdio.mjs) / [mcp-fixture-http.mjs](../scripts/mcp-fixture-http.mjs)，node 直跑）真实互操作——连接状态机（Connected/Failed 失败隔离）、命名空间工具注册、控制面直调（ToolExecutor 链路）、turn 内模型调用（权限链）、进程崩溃 → M4 重连 → 工具恢复、HTTP transport add/call/remove + mcp.json 持久化 |
+| `pnpm smoke:subagent` | [scripts/smoke-subagent.mts](../scripts/smoke-subagent.mts) | **子代理（M2 T2.3）**：mock LLM 编排「主 → 子 → 主」请求序列——用例 A 完成链路（`agent` 工具派发 → 子会话独立 systemPrompt 收束 → 完成通知经 tool_call.completed 回传 → subagent.list 含 usage/turnsUsed）；用例 B 事件镜像（subagent.spawned → progress started → progress done → subagent.completed 顺序与字段）；用例 C profiles.list（workspace/global 双源 + frontmatter 投影 + 坏文件跳过）；用例 D 校验错误族（SUBAGENT_PROFILE_NOT_FOUND / SUBAGENT_PROFILE_INVALID / INVALID_PARAMS / SESSION_NOT_FOUND / SUBAGENT_NOT_FOUND）；用例 E stop 终态幂等（stopped:false）；用例 F 并发排队（并发 4 下第 5 个 Pending + queuePosition=1 + FIFO 补位全数 Completed） |
 
 **运行全部**：
 
 ```bash
-pnpm smoke:p0   # 内部已并复 smoke:e2e / smoke:tools / smoke:permission / smoke:compact / smoke:mcp
+pnpm smoke:p0   # 内部已并复 smoke:e2e / smoke:tools / smoke:permission / smoke:compact / smoke:mcp / smoke:subagent
 ```
 
 **预期输出**：各脚本末尾打印 `SMOKE OK`，退出码 0。
