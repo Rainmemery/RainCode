@@ -1,0 +1,26 @@
+# NovaCode 架构治理策略（04-architecture §6.1）
+#
+# 本波（walking skeleton 第一波）先登记 shared / rpc 两包规则；
+# storage / llm / tools / permission / memory / mcp / agent-core / server / apps/*
+# 随各包落码的波次同步登记（07-dev-plan §8.1：目录与 policy 同步登记）。
+version: 1
+
+global:
+  maxFileLines: 500          # 单文件上限（含空行与注释），超限阻断
+  forbidCycles: true         # 模块依赖图禁止环（SCC 检测）
+  forbidDeepImports: true    # 跨包只允许从 publicEntrypoints 导入
+  managedOnly: true          # 未登记目录禁止新增包
+
+modules:
+  - id: shared
+    roots: [packages/shared/src]
+    managed: true
+    requires: []                                   # 底座：不依赖任何 NovaCode 包（仅三方 zod）
+    publicEntrypoints: [packages/shared/src/index.ts]
+  - id: rpc
+    roots: [packages/rpc/src]
+    managed: true
+    requires: [shared]
+    publicEntrypoints: [packages/rpc/src/index.ts]
+
+exceptions: []               # 白名单外豁免必须显式登记并附理由，随 PR 评审
