@@ -57,6 +57,8 @@ export interface CompactionDeps {
     build: (seq: number, ts: number) => unknown,
   ): void;
   systemPrompt?: string;
+  /** 提交前钩子（02 §7.2 记忆抽取：先于历史替换，以快照 prefix 为准）；失败由调用方捕获仅诊断，不阻塞替换。 */
+  onBeforeReplace?: (prefix: MessageRecord[]) => Promise<void>;
   diag(message: string, err?: unknown): void;
 }
 
@@ -119,6 +121,7 @@ export function createCompactionService(
     llm: LlmPort;
     storage: StoragePort;
     systemPrompt?: string;
+    onBeforeReplace?: (prefix: MessageRecord[]) => Promise<void>;
     events: LoopEventsView;
   },
   options: CompactionOptions,
@@ -132,6 +135,7 @@ export function createCompactionService(
       serialWrite: (task) => input.events.serialWrite(task),
       emitCompactionEvent: (name, build) => input.events.emitPersisted(name, build),
       ...(input.systemPrompt !== undefined && { systemPrompt: input.systemPrompt }),
+      ...(input.onBeforeReplace !== undefined && { onBeforeReplace: input.onBeforeReplace }),
       diag: (message, err) => input.events.diag(message, err),
     },
     options,
@@ -235,6 +239,14 @@ export class CompactionService {
         if (!marker.accepted) {
           this.deps.diag("compaction marker rejected (stale epoch); keep original history");
           return;
+        }
+        // 记忆抽取钩子（02 §7.2：compact 抽取先于历史替换，以快照 prefix 为准；失败不阻塞替换）
+        if (this.deps.onBeforeReplace !== undefined) {
+          try {
+            await this.deps.onBeforeReplace(prefix);
+          } catch (reason: unknown) {
+            this.deps.diag("compaction onBeforeReplace (memory extract) failed; keep replacing", reason);
+          }
         }
         // 提交点（串行链内同步替换）：读-改-换之间无 await 空隙，窗口期新增消息经 slice 保留
         this.host.replaceWith([summaryRecord], summarizedCount);

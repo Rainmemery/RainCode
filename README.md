@@ -12,7 +12,7 @@ NovaCode 的功能定位与 Claude Code / Codex 对齐：整合**代码生成、
 
 ## 当前状态
 
-**M1（P0：Agent 内核 + CLI 可用）已完成** ✅ —— 可在真实仓库中端到端完成对话、工具调用、权限审批闭环。**M2 进行中**：auto-compact、MCP 接入、子代理管理已落地，记忆 / 桌面端 Alpha 待开发。进度详情见 [PROGRESS.md](PROGRESS.md)。
+**M1（P0：Agent 内核 + CLI 可用）已完成** ✅ —— 可在真实仓库中端到端完成对话、工具调用、权限审批闭环。**M2 进行中**：auto-compact、MCP 接入、子代理管理、项目记忆已落地，桌面端 Alpha 待开发。进度详情见 [PROGRESS.md](PROGRESS.md)。
 
 | 能力 | 状态 |
 | --- | --- |
@@ -23,7 +23,7 @@ NovaCode 的功能定位与 Claude Code / Codex 对齐：整合**代码生成、
 | 上下文压缩 compact（80% 阈值 / 异步 / epoch 单调） | ✅ M2 |
 | MCP 接入（stdio/HTTP/SSE，`mcp__<server>__<tool>` 命名空间） | ✅ M2 |
 | 子代理管理（profile 双源解析 / spawn 并发槽 / 事件镜像 500ms 合并 / `agent` 工具） | ✅ M2 |
-| 项目记忆（MEMORY.md + FTS5 检索 + 单向晋升） | ⬜ M2 |
+| 项目记忆（MEMORY.md 注入 / FTS5 检索 / 会话记忆抽取 / promote 晋升） | ✅ M2 |
 | 桌面端 Alpha（Electron + React，共享后端） | ⬜ M2 |
 | 容器沙箱 / 技能 / 插件 / 远程执行 / Web 界面 | ⬜ M3 |
 

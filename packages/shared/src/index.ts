@@ -9,6 +9,7 @@ export * from "./schemas/common.js";
 export * from "./schemas/config.js";
 export * from "./schemas/events-turn.js";
 export * from "./schemas/mcp.js";
+export * from "./schemas/memory.js";
 export * from "./schemas/permission.js";
 export * from "./schemas/session.js";
 export * from "./schemas/subagent.js";
@@ -130,6 +131,18 @@ import {
   subagentStopParamsSchema,
   subagentStopResultSchema,
 } from "./schemas/subagent.js";
+import {
+  memoryEntriesListParamsSchema,
+  memoryEntriesListResultSchema,
+  memoryPromoteParamsSchema,
+  memoryPromoteResultSchema,
+  memoryReadParamsSchema,
+  memoryReadResultSchema,
+  memorySearchParamsSchema,
+  memorySearchResultSchema,
+  memoryWriteParamsSchema,
+  memoryWriteResultSchema,
+} from "./schemas/memory.js";
 
 /** 方法表条目：入参 / 出参 schema 对（server 方法表的数据源，04 §4.1）。 */
 export interface MethodSchemas {
@@ -139,10 +152,11 @@ export interface MethodSchemas {
 
 /**
  * 方法 schema 注册表（06 §5 index.ts）：方法未登记 schema 即无法在 server 暴露（04 ADR-07 强制机制）。
- * 当前覆盖（07 §2.1 M1 P0 22 方法全集 + P1 permission.rules.* 3 方法 + T2.3 subagent 4 方法）：
+ * 当前覆盖（07 §2.1 M1 P0 22 方法全集 + P1 permission.rules.* 3 方法 + T2.3 subagent 4 方法
+ * + T2.4 memory 域 5 方法）：
  * system.ping/version/shutdown；session.create/send/steer/cancel/list/resume/archive/setMode；
  * config.get/set/providers.list/add/remove；tool.tools.list + 后台任务三方法；permission 5 方法；
- * subagent.spawn/stop/list/profiles.list。
+ * subagent.spawn/stop/list/profiles.list；memory.read/write/search/entries.list/promote。
  */
 export const METHOD_SCHEMAS: Readonly<Record<string, MethodSchemas>> = {
   "system.ping": { request: systemPingParamsSchema, response: systemPingResultSchema },
@@ -217,6 +231,14 @@ export const METHOD_SCHEMAS: Readonly<Record<string, MethodSchemas>> = {
     request: subagentProfilesListParamsSchema,
     response: subagentProfilesListResultSchema,
   },
+  "memory.read": { request: memoryReadParamsSchema, response: memoryReadResultSchema },
+  "memory.write": { request: memoryWriteParamsSchema, response: memoryWriteResultSchema },
+  "memory.search": { request: memorySearchParamsSchema, response: memorySearchResultSchema },
+  "memory.entries.list": {
+    request: memoryEntriesListParamsSchema,
+    response: memoryEntriesListResultSchema,
+  },
+  "memory.promote": { request: memoryPromoteParamsSchema, response: memoryPromoteResultSchema },
 };
 
 /**

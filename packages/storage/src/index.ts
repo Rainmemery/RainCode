@@ -46,6 +46,11 @@ export type {
   ApprovalResponse,
 } from "./approvals-repo.js";
 
+export { MemoryRepo, MEMORY_RECALL_MIN_CONFIDENCE } from "./memory-repo.js";
+export type { MemoryListFilter, NewMemoryEntry } from "./memory-repo.js";
+
+export { SettingsRepo } from "./settings-repo.js";
+
 export { SessionStream } from "./jsonl-stream.js";
 export type { AppendResult, CheckpointResult, SessionStreamOptions } from "./jsonl-stream.js";
 

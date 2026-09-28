@@ -11,7 +11,12 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
+  "dependencies": {
+    "@novacode/shared": "workspace:*",
+    "@novacode/storage": "workspace:*"
+  },
   "devDependencies": {
+    "@types/node": "^22.0.0",
     "typescript": "^5.6.0"
   }
 }

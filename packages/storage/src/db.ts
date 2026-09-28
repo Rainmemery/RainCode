@@ -25,6 +25,7 @@ export function loadMigrationScripts(): MigrationScript[] {
   return [
     { version: 1, name: "001_init", sql: readFileSync(join(MIGRATIONS_DIR, "001_init.sql"), "utf8") },
     { version: 2, name: "002_permission", sql: readFileSync(join(MIGRATIONS_DIR, "002_permission.sql"), "utf8") },
+    { version: 3, name: "003_memory", sql: readFileSync(join(MIGRATIONS_DIR, "003_memory.sql"), "utf8") },
   ];
 }
 

@@ -5,10 +5,8 @@
  * ask 态经 ApprovalBroker 挂起收敛）→ T9 ToolExecution → 结果落库 → T13 回传直至纯文本收束；
  * maxRoundsPerTurn（默认 32）保护；delta/progress 为 UI 瞬态不落盘（05 §4.2）；取消 T3/T5+T8/T12。
  */
-import { LlmAbortedError, LlmError } from "@novacode/llm";
-import type { LlmStreamEvent } from "@novacode/llm";
-import { ulid } from "@novacode/storage";
-import type { CheckpointState } from "@novacode/storage";
+import { LlmAbortedError, LlmError, type LlmStreamEvent } from "@novacode/llm";
+import { ulid, type CheckpointState } from "@novacode/storage";
 import type { CollaborationMode, MessageRecord, TokenUsage } from "@novacode/shared";
 import type { BackgroundTaskRegistry } from "@novacode/tools";
 import { estimateContextTokens, createCompactionService } from "../compact/service.js";
@@ -62,6 +60,7 @@ export interface SessionTurnLoopOptions {
   maxRoundsPerTurn?: number;
   /** auto-compact 选项（02 §1.2.5；缺省 = 不启用压缩）。 */
   compaction?: CompactionOptions;
+  compactionOnBeforeReplace?: (prefix: MessageRecord[]) => Promise<void>; // 02 §7.2 compact 记忆抽取钩子（透传 CompactionDeps.onBeforeReplace）
 }
 
 /** 模型 tool_call 完成形态（@novacode/llm tool_calls.completed 事件的 calls 元素）。 */
@@ -122,6 +121,7 @@ export class SessionTurnLoop {
               llm: options.llm,
               storage: options.storage,
               ...(options.systemPrompt !== undefined && { systemPrompt: options.systemPrompt }),
+              ...(options.compactionOnBeforeReplace !== undefined && { onBeforeReplace: options.compactionOnBeforeReplace }),
               events: this.events,
             },
             options.compaction,

@@ -3,7 +3,7 @@
  * SessionTurnLoop 构造（create/resume 共用）、session.snapshot 投影、session.list 查询、
  * usage 回写与 rpc seq 续起点。全部为无状态纯函数，依赖经参数注入（04 §2.4 铁律 4）。
  */
-import { RpcCallError } from "@novacode/rpc";
+import { RpcCallError, type RpcServiceBinding } from "@novacode/rpc";
 import type {
   CollaborationMode,
   MessageRecord,
@@ -38,6 +38,8 @@ export interface SessionLoopDeps {
   maxRoundsPerTurn?: number;
   /** auto-compact 选项（contextWindowTokens 已由 server 按 Provider maxContextTokens 补齐）。 */
   compaction?: CompactionOptions;
+  /** compact 提交前记忆抽取钩子（02 §7.2；透传 CompactionDeps.onBeforeReplace，失败不阻塞替换）。 */
+  compactionOnBeforeReplace?: (prefix: MessageRecord[]) => Promise<void>;
 }
 
 export function createSessionLoop(deps: SessionLoopDeps): SessionTurnLoop {
@@ -56,8 +58,20 @@ export function createSessionLoop(deps: SessionLoopDeps): SessionTurnLoop {
     ...(deps.initialEpoch !== undefined && { initialEpoch: deps.initialEpoch }),
     ...(deps.maxRoundsPerTurn !== undefined && { maxRoundsPerTurn: deps.maxRoundsPerTurn }),
     ...(deps.compaction !== undefined && { compaction: deps.compaction }),
+    ...(deps.compactionOnBeforeReplace !== undefined && { compactionOnBeforeReplace: deps.compactionOnBeforeReplace }),
     onDiagnostic: (message, err) => console.error(`[novacode/server] ${message}`, err ?? ""),
   });
+}
+
+/** 会话事件出口（agent-service.publisher 拆分，单文件 ≤500 行治理）：binding 缺席时丢弃并告警（06 §3.3）。 */
+export function eventPublisher(binding: RpcServiceBinding | null): SessionEventPublisher {
+  return (event) => {
+    if (!binding) {
+      console.error("[novacode/server] event dropped: no transport attached", event.name);
+      return;
+    }
+    binding.publish(event);
+  };
 }
 
 /** session.compact（06 §2.1）：手动压缩受理即返；无可摘要前缀 → INVALID_PARAMS。 */

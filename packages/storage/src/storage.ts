@@ -17,8 +17,10 @@ import { SessionStream, type AppendResult, type CheckpointResult } from "./jsonl
 import { canonicalWorkspacePath, computeWorkspaceHash, resolveDataRoot, sessionPaths } from "./paths.js";
 import { ApprovalsRepo } from "./approvals-repo.js";
 import { DecisionsRepo } from "./decisions-repo.js";
+import { MemoryRepo } from "./memory-repo.js";
 import { RulesRepo } from "./rules-repo.js";
 import { SessionsRepo, type SessionCreateInput, type SessionMeta } from "./sessions-repo.js";
+import { SettingsRepo } from "./settings-repo.js";
 
 export interface WorkspaceInfo {
   hash: string;
@@ -55,6 +57,10 @@ export class Storage {
   readonly permissionDecisions: DecisionsRepo;
   /** 审批单未决态真源（05 §3.7）。 */
   readonly approvals: ApprovalsRepo;
+  /** 会话记忆条目真源（05 §3.9；召回默认集语义见 memory-repo）。 */
+  readonly memory: MemoryRepo;
+  /** 运行期 KV（05 §3.11；含记忆抽取幂等键 memory.extracted.<sessionId>）。 */
+  readonly settings: SettingsRepo;
 
   private readonly db: SqliteDatabase;
   private readonly streams = new Map<string, SessionStream>();
@@ -66,6 +72,8 @@ export class Storage {
     this.permissionRules = new RulesRepo(db);
     this.permissionDecisions = new DecisionsRepo(db);
     this.approvals = new ApprovalsRepo(db);
+    this.memory = new MemoryRepo(db);
+    this.settings = new SettingsRepo(db);
   }
 
   /** 打开全局单库：连接 PRAGMA + 迁移在 TUI ready 前同步完成（05 §6，NFR-1）。 */
@@ -219,6 +227,14 @@ export class Storage {
       return null;
     }
     return this.getWorkspaceRoot(meta.workspaceId);
+  }
+
+  /**
+   * workspace hash → 根路径（05 §3.1 workspaces 表投影；增量挂载）。
+   * memory.promote 由条目反查 MEMORY.md 文件真源位置（条目只携带 workspaceId=hash）。
+   */
+  async workspaceRootByHash(workspaceHash: string): Promise<string | null> {
+    return this.getWorkspaceRoot(workspaceHash);
   }
 
   async eventsFileSize(sessionId: string): Promise<number> {

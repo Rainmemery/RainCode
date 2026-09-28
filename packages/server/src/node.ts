@@ -33,6 +33,8 @@ export interface AgentServiceNodeOptions {
   mcp?: AgentServiceOptions["mcp"];
   /** 子代理域装配（02 §4；缺省 = 不启用；workspaceRoot 为 workspace 层 profiles 判定域）。 */
   subagent?: AgentServiceOptions["subagent"];
+  /** memory 域装配（02 §7；缺省 = 不启用；workspaceRoot 为 promote 反查兜底域）。 */
+  memory?: AgentServiceOptions["memory"];
 }
 
 export interface AgentServiceNode {
@@ -66,6 +68,7 @@ export async function createAgentServiceNode(
     ...(options.compaction !== undefined && { compaction: options.compaction }),
     ...(options.mcp !== undefined && { mcp: options.mcp }),
     ...(options.subagent !== undefined && { subagent: options.subagent }),
+    ...(options.memory !== undefined && { memory: options.memory }),
     onShutdown: closeStorage,
   });
   const binding = service.attach(transport);

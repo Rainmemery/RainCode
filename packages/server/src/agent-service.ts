@@ -42,6 +42,7 @@ import {
   buildSessionSnapshot,
   compactSession,
   createSessionLoop,
+  eventPublisher,
   listSessions,
   recordUsage,
   seedEventSeq,
@@ -50,6 +51,7 @@ import { PermissionRuntime } from "./permission-runtime.js";
 import type { PermissionPolicy, PermissionRuntimeOptions } from "./permission-runtime.js";
 import { McpRuntime } from "./mcp-runtime.js";
 import { SubagentRuntime } from "./subagent-runtime.js";
+import { MemoryRuntime, memoryLoopEnhancements } from "./memory-runtime.js";
 
 /** Provider 运行时配置（apiKey 已由调用方解析为明文注入；绝不落日志）。 */
 export interface ProviderRuntimeConfig {
@@ -88,6 +90,8 @@ export interface AgentServiceOptions {
   mcp?: { workspaceRoot?: string };
   /** 子代理域装配（02 §4；缺省 = 不启用 subagent 域；workspaceRoot 为 workspace 层 profiles 判定域）。 */
   subagent?: { workspaceRoot?: string };
+  /** memory 域装配（02 §7；缺省 = 不启用 memory 域；workspaceRoot 为 promote 反查兜底域）。 */
+  memory?: { workspaceRoot?: string };
   /** system.shutdown 的存储关闭回调（node 注入；缺省跳过——传输关闭由持有方承担）。 */
   onShutdown?: () => Promise<void>;
 }
@@ -119,6 +123,8 @@ export class AgentService {
   private readonly mcp: McpRuntime | null;
   /** 子代理域（06 §2.5；缺省未装配）。 */
   private readonly subagent: SubagentRuntime | null;
+  /** memory 域（06 §2.6；缺省未装配）。 */
+  private readonly memory: MemoryRuntime | null;
   private binding: RpcServiceBinding | null = null;
   private shuttingDown = false;
 
@@ -186,6 +192,11 @@ export class AgentService {
             workspaceRoot: options.subagent.workspaceRoot ?? null,
             publish: (event) => this.binding?.publish(event),
           });
+    // memory 域（02 §7 / 06 §2.6）：未配置 → 不注册方法/不注入 MEMORY.md/不挂抽取钩子
+    this.memory =
+      options.memory === undefined ? null
+        : new MemoryRuntime({ storage: options.storage, llmFor: () => this.llm,
+            ...(options.memory.workspaceRoot !== undefined && { workspaceRoot: options.memory.workspaceRoot }) });
   }
 
   /** 绑定传输并暴露方法表（一次服务可多次 attach 到不同 transport）。 */
@@ -201,6 +212,7 @@ export class AgentService {
     this.permission?.close();
     void this.mcp?.close(); // MCP 子进程/连接异步收敛
     void this.subagent?.dispose(); // 子代理级联停止 + agent 工具注销（异步收敛）
+    void this.memory?.dispose(); // memory 域无长驻资源（dispose 最小实现）
     this.sessions.clear();
   }
 
@@ -247,6 +259,7 @@ export class AgentService {
       ...(this.mcp !== null ? this.mcp.methods(register) : {}),
       // 子代理域未装配时不暴露（同上；06 §2.5 subagent 域 4 方法）
       ...(this.subagent !== null ? this.subagent.methods(register) : {}),
+      ...(this.memory !== null ? this.memory.methods(register) : {}), // memory 域未装配不暴露（同上）
       // default-allow 策略未装配 permission 域（requirePermission 在调用期报 PC_GRANT_NOT_FOUND）
       ...(this.permission !== null ? this.permission.methods(register) : {}),
     };
@@ -282,7 +295,7 @@ export class AgentService {
     });
     const loop = createSessionLoop({
       sessionId: meta.id, mode: meta.mode, llm, storage: this.options.storage, publish,
-      ...(this.options.systemPrompt !== undefined && { systemPrompt: this.options.systemPrompt }),
+      ...((await memoryLoopEnhancements(this.memory, this.options.systemPrompt, params.workspaceRoot, meta.id, workspace.hash))),
       tools: this.toolDeps, workspaceRoot: params.workspaceRoot, workspaceId: workspace.hash,
       initialEventSeq: 1,
       ...(this.compaction !== undefined && { compaction: this.compaction }),
@@ -361,6 +374,7 @@ export class AgentService {
     }
     await this.subagent?.stopAll("archive"); // 子代理级联兜底（02 §4.4：agent 工具 ctx.signal 已覆盖 turn 内路径）
     assertNoRunningBackgroundTasks(this.toolDeps.background.list(), params.force);
+    await this.memory?.onArchive(params.sessionId, meta.workspaceId); // 会话结束抽取（02 §7.4：失败仅诊断，幂等 05 §5.4 settings 键）
     await this.options.storage.sessions.updateMeta(params.sessionId, {
       status: "archived",
       archivedAt: Date.now(),
@@ -406,7 +420,7 @@ export class AgentService {
     const publish = this.publisher();
     const loop = createSessionLoop({
       sessionId: meta.id, mode: meta.mode, llm, storage: this.options.storage, publish,
-      ...(this.options.systemPrompt !== undefined && { systemPrompt: this.options.systemPrompt }),
+      ...((await memoryLoopEnhancements(this.memory, this.options.systemPrompt, workspaceRoot, meta.id, meta.workspaceId))),
       tools: this.toolDeps, workspaceRoot, workspaceId: meta.workspaceId,
       initialHistory: replay.history,
       initialEventSeq: seedEventSeq(replay),
@@ -439,13 +453,7 @@ export class AgentService {
 
   // 内部
   private publisher(): SessionEventPublisher {
-    return (event) => {
-      if (!this.binding) {
-        console.error("[novacode/server] event dropped: no transport attached", event.name);
-        return;
-      }
-      this.binding.publish(event);
-    };
+    return eventPublisher(this.binding);
   }
 
   private llmFor(providerId: string | undefined): LlmPort | null {
@@ -486,14 +494,6 @@ export class AgentService {
   }
 
   private async snapshotOf(sessionId: string, entry: SessionEntry): Promise<SessionSnapshotPayload> {
-    return buildSessionSnapshot({
-      storage: this.options.storage,
-      sessionId,
-      lastSeq: entry.loop.lastEventSeq,
-      phase: entry.loop.phase,
-      model: this.providerModel,
-      activeProviderId: this.providerId,
-      maxContextTokens: this.maxContextTokens,
-    });
+    return buildSessionSnapshot({ storage: this.options.storage, sessionId, lastSeq: entry.loop.lastEventSeq, phase: entry.loop.phase, model: this.providerModel, activeProviderId: this.providerId, maxContextTokens: this.maxContextTokens });
   }
 }
