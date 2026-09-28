@@ -27,14 +27,15 @@ export async function chatCommand(argv: string[]): Promise<number> {
   const parsed = parseCliArgs(argv);
   const workspaceRoot = resolve(parsed.workspace ?? process.cwd());
   const context = await startServiceNode(parsed);
+  // 同一 stdin 只允许挂一个 terminal=true 的 readline：interface 构造时常驻监听 keypress，
+  // 双 interface 会导致每个按键被消费两次（双回显 eexxiitt）。
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-  // 审批专用 readline（与主 REPL 的 question 不同时挂起；审批发生在 sendAndStream 期间）
-  const approvalRl = createInterface({ input: process.stdin, output: process.stdout });
   let currentSessionId: string | null = null;
 
   const promptApproval = async (): Promise<ApprovalChoice> => {
     for (;;) {
-      const answer = (await approvalRl.question("choice> ")).trim();
+      // 复用主 rl：审批发生在 sendAndStream 期间，主 question 已 resolve，不存在并发挂起。
+      const answer = (await rl.question("choice> ")).trim();
       if (answer === "1") return "allow";
       if (answer === "2") return "allow-session";
       if (answer === "3") return "allow-project";
@@ -176,7 +177,6 @@ export async function chatCommand(argv: string[]): Promise<number> {
     return 0;
   } finally {
     rl.close();
-    approvalRl.close();
     await teardown(context);
   }
 }
