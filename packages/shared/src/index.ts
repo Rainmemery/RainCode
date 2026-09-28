@@ -8,6 +8,7 @@
 export * from "./schemas/common.js";
 export * from "./schemas/config.js";
 export * from "./schemas/events-turn.js";
+export * from "./schemas/permission.js";
 export * from "./schemas/session.js";
 export * from "./schemas/system.js";
 export * from "./schemas/tool.js";
@@ -47,6 +48,22 @@ import {
   toolToolsListParamsSchema,
   toolToolsListResultSchema,
 } from "./schemas/tool.js";
+import {
+  buildPermissionRequestedEvent,
+  buildPermissionResolvedEvent,
+  permissionDecisionsListParamsSchema,
+  permissionDecisionsListResultSchema,
+  permissionRequestedEventPayloadSchema,
+  permissionResolvedEventPayloadSchema,
+  permissionRespondParamsSchema,
+  permissionRespondResultSchema,
+  permissionRulesAddParamsSchema,
+  permissionRulesAddResultSchema,
+  permissionRulesListParamsSchema,
+  permissionRulesListResultSchema,
+  permissionRulesRemoveParamsSchema,
+  permissionRulesRemoveResultSchema,
+} from "./schemas/permission.js";
 
 /** 方法表条目：入参 / 出参 schema 对（server 方法表的数据源，04 §4.1）。 */
 export interface MethodSchemas {
@@ -78,6 +95,26 @@ export const METHOD_SCHEMAS: Readonly<Record<string, MethodSchemas>> = {
     request: toolBackgroundOutputParamsSchema,
     response: toolBackgroundOutputResultSchema,
   },
+  "permission.respond": {
+    request: permissionRespondParamsSchema,
+    response: permissionRespondResultSchema,
+  },
+  "permission.rules.list": {
+    request: permissionRulesListParamsSchema,
+    response: permissionRulesListResultSchema,
+  },
+  "permission.rules.add": {
+    request: permissionRulesAddParamsSchema,
+    response: permissionRulesAddResultSchema,
+  },
+  "permission.rules.remove": {
+    request: permissionRulesRemoveParamsSchema,
+    response: permissionRulesRemoveResultSchema,
+  },
+  "permission.decisions.list": {
+    request: permissionDecisionsListParamsSchema,
+    response: permissionDecisionsListResultSchema,
+  },
 };
 
 /**
@@ -94,4 +131,8 @@ export const EVENT_SCHEMAS: Readonly<Record<string, ZodTypeAny>> = {
   done: doneEventPayloadSchema,
   error: errorEventPayloadSchema,
   "session.snapshot": sessionSnapshotEventPayloadSchema,
+  "permission.requested": permissionRequestedEventPayloadSchema,
+  "permission.resolved": permissionResolvedEventPayloadSchema,
 };
+
+export { buildPermissionRequestedEvent, buildPermissionResolvedEvent };

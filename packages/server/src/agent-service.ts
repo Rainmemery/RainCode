@@ -26,6 +26,11 @@ import type {
   ToolBackgroundListParams,
   ToolBackgroundOutputParams,
   ToolToolsListParams,
+  PermissionDecisionsListParams,
+  PermissionRespondParams,
+  PermissionRulesAddParams,
+  PermissionRulesListParams,
+  PermissionRulesRemoveParams,
 } from "@novacode/shared";
 import { RpcCallError, createServiceBinding } from "@novacode/rpc";
 import type { IMessageTransport, RpcMethodHandler, RpcServiceBinding } from "@novacode/rpc";
@@ -47,6 +52,8 @@ import type {
   ToolPhaseDeps,
   TurnOutcome,
 } from "@novacode/agent-core";
+import { PermissionRuntime } from "./permission-runtime.js";
+import type { PermissionPolicy, PermissionRuntimeOptions } from "./permission-runtime.js";
 
 /** Provider 运行时配置（apiKey 已由调用方解析为明文注入；绝不落日志）。 */
 export interface ProviderRuntimeConfig {
@@ -61,12 +68,18 @@ export interface ProviderRuntimeConfig {
 /**
  * 工具系统装配（本波）：
  * - registry/executor 由 server 组装注入 AgentService（02 §0.2 依赖方向 server→tools）；
- * - approval 为本波测试审批实现（always-allow / always-deny；生产审批闭环随 permission 包），
- *   缺省 always-allow（headless 可用；fail-safe deny 语义见 02 §2.4，随 askFallback 配置化收敛）。
+ * - approval 为 default-allow 策略下的测试审批实现（always-allow / always-deny）；
+ *   normal（默认）策略走 PermissionRuntime（五级判定链 + 审批闭环，02 §6）。
  */
 export interface ToolRuntimeConfig {
+  /** 仅 default-allow 策略生效（normal 策略下忽略，走真实权限链）。 */
   approval?: "always-allow" | "always-deny";
   registry?: ToolRegistry;
+}
+
+/** 权限域装配（06 §2.2；策略模式：default-allow[仅开发] / normal[默认]）。 */
+export interface PermissionConfig extends PermissionRuntimeOptions {
+  policy: PermissionPolicy;
 }
 
 export interface AgentServiceOptions {
@@ -74,8 +87,10 @@ export interface AgentServiceOptions {
   provider?: ProviderRuntimeConfig | null;
   /** 系统提示（随请求注入；缺省不注入）。 */
   systemPrompt?: string;
-  /** 工具系统；缺省内置工具集 + always-allow 审批。 */
+  /** 工具系统；缺省内置工具集。 */
   tools?: ToolRuntimeConfig;
+  /** 权限策略；缺省 normal（五级判定链 + 审批闭环）。 */
+  permission?: PermissionConfig;
 }
 
 interface SessionEntry {
@@ -90,6 +105,8 @@ export class AgentService {
   private readonly sessions = new Map<string, SessionEntry>();
   private readonly llm: LlmPort | null;
   private readonly toolDeps: ToolPhaseDeps & { background: BackgroundTaskRegistry };
+  /** normal 策略的权限域装配（default-allow 策略下为 null）。 */
+  private readonly permission: PermissionRuntime | null;
   private binding: RpcServiceBinding | null = null;
 
   readonly providerModel: string;
@@ -118,9 +135,20 @@ export class AgentService {
     // 工具系统组装（server 是唯一组装点；tools→shared、agent-core→tools 依赖方向不变）
     const builtin = createBuiltinTools();
     const registry = options.tools?.registry ?? builtin.registry;
-    const approve =
-      options.tools?.approval === "always-deny" ? alwaysDenyApprover : alwaysAllowApprover;
-    const permission: PermissionPort = createMetadataPermissionPort(approve);
+    let permission: PermissionPort;
+    if ((options.permission?.policy ?? "normal") === "normal") {
+      // normal（默认）：五级判定链 + 审批闭环 + 规则 + 审计（02 §6）
+      this.permission = new PermissionRuntime(this.options.storage, {
+        approvalTimeoutMs: options.permission?.approvalTimeoutMs,
+      });
+      permission = this.permission.port;
+    } else {
+      // default-allow（仅开发）：metadata 快速通道 + 测试审批（approval 选项驱动）
+      this.permission = null;
+      const approve =
+        options.tools?.approval === "always-deny" ? alwaysDenyApprover : alwaysAllowApprover;
+      permission = createMetadataPermissionPort(approve);
+    }
     this.toolDeps = {
       registry,
       executor: new ToolExecutor({ registry }),
@@ -140,6 +168,7 @@ export class AgentService {
   close(): void {
     this.binding?.close();
     this.binding = null;
+    this.permission?.close();
     this.sessions.clear();
   }
 
@@ -174,6 +203,16 @@ export class AgentService {
         this.killBackgroundTask(params as ToolBackgroundKillParams)),
       "tool.background.output": register("tool.background.output", (params) =>
         this.readBackgroundOutput(params as ToolBackgroundOutputParams)),
+      "permission.respond": register("permission.respond", (params) =>
+        this.requirePermission().respond(params as PermissionRespondParams)),
+      "permission.rules.list": register("permission.rules.list", (params) =>
+        this.requirePermission().listRules(params as PermissionRulesListParams)),
+      "permission.rules.add": register("permission.rules.add", (params) =>
+        this.requirePermission().addRule(params as PermissionRulesAddParams)),
+      "permission.rules.remove": register("permission.rules.remove", (params) =>
+        this.requirePermission().removeRule(params as PermissionRulesRemoveParams)),
+      "permission.decisions.list": register("permission.decisions.list", (params) =>
+        this.requirePermission().listDecisions(params as PermissionDecisionsListParams)),
     };
   }
 
@@ -195,6 +234,8 @@ export class AgentService {
       title: params.title,
       mode: params.mode,
     });
+    // project 权限规则判定域（首个会话的 workspace；02 §6.2 判定链第 4 级）
+    this.permission?.setDefaultWorkspace(workspace.hash);
     const loop = new SessionTurnLoop({
       sessionId: meta.id,
       mode: meta.mode,
@@ -204,6 +245,7 @@ export class AgentService {
       systemPrompt: this.options.systemPrompt,
       tools: this.toolDeps,
       workspaceRoot: params.workspaceRoot,
+      workspaceId: workspace.hash,
       onDiagnostic: (message, err) => console.error(`[novacode/server] ${message}`, err ?? ""),
     });
     this.sessions.set(meta.id, {
@@ -310,6 +352,7 @@ export class AgentService {
       systemPrompt: this.options.systemPrompt,
       tools: this.toolDeps,
       workspaceRoot,
+      workspaceId: meta.workspaceId,
       initialHistory: replay.history,
       // 跨进程 rpc seq 连续性为 best-effort：delta 不落盘导致原 seq 不可完全重建；
       // 以持久事件/检查点的最大行号续起点，端层以 snapshot.lastSeq 为准继续消费（06 §3.3）。
@@ -359,6 +402,17 @@ export class AgentService {
       }
       this.binding.publish(event);
     };
+  }
+
+  /** permission 域方法的前置（default-allow 策略下未装配，返回结构化业务错误）。 */
+  private requirePermission(): PermissionRuntime {
+    if (this.permission === null) {
+      throw new RpcCallError(
+        "PC_GRANT_NOT_FOUND",
+        "permission domain not enabled: policy is default-allow",
+      );
+    }
+    return this.permission;
   }
 
   private requireActive(sessionId: string): SessionEntry {

@@ -23,6 +23,8 @@ export type PersistedEventName =
   | "message.completed"
   | "tool_call.started"
   | "tool_call.completed"
+  | "permission.requested"
+  | "permission.resolved"
   | "done"
   | "error";
 

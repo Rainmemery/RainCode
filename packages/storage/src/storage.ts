@@ -15,6 +15,9 @@ import { HEADER_EVENT_NAME, JSONL_SCHEMA_VERSION, NOVACODE_VERSION, type Checkpo
 import { replaySessionFile, repairDanglingTail, scanTailState, type ResumeReplay } from "./jsonl-resume.js";
 import { SessionStream, type AppendResult, type CheckpointResult } from "./jsonl-stream.js";
 import { canonicalWorkspacePath, computeWorkspaceHash, resolveDataRoot, sessionPaths } from "./paths.js";
+import { ApprovalsRepo } from "./approvals-repo.js";
+import { DecisionsRepo } from "./decisions-repo.js";
+import { RulesRepo } from "./rules-repo.js";
 import { SessionsRepo, type SessionCreateInput, type SessionMeta } from "./sessions-repo.js";
 
 export interface WorkspaceInfo {
@@ -46,6 +49,12 @@ export interface CheckpointOptions extends AppendOptions {}
 export class Storage {
   readonly dataRoot: string;
   readonly sessions: SessionsRepo;
+  /** 权限规则真源（scope=project/global；session 规则驻内存，02 §6.2）。 */
+  readonly permissionRules: RulesRepo;
+  /** 三态判定审计（append-only，05 §3.8）。 */
+  readonly permissionDecisions: DecisionsRepo;
+  /** 审批单未决态真源（05 §3.7）。 */
+  readonly approvals: ApprovalsRepo;
 
   private readonly db: SqliteDatabase;
   private readonly streams = new Map<string, SessionStream>();
@@ -54,6 +63,9 @@ export class Storage {
     this.db = db;
     this.dataRoot = dataRoot;
     this.sessions = new SessionsRepo(db);
+    this.permissionRules = new RulesRepo(db);
+    this.permissionDecisions = new DecisionsRepo(db);
+    this.approvals = new ApprovalsRepo(db);
   }
 
   /** 打开全局单库：连接 PRAGMA + 迁移在 TUI ready 前同步完成（05 §6，NFR-1）。 */

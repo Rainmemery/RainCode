@@ -24,6 +24,7 @@ const MIGRATIONS_DIR = fileURLToPath(new URL("./migrations/", import.meta.url));
 export function loadMigrationScripts(): MigrationScript[] {
   return [
     { version: 1, name: "001_init", sql: readFileSync(join(MIGRATIONS_DIR, "001_init.sql"), "utf8") },
+    { version: 2, name: "002_permission", sql: readFileSync(join(MIGRATIONS_DIR, "002_permission.sql"), "utf8") },
   ];
 }
 

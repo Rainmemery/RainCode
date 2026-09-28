@@ -16,9 +16,9 @@ import {
   buildToolCallProgressEvent,
   buildToolCallStartedEvent,
 } from "@novacode/shared";
-import type { ToolErrorCode, ToolMetadata, ToolResult } from "@novacode/shared";
+import type { CollaborationMode, ToolErrorCode, ToolMetadata, ToolResult } from "@novacode/shared";
 import type { BackgroundTaskRegistry, ToolCallRequest, ToolProgressEvent } from "@novacode/tools";
-import type { ToolPhaseDeps } from "../ports.js";
+import type { PermissionEventSink, PermissionPort, PermissionVerdict, ToolPhaseDeps } from "../ports.js";
 
 export interface PlannedToolCall {
   toolCallId: string;
@@ -31,6 +31,10 @@ export interface ToolPhaseContext {
   workspaceRoot: string;
   cwd: string;
   sessionKey: string;
+  /** 协作模式（权限判定链第 2 级，02 §6.2）。 */
+  mode: CollaborationMode;
+  /** workspaceHash（project 规则判定域）。 */
+  workspaceId: string;
   /** bash runInBackground 等后台能力（与 server tool.background.* 方法共享同一单例）。 */
   background: BackgroundTaskRegistry;
   /**
@@ -67,9 +71,9 @@ export interface ToolPhaseOptions {
   sessionId: string;
   turnId: string;
   deps: ToolPhaseDeps;
-  /** 持久事件出口（started/completed 先落 JSONL 再发布；turn-loop 单点实现）。 */
+  /** 持久事件出口（started/completed/permission.* 先落 JSONL 再发布；turn-loop 单点实现）。 */
   emitPersisted: (
-    name: "tool_call.started" | "tool_call.completed",
+    name: "tool_call.started" | "tool_call.completed" | "permission.requested" | "permission.resolved",
     build: (seq: number, ts: number) => unknown,
   ) => void;
   /** 瞬态事件出口（progress；seq 递增但不落盘，与 message.delta 同口径）。 */
@@ -136,31 +140,7 @@ export class ToolPhaseRunner {
       return { call, toolName: call.toolName, input: parsed.data, metadata: tool.metadata };
     });
 
-    // 权限判定（仅 zod 合法的调用；02 §2.4：入参非法不进权限）
-    for (const entry of entries) {
-      if (entry.blocked !== undefined) {
-        continue;
-      }
-      let verdict: "allow" | "deny";
-      try {
-        verdict = await deps.permission.evaluate({
-          toolName: entry.toolName,
-          input: entry.input,
-          metadata: entry.metadata,
-        });
-      } catch (reason: unknown) {
-        this.diag("permission evaluate crashed; deny by fail-safe", reason);
-        verdict = "deny";
-      }
-      if (verdict === "deny") {
-        entry.blocked = this.makeBlocked(entry, {
-          code: TOOL_ERROR_CODES.PERMISSION_DENIED,
-          message: `user denied execution of ${entry.toolName}`,
-        });
-      }
-    }
-
-    // 2) tool_call.started（全部调用，含待审批/被拒，06 §3.2）
+    // 2) tool_call.started（全部调用，含待审批/被拒，06 §3.2；先于 permission.requested，06 §2.10）
     entries.forEach((entry, index) => {
       this.options.emitPersisted("tool_call.started", (seq, ts) =>
         buildToolCallStartedEvent({
@@ -177,6 +157,56 @@ export class ToolPhaseRunner {
         }),
       );
     });
+
+    // 3) 权限判定（仅 zod 合法的调用；02 §2.4：入参非法不进权限）
+    //    三态收敛：allow/deny 直接落定；ask → awaitApproval 挂起等待审批闭环（02 §6.2）。
+    const sink = this.permissionSink();
+    for (const entry of entries) {
+      if (entry.blocked !== undefined) {
+        continue;
+      }
+      let verdict: PermissionVerdict;
+      try {
+        verdict = await deps.permission.evaluate({
+          toolName: entry.toolName,
+          input: entry.input,
+          metadata: entry.metadata,
+          mode: ctx.mode,
+          sessionId: this.options.sessionId,
+          turnId: this.options.turnId,
+          toolCallId: entry.call.toolCallId,
+          workspaceRoot: ctx.workspaceRoot,
+          workspaceId: ctx.workspaceId,
+          events: sink,
+        });
+      } catch (reason: unknown) {
+        this.diag("permission evaluate crashed; deny by fail-safe", reason);
+        verdict = { decision: "deny", reason: "permission evaluate crashed" };
+      }
+      if (verdict.decision === "ask") {
+        if (verdict.grantId === undefined) {
+          // 实现缺陷防御：ask 必须携带 grantId，缺失按 deny 收敛（fail-safe）
+          this.diag("permission verdict ask without grantId; deny by fail-safe");
+          verdict = { decision: "deny", reason: "ask verdict without grantId" };
+        } else {
+          let final: "allow" | "deny" = "deny";
+          try {
+            final = await this.awaitApprovalWithAbort(deps.permission, verdict.grantId, ctx.signal);
+          } catch (reason: unknown) {
+            this.diag("approval await crashed; deny by fail-safe", reason);
+          }
+          verdict = { ...verdict, decision: final };
+        }
+      }
+      if (verdict.decision === "deny") {
+        entry.blocked = this.makeBlocked(entry, {
+          code: TOOL_ERROR_CODES.PERMISSION_DENIED,
+          message: `user denied execution of ${entry.toolName}${
+            verdict.reason !== undefined ? `: ${verdict.reason}` : ""
+          }`,
+        });
+      }
+    }
 
     const settledResults = new Map<string, ToolResult>();
     for (const entry of entries) {
@@ -258,6 +288,45 @@ export class ToolPhaseRunner {
   }
 
   // ---------------------------------------------------------------------------
+
+  /** 审批事件出口（permission.requested/resolved 与 tool_call.* 共用同一 seq 分配链）。 */
+  private permissionSink(): PermissionEventSink {
+    return {
+      emit: (name, build) => {
+        this.options.emitPersisted(name, build);
+      },
+    };
+  }
+
+  /**
+   * ask 收敛点：挂起等待审批应答/超时；turn 取消（T12）时提前以 deny 返回，
+   * 由取消预检统一收敛为 CANCELLED（避免审批悬挂阻塞收束）。
+   */
+  private awaitApprovalWithAbort(
+    permission: PermissionPort,
+    grantId: string,
+    signal: AbortSignal,
+  ): Promise<"allow" | "deny"> {
+    return new Promise<"allow" | "deny">((resolvePromise) => {
+      let settled = false;
+      const settle = (value: "allow" | "deny"): void => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener("abort", onAbort);
+        resolvePromise(value);
+      };
+      const onAbort = (): void => settle("deny");
+      if (signal.aborted) {
+        settle("deny");
+        return;
+      }
+      signal.addEventListener("abort", onAbort, { once: true });
+      permission.awaitApproval(grantId).then(
+        (value) => settle(value),
+        () => settle("deny"),
+      );
+    });
+  }
 
   private plainEntry(call: PlannedToolCall, metadata: ToolMetadata): ScheduleEntry {
     return { call, toolName: call.toolName, input: parseLoose(call.argsJSON), metadata };

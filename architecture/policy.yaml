@@ -3,7 +3,9 @@
 # 波次登记进度（07-dev-plan §8.1：目录与 policy 同步登记）：
 #   第一/二波：shared / rpc / storage / llm；
 #   第三波（walking skeleton 收尾）：agent-core / server / app-cli；
-#   第四波（工具调用系统）：tools；permission / memory / mcp / app-desktop 随各自落码波次登记。
+#   第四波（工具调用系统）：tools；
+#   第五波（命令权限控制）：permission；
+#   memory / mcp / app-desktop 随各自落码波次登记。
 version: 1
 
 global:
@@ -41,9 +43,17 @@ modules:
   - id: agent-core
     roots: [packages/agent-core/src]
     managed: true
-    # 第四波起消费 tools（ToolRegistry/ToolExecutor/ToolMetadata）；permission/memory/mcp 随波次扩入
+    # 第四波起消费 tools（ToolRegistry/ToolExecutor/ToolMetadata）；memory/mcp 随波次扩入。
+    # permission 经 PermissionPort 窄端口注入（02 §0.2 AC→PERM 由 server 装配实现，不引包）。
     requires: [llm, storage, shared, tools]
     publicEntrypoints: [packages/agent-core/src/index.ts]
+  - id: permission
+    roots: [packages/permission/src]
+    managed: true
+    # 第五波（02 §0.2：PERM → SH / ST）；不 import agent-core/tools 实现（任务依赖约束，
+    # 事件出口/元数据经 shared 类型与结构投影对齐）。
+    requires: [shared, storage]
+    publicEntrypoints: [packages/permission/src/index.ts]
   - id: server
     roots: [packages/server/src]
     managed: true
@@ -51,7 +61,7 @@ modules:
     # 但第三波任务明确规定 AgentService 经 rpc 的 createServiceBinding 暴露控制面、
     # createAgentServiceNode(transport) 工厂绑定端层注入的 transport——transport 仍由端层选择，
     # server 仅引用绑定装配函数，不选择传输载体。该偏差为任务决策，后续若回归 04 原文需上移绑定装配。
-    requires: [agent-core, llm, rpc, storage, shared, tools]
+    requires: [agent-core, llm, permission, rpc, storage, shared, tools]
     publicEntrypoints: [packages/server/src/index.ts]
   - id: app-cli
     roots: [apps/cli/src]

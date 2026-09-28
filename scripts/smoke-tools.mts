@@ -3,7 +3,8 @@
  * 运行：tsx scripts/smoke-tools.mts（或 pnpm run smoke:tools）
  *
  * 链路：node:http 本地 mock OpenAI SSE 服务器（按请求次数脚本化多轮回复，tool_call delta
- * 分片下发以覆盖 llm 侧累积）→ 临时 NOVACODE_HOME → createAgentServiceNode（in-memory 绑定）
+ * 分片下发以覆盖 llm 侧累积）→ 临时 NOVACODE_HOME → createAgentServiceNode（in-memory 绑定，
+ * 显式 default-allow 权限策略——回归第四波测试审批路径，见 startScenario 注记）
  * → RPC session.send → agent-core 多轮 turn（ToolSchedule → ToolExecution → 回传）→ 断言：
  *
  * 用例 A（allow）：
@@ -122,6 +123,8 @@ async function startScenario(
     },
     systemPrompt: "You are NovaCode (smoke).",
     tools: { approval },
+    // 第五波回归申报：显式 default-allow（仅开发策略）走第四波测试审批路径，保持本 smoke 语义不变
+    permission: { policy: "default-allow" },
   });
   const client = createRpcClient({ transport: transports[0] });
   return {

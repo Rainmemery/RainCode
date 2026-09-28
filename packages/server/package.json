@@ -14,6 +14,7 @@
   "dependencies": {
     "@novacode/agent-core": "workspace:*",
     "@novacode/llm": "workspace:*",
+    "@novacode/permission": "workspace:*",
     "@novacode/rpc": "workspace:*",
     "@novacode/shared": "workspace:*",
     "@novacode/storage": "workspace:*",

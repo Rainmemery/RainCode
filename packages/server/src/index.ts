@@ -7,7 +7,18 @@
  */
 
 export { AgentService } from "./agent-service.js";
-export type { AgentServiceOptions, ProviderRuntimeConfig } from "./agent-service.js";
+export type {
+  AgentServiceOptions,
+  PermissionConfig,
+  ProviderRuntimeConfig,
+  ToolRuntimeConfig,
+} from "./agent-service.js";
+
+export { PermissionRuntime } from "./permission-runtime.js";
+export type {
+  PermissionPolicy,
+  PermissionRuntimeOptions,
+} from "./permission-runtime.js";
 
 export { createAgentServiceNode } from "./node.js";
 export type { AgentServiceNode, AgentServiceNodeOptions } from "./node.js";

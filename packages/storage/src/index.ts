@@ -20,6 +20,32 @@ export type {
   SessionStatus,
 } from "./sessions-repo.js";
 
+export { RulesRepo } from "./rules-repo.js";
+export type {
+  PermissionRuleRow,
+  PersistedRuleScope,
+  RuleAddInput,
+  RuleListFilter,
+  RuleSource,
+} from "./rules-repo.js";
+
+export { DecisionsRepo } from "./decisions-repo.js";
+export type {
+  AuditMode,
+  DecisionAppendInput,
+  DecisionListFilter,
+  PermissionDecisionRow,
+} from "./decisions-repo.js";
+
+export { ApprovalsRepo } from "./approvals-repo.js";
+export type {
+  ApprovalCreateInput,
+  ApprovalResolveInput,
+  ApprovalRow,
+  ApprovalStatus,
+  ApprovalResponse,
+} from "./approvals-repo.js";
+
 export { SessionStream } from "./jsonl-stream.js";
 export type { AppendResult, CheckpointResult, SessionStreamOptions } from "./jsonl-stream.js";
 

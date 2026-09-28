@@ -159,9 +159,28 @@ export const toolMetadataSummarySchema = z.object({
 export type ToolMetadataSummary = z.infer<typeof toolMetadataSummarySchema>;
 
 /**
+ * 规则行为（02 §6.3 behavior；05 §3.6 CHECK 同枚举）。
+ * 跨域复用标量：permission.ts 规则 schema 与审批闭环共用。
+ */
+export const ruleBehaviorSchema = z.enum(["allow", "deny", "ask"]);
+export type RuleBehavior = z.infer<typeof ruleBehaviorSchema>;
+
+/** 判定命中来源（02 §6.3 matchedBy；五级判定链层级投影）。 */
+export const matchedBySchema = z.enum([
+  "metadata",
+  "mode",
+  "session-rule",
+  "project-rule",
+  "global-rule",
+  "default",
+]);
+export type MatchedBy = z.infer<typeof matchedBySchema>;
+
+/**
  * 审批单 payload 主体（06 §3.2 permission.requested）。
  * 跨域复用结构：SessionSnapshotPayload.pendingApprovals 引用之（06 §3.2 A 组），
  * 按 06 §5 提升到 common.ts；permission 域落地后由 permission.ts re-export。
+ * ruleCandidates 为任务交付新增可选字段（参与匹配的候选规则；06 §3.2 未定义，出参宽松兼容）。
  */
 export const permissionRequestedPayloadSchema = z.object({
   grantId: z.string(),
@@ -171,8 +190,9 @@ export const permissionRequestedPayloadSchema = z.object({
   normalizedInput: z.unknown(),
   metadata: toolMetadataSummarySchema,
   mode: collaborationModeSchema,
-  matchedBy: z.enum(["metadata", "mode", "session-rule", "project-rule", "global-rule", "default"]),
+  matchedBy: matchedBySchema,
   reason: z.string(),
   expiresAt: z.number(), // epoch ms；离线审批在客户端重新可见后才参与超时判定（06 §3.3）
+  ruleCandidates: z.array(z.unknown()).optional(),
 });
 export type PermissionRequestedPayload = z.infer<typeof permissionRequestedPayloadSchema>;

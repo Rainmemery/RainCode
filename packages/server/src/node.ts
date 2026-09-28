@@ -7,7 +7,11 @@
 import { Storage } from "@novacode/storage";
 import type { IMessageTransport, RpcServiceBinding } from "@novacode/rpc";
 import { AgentService } from "./agent-service.js";
-import type { ProviderRuntimeConfig, ToolRuntimeConfig } from "./agent-service.js";
+import type {
+  PermissionConfig,
+  ProviderRuntimeConfig,
+  ToolRuntimeConfig,
+} from "./agent-service.js";
 
 export interface AgentServiceNodeOptions {
   /** 注入已打开的 Storage（生命周期由持有方管理）；缺省按 dataRoot/env 打开。 */
@@ -18,8 +22,10 @@ export interface AgentServiceNodeOptions {
   /** Provider 运行时配置；null/缺省 = 无 Provider（ping/list/resume 可用，send 报 CONFIG_PROVIDER_NOT_FOUND）。 */
   provider?: ProviderRuntimeConfig | null;
   systemPrompt?: string;
-  /** 工具系统装配（缺省内置工具集 + always-allow 审批）。 */
+  /** 工具系统装配（缺省内置工具集）。 */
   tools?: ToolRuntimeConfig;
+  /** 权限策略（缺省 normal：五级判定链 + 审批闭环；default-allow 仅开发）。 */
+  permission?: PermissionConfig;
 }
 
 export interface AgentServiceNode {
@@ -41,6 +47,7 @@ export async function createAgentServiceNode(
     provider: options.provider ?? null,
     systemPrompt: options.systemPrompt,
     tools: options.tools,
+    permission: options.permission,
   });
   const binding = service.attach(transport);
   let closed = false;

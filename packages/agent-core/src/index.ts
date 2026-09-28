@@ -37,6 +37,7 @@ export type { PersistedEventName, TransientEventName } from "./turn/loop-events.
 export type {
   LlmPort,
   ApprovePort,
+  PermissionEventSink,
   PermissionPort,
   PermissionVerdict,
   SessionEventPublisher,

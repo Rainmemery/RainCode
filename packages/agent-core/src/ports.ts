@@ -4,10 +4,11 @@
  * - LlmPort：包 @novacode/llm 的 LlmClient 结构子集（本波直接复用其请求/结果类型，接口保持薄）；
  * - StoragePort：包 @novacode/storage 的 Storage 结构子集（appendMessage / appendEvent / writeCheckpoint）；
  * - SessionEventPublisher：会话事件出口，由 server 注入（agent-core 对传输不可知，禁止 import rpc）；
- * - PermissionPort：工具权限三态判定的本波窄端口（allow/deny；ask 由实现内部经 ApprovePort 收敛，
- *   完整五级判定链与审批闭环属 packages/permission 波次，02 §6）。
+ * - PermissionPort：权限三态判定的窄端口（02 §6）。真实实现由 packages/permission 注入
+ *   （五级判定链 + 审批闭环在实现内部收敛）；ask 态经 evaluate 返回 grantId 后由
+ *   awaitApproval 挂起等待（tool-phase 收敛点），测试实现 createMetadataPermissionPort 保留。
  *
- * 真实实现（Storage / LlmClient）结构化满足端口，server 装配时直接注入，无需适配层。
+ * 真实实现（Storage / LlmClient / PermissionService）结构化满足端口，server 装配时直接注入。
  */
 import type {
   ChatCompletionStreamRequest,
@@ -19,7 +20,7 @@ import type {
   CheckpointResult,
   CheckpointState,
 } from "@novacode/storage";
-import type { MessageRecord } from "@novacode/shared";
+import type { CollaborationMode, MessageRecord } from "@novacode/shared";
 
 /** 模型流式端口（@novacode/llm LlmClient 的唯一被消费方法）。 */
 export interface LlmPort {
@@ -50,25 +51,52 @@ export interface StoragePort {
 export type SessionEventPublisher = (event: { name: string; payload: unknown }) => void;
 
 // ---------------------------------------------------------------------------
-// 工具阶段端口（本波注入实现：readOnly → allow；否则 ask → ApprovePort 应答）
+// 权限端口（02 §6 三态；ask 态收敛点 = tool-phase awaitApproval）
 // ---------------------------------------------------------------------------
 
-/** 权限判定入参（02 §6.3 ToolPermissionRequest 的窄投影；模式/规则链随 permission 包补齐）。 */
-export interface ToolPermissionRequest {
-  toolName: string;
-  input: unknown;
-  metadata: ToolMetadata;
+/** 审批持久事件出口（permission.requested / permission.resolved 先落 JSONL 再发布）。 */
+export interface PermissionEventSink {
+  emit(
+    name: "permission.requested" | "permission.resolved",
+    build: (seq: number, ts: number) => unknown,
+  ): void;
 }
 
-/** 本波三态收敛为二值：allow / deny（ask 由 ApprovePort 实现内部应答）。 */
-export type PermissionVerdict = "allow" | "deny";
+/** 权限判定入参（02 §6.3 ToolPermissionRequest 的运行期投影）。 */
+export interface ToolPermissionRequest {
+  toolName: string;
+  /** 归一化后的执行输入（与最终执行同字节，approve-what-runs）。 */
+  input: unknown;
+  metadata: ToolMetadata;
+  mode: CollaborationMode;
+  sessionId: string;
+  turnId?: string;
+  toolCallId?: string;
+  workspaceRoot: string;
+  /** workspaceHash（project 规则判定域，05 §3.6）。 */
+  workspaceId: string;
+  /** ask 态审批事件的持久化出口。 */
+  events?: PermissionEventSink;
+}
 
-/** 审批应答端口（本波测试实现：always-allow / always-deny；生产 UI 审批闭环随 permission 包）。 */
-export type ApprovePort = (request: ToolPermissionRequest) => Promise<PermissionVerdict>;
+/** 三态判定结果（02 §6.3 PermissionVerdict；matchedBy/reason 供诊断与测试断言）。 */
+export interface PermissionVerdict {
+  decision: "allow" | "ask" | "deny";
+  matchedBy?: "metadata" | "mode" | "session-rule" | "project-rule" | "global-rule" | "default";
+  ruleId?: string;
+  /** decision=ask 时由实现下发，tool-phase 经 awaitApproval 挂起收敛。 */
+  grantId?: string;
+  reason?: string;
+}
 
 export interface PermissionPort {
   evaluate(request: ToolPermissionRequest): Promise<PermissionVerdict>;
+  /** ask 态收敛：挂起等待审批应答/超时，返回最终 allow|deny（闭环事件与审计由实现负责）。 */
+  awaitApproval(grantId: string): Promise<"allow" | "deny">;
 }
+
+/** 审批测试应答端口（always-allow / always-deny；headless fail-safe 兜底用，02 §2.4）。 */
+export type ApprovePort = (request: ToolPermissionRequest) => Promise<"allow" | "deny">;
 
 /** 审批测试实现：一律 allow。 */
 export const alwaysAllowApprover: ApprovePort = () => Promise.resolve("allow");
@@ -77,17 +105,24 @@ export const alwaysAllowApprover: ApprovePort = () => Promise.resolve("allow");
 export const alwaysDenyApprover: ApprovePort = () => Promise.resolve("deny");
 
 /**
- * 默认判定链（本波最小实现）：metadata.readOnly === true → allow 快速通道（02 §6.2）；
- * 否则视为 ask → ApprovePort 应答。
+ * 测试/降级判定链（default-allow 策略的最小形态）：metadata.readOnly === true → allow 快速通道
+ * （02 §6.2）；否则视为 ask → ApprovePort 立即应答收敛（不产生审批单）。
  */
 export function createMetadataPermissionPort(approve: ApprovePort): PermissionPort {
   return {
-    evaluate(request: ToolPermissionRequest): Promise<PermissionVerdict> {
+    async evaluate(request: ToolPermissionRequest): Promise<PermissionVerdict> {
       if (request.metadata.readOnly) {
-        return Promise.resolve("allow");
+        return { decision: "allow", matchedBy: "metadata", reason: "只读工具快速通道" };
       }
-      return approve(request);
+      const final = await approve(request);
+      return {
+        decision: final,
+        matchedBy: "default",
+        reason: final === "allow" ? "测试审批实现放行" : "测试审批实现拒绝",
+      };
     },
+    // ask 不外露（evaluate 内部已收敛）；防御性 fail-safe deny
+    awaitApproval: () => Promise.resolve("deny"),
   };
 }
 

@@ -51,7 +51,8 @@ function printHelp(stream: NodeJS.WriteStream): void {
       "用法:",
       "  novacode ping                  连接本进程 Agent Service 并握手（打印协议版本）",
       '  novacode run "<prompt>"        非交互模式：创建会话 → 发送 → 流式打印 → 退出',
-      "  novacode chat                  交互 REPL（/exit /sessions /resume <id>）",
+      "                                 权限审批默认拒绝；--yes 自动允许（临时 session 规则）",
+      "  novacode chat                  交互 REPL（/exit /sessions /resume <id>；交互审批）",
       "",
       "Provider 选项（优先级: 参数 > NOVACODE_PROVIDER_* 环境变量 > config/providers.local.json）:",
       "  --base-url <url>               OpenAI 兼容 baseURL",
@@ -61,6 +62,7 @@ function printHelp(stream: NodeJS.WriteStream): void {
       "  --provider-config <path>       配置文件路径（缺省 config/providers.local.json）",
       "  --workspace <dir>              工作区目录（run/chat，缺省当前目录）",
       "  --title <title>                会话标题（run/chat）",
+      "  --yes                          run 非交互自动 allow（等价临时 session 规则，不落库）",
       "",
     ].join("\n") + "\n",
   );

@@ -5,7 +5,8 @@
 export type StorageErrorCode =
   | "SESSION_NOT_FOUND"
   | "WORKSPACE_NOT_FOUND"
-  | "MIGRATION_FAILED";
+  | "MIGRATION_FAILED"
+  | "PERM_RULE_CONFLICT";
 
 export class StorageError extends Error {
   readonly code: StorageErrorCode;

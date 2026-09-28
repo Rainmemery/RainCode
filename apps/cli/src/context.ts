@@ -18,6 +18,8 @@ export interface ParsedCliArgs {
   providerConfig?: string;
   workspace?: string;
   title?: string;
+  /** run 非交互模式自动 allow（等价临时 session 规则，不落库）。 */
+  yes?: boolean;
 }
 
 export function parseCliArgs(argv: string[]): ParsedCliArgs {
@@ -32,6 +34,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       "provider-config": { type: "string" },
       workspace: { type: "string" },
       title: { type: "string" },
+      yes: { type: "boolean" },
     },
   });
   const stringOrUndefined = (value: string | undefined): string | undefined =>
@@ -47,6 +50,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     providerConfig: stringOrUndefined(values["provider-config"]),
     workspace: stringOrUndefined(values.workspace),
     title: stringOrUndefined(values.title),
+    yes: values.yes === true,
   };
 }
 

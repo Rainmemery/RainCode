@@ -1,12 +1,9 @@
 /**
  * SessionTurnLoop：单会话 Turn 循环（02-module-design §1 / 04-architecture §1.3）。
  * 单写者：一个循环实例同时只执行一个 turn；运行中 submit 经 CommandInbox 排队。
- * 多轮主流程（T1–T15，02 §1.2.1）：用户输入落库 → [组装上下文 → 流式 → 落库 assistant 行
- * → message.completed → 无 tool_call 则 T7 收束；有则 T6 → ToolSchedule（zod + 权限判定）→
- * T9 ToolExecution（并发 ≤4，tool_call.* 事件）→ tool 结果落库（T11/T12）→ T13 回传模型继续]
- * 直至纯文本收束；maxRoundsPerTurn（默认 32）保护。message.delta / tool_call.progress 为
- * UI 瞬态不落盘（05 §4.2）；事件出口见 turn/loop-events.ts。取消：T3 / T5+T8 / T12（聚合
- * 已产生结果，不留悬挂 tool_call）；steering 注入 steeringBuffer 顺延下一轮合并。
+ * 多轮主流程（T1–T15，02 §1.2.1）：输入落库 → 组装上下文 → 流式 → ToolSchedule（zod+权限判定，
+ * ask 态经 ApprovalBroker 挂起收敛）→ T9 ToolExecution → 结果落库 → T13 回传直至纯文本收束；
+ * maxRoundsPerTurn（默认 32）保护；delta/progress 为 UI 瞬态不落盘（05 §4.2）；取消 T3/T5+T8/T12。
  */
 import { LlmAbortedError, LlmError } from "@novacode/llm";
 import type { LlmStreamEvent } from "@novacode/llm";
@@ -27,7 +24,6 @@ import type { PlannedToolCall } from "./tool-phase.js";
 
 const DEFAULT_DELTA_FLUSH_MS = 50; // message.delta 批量节流窗口（06 §3.4：≤50ms）
 const DEFAULT_MAX_ROUNDS = 32; // turn 内模型↔工具往返轮次上限（02 §1.2.1）
-
 export type TurnOutcome =
   | { status: "completed"; usage?: TokenUsage; rounds: number }
   | { status: "cancelled"; at: TurnPhase }
@@ -65,6 +61,8 @@ export interface SessionTurnLoopOptions {
   tools?: ToolPhaseDeps & { background: BackgroundTaskRegistry };
   /** 工具执行 ctx 基准（workspace 越界校验 + bash cwd；缺省 process.cwd()）。 */
   workspaceRoot?: string;
+  /** workspaceHash（权限判定链第 4 级 project 规则的判定域；缺省空串=无 project 规则域）。 */
+  workspaceId?: string;
   /** turn 内模型轮次上限（02 §1.2.1：默认 32）。 */
   maxRoundsPerTurn?: number;
 }
@@ -378,6 +376,8 @@ export class SessionTurnLoop {
         workspaceRoot,
         cwd: workspaceRoot,
         sessionKey: this.options.sessionId,
+        mode: this.options.mode,
+        workspaceId: this.options.workspaceId ?? "",
         background: tools.background,
         persistRecord: async (toolRecord) => {
           await this.serialWrite(() =>

@@ -1,6 +1,8 @@
 /**
  * novacode chat：readline 交互 REPL（最小命令集 /exit /sessions /resume <id>）。
  * 首条输入自动创建会话；/resume 切换活动会话后续输入续接该会话历史（session.resume 幂等）。
+ * 审批：permission.requested 交互四级决策（[1]仅本次 [2]本会话始终 [3]项目始终 [4]拒绝），
+ * 选项[2]写 session 规则、[3]写 project 规则、[4]respond deny（02 §6.2 审批闭环）。
  * TUI 演进点：本波按 04 ADR-02 不引入 Ink，流式打印即最小渲染形态。
  */
 import { createInterface } from "node:readline/promises";
@@ -10,13 +12,27 @@ import type { RpcClient } from "@novacode/rpc";
 import type { SessionCreateResult, SessionListResult, SessionResumeResult } from "@novacode/shared";
 import { parseCliArgs, startServiceNode, teardown } from "../context.js";
 import { sendAndStream } from "../stream.js";
+import type { ApprovalChoice } from "../stream.js";
 
 export async function chatCommand(argv: string[]): Promise<number> {
   const parsed = parseCliArgs(argv);
   const workspaceRoot = resolve(parsed.workspace ?? process.cwd());
   const context = await startServiceNode(parsed);
   const rl = createInterface({ input: process.stdin, output: process.stdout });
+  // 审批专用 readline（与主 REPL 的 question 不同时挂起；审批发生在 sendAndStream 期间）
+  const approvalRl = createInterface({ input: process.stdin, output: process.stdout });
   let currentSessionId: string | null = null;
+
+  const promptApproval = async (): Promise<ApprovalChoice> => {
+    for (;;) {
+      const answer = (await approvalRl.question("choice> ")).trim();
+      if (answer === "1") return "allow";
+      if (answer === "2") return "allow-session";
+      if (answer === "3") return "allow-project";
+      if (answer === "4") return "deny";
+      process.stdout.write("无效选项；请输入 1/2/3/4\n");
+    }
+  };
 
   try {
     await context.client.call("system.ping", {});
@@ -68,7 +84,9 @@ export async function chatCommand(argv: string[]): Promise<number> {
           currentSessionId = created.sessionId;
           process.stdout.write(`[session ${created.sessionId}]\n`);
         }
-        await sendAndStream(context.client, currentSessionId, trimmed);
+        await sendAndStream(context.client, currentSessionId, trimmed, {
+          approval: { kind: "interactive", prompt: promptApproval },
+        });
       } catch (reason: unknown) {
         printRpcError(reason);
       }
@@ -76,6 +94,7 @@ export async function chatCommand(argv: string[]): Promise<number> {
     return 0;
   } finally {
     rl.close();
+    approvalRl.close();
     await teardown(context);
   }
 }
