@@ -24,6 +24,7 @@
     "smoke:mcp": "tsx scripts/smoke-mcp.mts",
     "smoke:subagent": "tsx scripts/smoke-subagent.mts",
     "smoke:memory": "tsx scripts/smoke-memory.mts",
+    "smoke:migrations": "tsx scripts/smoke-migrations.mts",
     "smoke:remote": "tsx scripts/smoke-remote.mts"
   },
   "devDependencies": {

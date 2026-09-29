@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 命令权限控制 smoke（第五波）。
  * 运行：tsx scripts/smoke-permission.mts（或 pnpm run smoke:permission）
  *
@@ -12,7 +12,10 @@
  * c) rules.add(global allow wildcard write) → 新会话直接 allow 无审批 + 重启 service 后仍 allow
  *    （SQLite 持久化生效；session 规则驻内存不入库）；
  * d) bash 只读命令（ls）无审批直接执行；高危根命令（rm -rf …）即使存在 bash 通配 allow 规则
- *    也不被自动放行（matchedBy=default → respond deny 收敛，02 §6.4）。
+ *    也不被自动放行（matchedBy=default → respond deny 收敛，02 §6.4）；
+ * e) 规则优先级合并矩阵（T2.5 验收）：e1 project deny 覆盖 global allow（首个命中层级生效）；
+ *    e2 global deny 收敛；e3 规则清空回归 default ask；e4 project 规则 workspace 隔离
+ *    （ws1 的 project deny 不作用于 ws2 会话，对照 ws1 命中）；e5 global 规则跨 workspace 放行。
  *
  * 安全注记：高危用例取 `rm -rf ./workspace 内标记文件`（根命令 rm 的高危分类与 `rm -rf /` 完全
  * 同源，但即使判定链意外放行也只影响临时工作区内文件，smoke 绝不触碰真实系统）。
@@ -20,76 +23,24 @@
  */
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RpcCallError, createInMemoryTransportPair, createRpcClient } from "../packages/rpc/src/index.ts";
 import type { RpcClient } from "../packages/rpc/src/index.ts";
 import { createAgentServiceNode } from "../packages/server/src/index.ts";
 import { Storage } from "../packages/storage/src/index.ts";
+import { startMockLlmServer, textFrame, toolCallFrame, type MockLlmServer, type SseScript } from "./p0-lib.mts";
 import type {
   DoneEventPayload,
   PermissionDecisionsListResult,
+  PermissionDecisionRecord,
   PermissionRequestedPayload,
   PermissionRespondResult,
-  PermissionRulesAddResult,
   PermissionRulesListResult,
   ToolCallCompletedEventPayload,
 } from "../packages/shared/src/index.ts";
 
 const delay = (ms: number): Promise<void> => new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
-
-// ---------------------------------------------------------------------------
-// mock OpenAI SSE 服务器：按请求序号回放脚本（每项 = SSE 帧序列 + finish_reason）
-// ---------------------------------------------------------------------------
-
-interface SseScript {
-  frames: unknown[];
-  finish: "stop" | "tool_calls";
-}
-
-function toolCallFrame(id: string, name: string, args: string): unknown {
-  return {
-    choices: [
-      { index: 0, delta: { tool_calls: [{ index: 0, id, type: "function", function: { name, arguments: args } }] } },
-    ],
-  };
-}
-
-function textFrame(text: string): unknown {
-  return { choices: [{ index: 0, delta: { content: text } }] };
-}
-
-function startMockServer(
-  script: SseScript[],
-): Promise<{ port: number; requests: () => number; close: () => Promise<void> }> {
-  let requests = 0;
-  const server = createServer((req: IncomingMessage, res: ServerResponse) => {
-    const turn = script[Math.min(requests, script.length - 1)]!;
-    requests += 1;
-    void Promise.resolve(req).then(() => {
-      res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
-      res.write(": keep-alive\n\n");
-      for (const frame of turn.frames) {
-        res.write(`data: ${JSON.stringify(frame)}\n\n`);
-      }
-      res.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: turn.finish }] })}\n\n`);
-      res.write("data: [DONE]\n\n");
-      res.end();
-    });
-  });
-  return new Promise((resolvePromise) => {
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      const port = typeof address === "object" && address !== null ? address.port : 0;
-      resolvePromise({
-        port,
-        requests: () => requests,
-        close: () => new Promise((resolveClose) => server.close(() => resolveClose())),
-      });
-    });
-  });
-}
 
 // ---------------------------------------------------------------------------
 // turn 执行与事件捕获（订阅先于 send，06 §1.2 串行不阻塞）
@@ -151,11 +102,12 @@ async function fileExists(path: string): Promise<boolean> {
 }
 
 async function main(): Promise<void> {
-  // 脚本：12 次模型请求（A 两轮 / B 两轮 / C 首会话两轮 / C 重启会话两轮 / D-ls 两轮 / D-rm 两轮）
-  const writeA = JSON.stringify({ path: "out/file-a.txt", content: "approved by user" });
-  const writeB = JSON.stringify({ path: "out/file-b.txt", content: "should not exist" });
-  const writeC = JSON.stringify({ path: "out/file-c.txt", content: "allowed by global rule" });
-  const writeC2 = JSON.stringify({ path: "out/file-c2.txt", content: "allowed after restart" });
+  // 脚本：24 次模型请求（A 两轮 / B 两轮 / C 首会话两轮 / C 重启会话两轮 / D-ls 两轮 / D-rm 两轮 / e 组十二轮）
+  const writeA = { path: "out/file-a.txt", content: "approved by user" };
+  const writeB = { path: "out/file-b.txt", content: "should not exist" };
+  const writeC = { path: "out/file-c.txt", content: "allowed by global rule" };
+  const writeC2 = { path: "out/file-c2.txt", content: "allowed after restart" };
+  const writeE = { path: "out/file-e.txt", content: "matrix probe" };
   const script: SseScript[] = [
     { finish: "tool_calls", frames: [toolCallFrame("call_a", "write", writeA)] },
     { finish: "stop", frames: [textFrame("A：write 已获审批并执行完成。")] },
@@ -165,13 +117,27 @@ async function main(): Promise<void> {
     { finish: "stop", frames: [textFrame("C：全局规则放行，直接执行。")] },
     { finish: "tool_calls", frames: [toolCallFrame("call_c2", "write", writeC2)] },
     { finish: "stop", frames: [textFrame("C2：重启后全局规则仍放行。")] },
-    { finish: "tool_calls", frames: [toolCallFrame("call_ls", "bash", JSON.stringify({ command: "ls" }))] },
+    { finish: "tool_calls", frames: [toolCallFrame("call_ls", "bash", { command: "ls" })] },
     { finish: "stop", frames: [textFrame("D1：只读命令已直接执行。")] },
-    { finish: "tool_calls", frames: [toolCallFrame("call_rm", "bash", JSON.stringify({ command: "rm -rf ./pwn-marker.txt" }))] },
+    { finish: "tool_calls", frames: [toolCallFrame("call_rm", "bash", { command: "rm -rf ./pwn-marker.txt" })] },
     { finish: "stop", frames: [textFrame("D2：高危命令被拒绝。")] },
+    // 用例 e：合并矩阵（每轮 write 尝试 = tool_calls + stop 两请求）
+    { finish: "tool_calls", frames: [toolCallFrame("call_e1", "write", writeE)] },
+    { finish: "stop", frames: [textFrame("E1：project deny 覆盖 global allow。")] },
+    { finish: "tool_calls", frames: [toolCallFrame("call_e2", "write", writeE)] },
+    { finish: "stop", frames: [textFrame("E2：global deny 收敛。")] },
+    { finish: "tool_calls", frames: [toolCallFrame("call_e3", "write", writeE)] },
+    { finish: "stop", frames: [textFrame("E3：规则清空回归 default ask。")] },
+    { finish: "tool_calls", frames: [toolCallFrame("call_e4w2", "write", writeE)] },
+    { finish: "stop", frames: [textFrame("E4-ws2：project 规则不跨 workspace。")] },
+    { finish: "tool_calls", frames: [toolCallFrame("call_e4w1", "write", writeE)] },
+    { finish: "stop", frames: [textFrame("E4-ws1：project deny 命中。")] },
+    { finish: "tool_calls", frames: [toolCallFrame("call_e5", "write", writeE)] },
+    { finish: "stop", frames: [textFrame("E5：global 规则跨 workspace 放行。")] },
   ];
 
-  const mock = await startMockServer(script);
+  const mock: MockLlmServer = await startMockLlmServer();
+  mock.setScript(script);
   const home = await mkdtemp(join(tmpdir(), "raincode-smoke-permission-"));
   const workspace = join(home, "ws");
   await mkdir(workspace, { recursive: true });
@@ -385,7 +351,104 @@ async function main(): Promise<void> {
       console.log("用例 d2：高危根命令不被通配 allow 放行（matchedBy=default），deny 收敛并落审计");
     }
 
-    await mock.requests; // no-op 引用，防 TS 未使用告警（mock.requests 在上方用例间被隐式消费）
+    // =========================================================================
+    // 用例 e：规则优先级合并矩阵（T2.5 验收：跨层首个命中生效 / removeRule 即时生效 /
+    // project 规则 workspace 隔离 / global 规则跨 workspace）
+    // =========================================================================
+    {
+      const ePath = join(workspace, "out", "file-e.txt");
+      await rm(ePath, { force: true }).catch(() => undefined);
+      const removeRules = async (scope: string, tool: string, behavior?: string): Promise<void> => {
+        const rules = ((await client!.call("permission.rules.list", { scope, tool })) as PermissionRulesListResult)
+          .rules.filter((rule) => behavior === undefined || rule.behavior === behavior);
+        for (const rule of rules) await client!.call("permission.rules.remove", { id: rule.id });
+      };
+      const addRule = async (scope: string, tool: string, behavior: "allow" | "deny"): Promise<void> => {
+        await client!.call("permission.rules.add", { scope, tool, behavior });
+      };
+      const latestWriteRecord = async (sid: string): Promise<PermissionDecisionRecord> => {
+        const decisions = await client!.call<PermissionDecisionsListResult>("permission.decisions.list", {
+          sessionId: sid,
+          toolName: "write",
+        });
+        assert.ok(decisions.items.length > 0, "应存在新增的 write 判定记录");
+        return decisions.items[0]!; // decisions.list 按 ts DESC，首条即最新
+      };
+
+      // e1：project deny 覆盖 global allow（判定链 session→project→global 首个命中层级生效，02 §6.2）
+      await addRule("project", "write", "deny");
+      const createdE1 = await client!.call<{ sessionId: string }>("session.create", {
+        workspaceRoot: workspace,
+        title: "smoke-permission e (ws1)",
+      });
+      const sessionIdE1 = createdE1.sessionId;
+      const turnE1 = runTurn(client!, sessionIdE1, "e1 尝试写入");
+      await turnE1.done;
+      assert.equal(turnE1.requested.length, 0, "e1：project deny 命中应无审批单");
+      assert.equal(turnE1.toolCompleted[0]?.isError, true, "e1：deny 应以 isError 收敛");
+      assert.equal(await fileExists(ePath), false, "e1：deny 后不应写入文件");
+      assert.equal((await latestWriteRecord(sessionIdE1)).matchedBy, "project-rule", "e1：审计应记录 project-rule");
+      console.log("用例 e1：project deny 覆盖 global allow（首个命中层级生效）");
+
+      // e2：移除 project deny → global deny 收敛（removeRule 即时生效 + global 层命中；
+      //     global+write+无 pattern 为唯一键 05 §3.6，先删 c 遗留 allow 再加 deny）
+      await removeRules("project", "write");
+      await removeRules("global", "write", "allow");
+      await addRule("global", "write", "deny");
+      const turnE2 = runTurn(client!, sessionIdE1, "e2 尝试写入");
+      await turnE2.done;
+      assert.equal(turnE2.requested.length, 0, "e2：global deny 命中应无审批单");
+      assert.equal(turnE2.toolCompleted[0]?.isError, true, "e2：deny 应以 isError 收敛");
+      assert.equal((await latestWriteRecord(sessionIdE1)).matchedBy, "global-rule", "e2：审计应记录 global-rule");
+      console.log("用例 e2：移除 project 规则即时生效，global deny 收敛");
+
+      // e3：清空规则 → 回归 default ask（兜底链路）
+      await removeRules("global", "write", "deny");
+      const turnE3 = runTurn(client!, sessionIdE1, "e3 尝试写入");
+      const e3Requested = await turnE3.requestedPromise;
+      assert.equal(e3Requested.matchedBy, "default", "e3：清空后应回归 default ask");
+      await client!.call("permission.respond", { grantId: e3Requested.grantId, decision: "deny" });
+      await turnE3.done;
+      assert.equal(await fileExists(ePath), false, "e3：审批 deny 后不应写入");
+      console.log("用例 e3：规则清空回归 default ask（兜底）");
+
+      // e4：project 规则 workspace 隔离——ws1 的 project deny 不作用于 ws2 会话（05 §3.6 workspace_id 过滤）
+      const workspace2 = join(home, "ws2");
+      await mkdir(workspace2, { recursive: true });
+      await addRule("project", "write", "deny");
+      const createdE4 = await client!.call<{ sessionId: string }>("session.create", {
+        workspaceRoot: workspace2,
+        title: "smoke-permission e4 (ws2)",
+      });
+      const sessionIdE4 = createdE4.sessionId;
+      const turnE4w2 = runTurn(client!, sessionIdE4, "e4 ws2 尝试写入");
+      const e4w2Requested = await turnE4w2.requestedPromise;
+      assert.equal(e4w2Requested.matchedBy, "default", "e4：ws1 的 project deny 不应作用于 ws2（隔离）");
+      await client!.call("permission.respond", { grantId: e4w2Requested.grantId, decision: "deny" });
+      await turnE4w2.done;
+      const turnE4w1 = runTurn(client!, sessionIdE1, "e4 ws1 尝试写入");
+      await turnE4w1.done;
+      assert.equal(turnE4w1.requested.length, 0, "e4：对照 ws1 应命中 project deny 无审批单");
+      assert.equal(turnE4w1.toolCompleted[0]?.isError, true, "e4：ws1 deny 收敛");
+      console.log("用例 e4：project 规则 workspace 隔离（ws2 免疫 ws1 的 project deny，ws1 命中）");
+
+      // e5：global 规则跨 workspace 放行（对照隔离语义；e3 已删 global deny，add allow 无同键冲突）
+      await removeRules("project", "write");
+      await addRule("global", "write", "allow");
+      const turnE5 = runTurn(client!, sessionIdE4, "e5 ws2 尝试写入");
+      await turnE5.done;
+      assert.equal(turnE5.requested.length, 0, "e5：global allow 对 ws2 生效应无审批单");
+      assert.equal(turnE5.toolCompleted[0]?.isError, false, "e5：global allow 放行执行");
+      assert.equal(
+        await fileExists(join(workspace2, "out", "file-e.txt")),
+        true,
+        "e5：global allow 跨 workspace 放行写入",
+      );
+      assert.equal((await latestWriteRecord(sessionIdE4)).matchedBy, "global-rule", "e5：审计应记录 global-rule");
+      console.log("用例 e5：global 规则跨 workspace 放行（对照 project 隔离）");
+    }
+
+    void mock.served;
     console.log("");
     console.log(`数据根（临时 RAINCODE_HOME）: ${home}`);
     console.log("");
