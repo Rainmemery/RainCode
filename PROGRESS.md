@@ -13,11 +13,11 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 当前里程碑 | **M2 进行中**（P1：压缩 / MCP / 子代理 / 记忆 + 桌面端 Alpha） |
-| 已完成任务 | T2.1 auto-compact ✅ · T2.2 mcp 包 ✅ · T2.3 子代理 ✅ · T2.4 memory 包 ✅ · T2.5 permission 补齐 ✅ · T2.6 内核增强 ✅ · T2.7 工具增强与 P1 工具 ✅ · T2.8 rpc stdio + headless ✅ · T2.9 桌面端 Alpha ✅ · CLI 展示升级 ✅ · 产品更名 RainCode ✅ |
+| 当前里程碑 | **M2 验收完成**（T2.1~T2.10 全绿；场景 5 GUI 走查 / 场景 6 真实 MCP 样例留人工）→ 下一里程碑 M3 |
+| 已完成任务 | T2.1 auto-compact ✅ · T2.2 mcp 包 ✅ · T2.3 子代理 ✅ · T2.4 memory 包 ✅ · T2.5 permission 补齐 ✅ · T2.6 内核增强 ✅ · T2.7 工具增强与 P1 工具 ✅ · T2.8 rpc stdio + headless ✅ · T2.9 桌面端 Alpha ✅ · T2.10 M2 验收与基准留存 ✅ · CLI 展示升级 ✅ · 产品更名 RainCode ✅ |
 | 最新提交 | 见 `git log -1` |
 | 工作区状态 | clean |
-| 门禁状态 | typecheck ✅ / oxlint ✅ / architecture:check ✅（子路径入口扩展）/ 单测 104 ✅ / smoke:p0 全回归 ✅ / smoke:stdio ✅ / verify-agent-bundle ✅（electron-builder 完整 dist 留人工验收） |
+| 门禁状态 | typecheck ✅（13 项目）/ oxlint ✅ / architecture:check ✅ / 单测 105 ✅ / smoke:p0 全回归 ✅ / NFR 基准留存 `docs/benchmarks/m2-2026-09-29.md`（NFR-1~7 全达标，NFR-1 增长原因已申报） |
 | 快照日期 | 2026-09-29 |
 
 ---
@@ -38,6 +38,7 @@
 > 格式：`[日期] 任务 — 结果`（含关键产出物与提交号）。**新条目插在本节最上方。**
 
 ### M2 · P1（能力补全 + 桌面端 Alpha）
+- [2026-09-29] T2.10 M2 验收与基准留存 — a) NFR 基准留存 `docs/benchmarks/m2-2026-09-29.md`：NFR-1/2/3/5/7 复跑（NFR-2/3/5/7 达标且 2/3/5 改善或持平；**NFR-1 冷启动 949ms 相对 M1 509ms +86% 原因申报**：M2 装配面扩大 → tsx 转译链变长，绝对值仍 2.1× 余量达标，优化方向=M3 CLI 前置编译）；**NFR-4 新增达标**：`pnpm bench:mem:desktop`（新脚本：electron dist 产物 + 进程树 WorkingSet 采样 60s 预热 + 10×30s = 5 分钟空载窗口）中位数 339.8MB / 峰值 350.5MB ≤ 500MB（余量 30%，无泄漏形态）；**NFR-6 新增达标**：`packages/server/test/compact-nonblocking.test.ts` 专项单测（摘要延迟 600ms 窗口内 send 受理 <100ms + tools.list 探测 <100ms + compact.completed 收敛）+ smoke:compact A 进程级佐证；b) MCP/子代理/记忆验收样例留存：smoke:mcp / smoke:subagent / smoke:memory 全绿（smoke:p0 回归）；c) 07 §3.4 场景 1~4 自动化覆盖核对入报告 §4；场景 5（桌面 GUI 四项走查）/场景 6（真实 MCP 任务样例）标注人工验收项（`pnpm --filter @raincode/desktop dev`）。教训：NFR-5 首轮 118ms 为冷缓存波动，复跑 80ms 回归 M1 水平——基准对比以多轮复跑为准。
 - [2026-09-29] T2.9 桌面端 Alpha（Electron 三泳道）— a) 三泳道进程模型（04 §3.2）：main（窗口 + agent 子进程守护 + 字符串级帧转发，不解析业务帧）/ preload（contextBridge 最小帧通道 API）/ renderer（React 18 + Zustand + Tailwind，IpcBridgeTransport 虚拟 stdio）；b) AgentHost（纯 Node 可单测）：spawn headless Agent Service（dev = `node --import tsx raincode serve` 与 CLI 完全同入口；packaged = electron.exe + ELECTRON_RUN_AS_NODE 跑 esbuild bundle）、JSONL 帧桥 StringDecoder 分帧、意外退出自动重启（1.5s 退避 + 连续 5 次放弃 + intentional/hadTraffic 语义）、优雅 stop；c) renderer 协议层：IpcBridgeTransport（IMessageTransport kind=stdio，帧 JSON 透传）+ session-view 纯函数事件 reducer（message.delta 流式光标 / tool_call 五状态 / permission.requested 审批队列 / done 收束）+ store（ping→list→providers 引导、create/send/resume 快照重建、审批四级决策 respond、config.providers add/switch）；d) UI 组件 9 文件按 03 §6 规范：Sidebar（工作区选择器 + 会话列表）/ ChatFlow / MessageBubble（轻量 markdown）/ ToolCard（五状态灯 + 折叠展开）/ ApprovalDialog（风险徽章 + 键盘 1-4/Esc）/ InputArea（Enter 发送 + 停止）/ ProviderSettings；e) 打包形态通路：esbuild bundle agent 入口 + migrations 随包复制 + RAINCODE_MIGRATIONS_DIR/RAINCODE_APP_VERSION env 注入（bundle 内 import.meta.url shim 为空对象，storage/server 相应增加 env 覆盖，dev/CLI 路径不变）+ electron-builder Windows 配置（nsis + asarUnpack better-sqlite3）；打包产物冒烟 `node scripts/verify-agent-bundle.mjs`（entry.cjs ping/pong）PASS；electron-builder 完整 dist 留待人工验收（pnpm 符号链接 + 原生模块 rebuild 属打包机环节）；f) 工程配套：rpc 包新增 `@raincode/rpc/client` 子路径导出（stdio 依赖 node 内建不可进浏览器图）+ policy 登记式子路径入口（`specifier=path` 约定）+ architecture-check 子路径校验扩展 + rpc/shared `sideEffects:false`；单测 +3（AgentHost 帧桥/stop/崩溃重启），总 104。教训：esbuild CJS 输出把 import.meta.url shim 成空对象——任何 `new URL(rel, import.meta.url)` 的运行时文件定位在 bundle 内必须改 env 注入或构建期内联。
 - [2026-09-29] T2.8 rpc stdio + server headless — a) `StdioTransport`（rpc 包，stdio.ts）：stdin/stdout 每行一帧 JSONL（StringDecoder 跨 chunk 多字节安全分帧）；畸形行按 06 §1.2 处置（可定位 id → PARSE_ERROR response，否则丢弃 + stderr 告警，不断开）；`message.delta` 50ms 批量窗口（同 turn 同 round 同类型合并：text/argsPartial 拼接、seq/ts 取最新、tool_call id/name 最新非空；非 delta 帧发送前先 flush 保证边界事件不乱序）；stdin end 经 onInputEnd 回调交持有方收尾（transport 保持可写，在途响应 flush 后 close，不丢帧）；b) headless 入口：`raincode serve`（apps/cli host.ts 端层唯一 stdio 组装点 → createAgentServiceNode，与桌面 agent 子进程同形态，stdout 只承载协议帧、诊断全走 stderr）；c) snapshot 补推（06 §3.2/02 §6.4）：`session.resume` messages=checkpoint 后尾部增量（replay.messages 同源；内存态会话为空）+ pendingApprovals=ApprovalBroker.pendingGrantsOf（settled=false 按会话过滤，normalizedInput 与事件同脱敏，超时器不受补推影响）；单测 +13（rpc stdio 9 + broker pending 4），总 101；`smoke:stdio`（A 握手门禁 VERSION_MISMATCH / B ping / C 畸形带 id PARSE_ERROR / D 畸形无 id 丢弃不断开 + stderr 告警 / E create→resume 幂等快照字段齐全 / F stdin end 优雅退出 0）入回归。教训：畸形行正则可定位 id 的口径先于 JSON.parse 成败（06 §1.2「可定位 id」含 parse 失败行）。
 - [2026-09-29] T2.7 工具增强与 P1 工具 — a) 单测设施落地：node:test + tsx（零依赖，`pnpm test`），现 88 用例；b) 并发上限可配 maxConcurrency（默认 4）+ 截断提示增强（omitted 字节 + 分页建议）；c) 越界升级 ask 全链（02 §5.4）：tool-phase 路径预检 → permission 强制 ask（跳过 readOnly 快速通道，宁可误问不可漏拦）→ 获批后 pathPolicy allowEscaped 精确放行该绝对路径；d) `web_fetch`（首个 network 工具，needsApproval 从严）：SSRF 强制黑名单（IPv4 11 段 + IPv6 环回/链路本地/ULA/IPv4-mapped + DNS 解析后逐 IP 校验 + localhost 拒 + DNS 失败 fail-closed + 重定向逐跳重校验上限 5 跳，TOOL_SSRF_BLOCKED）+ HTML 剥标签/实体解码转文本 + maxBytes 截断；e) `ask_user_question`：复用审批闭环（broker.askAndWait 专用方法 + respond answerText 载荷 + permission.resolved 透传），提问即挂起等答、应答即工具结果同 turn 续答（偏差申报：02 L322 的 T14 awaiting_user 状态机简化为同构最小实现；单问题+choices≤6；不进五级判定链，无副作用）；CLI stream.ts 提问卡渲染与序号应答；协议：06 §2.2/§3.2 answerText + §4.3 错误码 + §7.2 capability + §7.5 v1.2；`smoke:p1tools`（SSRF 端到端拦截 / headless TOOL_UNAVAILABLE fail-safe）入回归；testing.md 新增单测节。教训：内置工具数断言（smoke-tools 8→10）随清单扩展需同步。
@@ -79,11 +80,15 @@
 
 ---
 
-## 5. 下一步队列（M2 收尾，按 07-dev-plan §3.2 顺序）
+## 5. 下一步队列（M3，按 07-dev-plan §4 顺序）
 
-> 取任务时**必须**回读 `docs/07-dev-plan.md` 对应任务行获取完整验收标准。
+> 取任务时**必须**回读 `docs/07-dev-plan.md` §4 对应任务行获取完整验收标准；M2 收尾人工项（桌面 GUI 走查 / 真实 MCP 任务样例 / electron-builder dist 打包）可随时穿插执行。
 
-1. **T2.10 M2 验收与基准留存** — NFR-4（桌面端空载内存）/ NFR-6（压缩异步不阻塞）测量留存、MCP / 子代理 / 记忆验收样例、§3.4 验收清单全绿；桌面端 GUI 人工走查（03 §6 逐界面 + 双端同会话数据 + electron-builder dist 人工打包验证）。
+1. **T3.1 容器沙箱（SB-3/4）** — 容器级执行环境（Docker/Podman 探测 + 受控执行）
+2. **T3.2 远程执行复用 Executor 抽象**（依赖 T3.1）
+3. **T3.3~T3.7** — 技能加载 / 插件化 / 编排增强 / 服务器管理（详见 07 §4.1）
+4. **T3.8 Web 界面** — WebSocketTransport + ws.auth + seq 缺口补偿
+5. **T3.9 桌面端补齐 + M3 全量对齐验收** — NFR-1~7 全量重测留存
 
 ---
 

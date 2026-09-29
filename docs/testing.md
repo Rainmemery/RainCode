@@ -21,9 +21,9 @@ node:test 原生测试运行器 + tsx 加载器（根 package.json `pnpm test`�
 
 | 命令 | 覆盖范围 |
 | --- | --- |
-| `pnpm test` | tools：truncate（字节预算头 70/尾 30 + 截断提示）、path-guard（workspace 越界）、executor-concurrency（只读并行上限/写串行）、ssrf（黑名单网段/localhost/scheme/重定向跳板/DNS mock）、web-fetch（HTML→文本转换/JSON 原文/非 2xx/maxBytes 截断/重定向跟随与拦截）、ask-user（通道应答/TOOL_UNAVAILABLE/TOOL_PERMISSION_DENIED）；permission：path-escape（越界强制 ask + 审批闭环）、ask-user-broker（respond answerText ↔ askAndWait/resolved 事件透出）、broker-pending（pendingGrantsOf 会话过滤/脱敏/收敛消失/可选字段透传）；rpc：stdio（跨 chunk 分帧/JSONL 出站/畸形行 PARSE_ERROR 与丢弃不断开/delta 窗口合并与边界 flush/跨 turn 不合并/tool_call argsPartial 拼接/close flush/onInputEnd 半开语义）；desktop：agent-host（stdout 帧行转发/sendLine/优雅 stop intentional/崩溃自动重启）；agent-core：tool-phase-path-escape（越界预检→放行钩子全链） |
+| `pnpm test` | tools：truncate（字节预算头 70/尾 30 + 截断提示）、path-guard（workspace 越界）、executor-concurrency（只读并行上限/写串行）、ssrf（黑名单网段/localhost/scheme/重定向跳板/DNS mock）、web-fetch（HTML→文本转换/JSON 原文/非 2xx/maxBytes 截断/重定向跟随与拦截）、ask-user（通道应答/TOOL_UNAVAILABLE/TOOL_PERMISSION_DENIED）；permission：path-escape（越界强制 ask + 审批闭环）、ask-user-broker（respond answerText ↔ askAndWait/resolved 事件透出）、broker-pending（pendingGrantsOf 会话过滤/脱敏/收敛消失/可选字段透传）；rpc：stdio（跨 chunk 分帧/JSONL 出站/畸形行 PARSE_ERROR 与丢弃不断开/delta 窗口合并与边界 flush/跨 turn 不合并/tool_call argsPartial 拼接/close flush/onInputEnd 半开语义）；desktop：agent-host（stdout 帧行转发/sendLine/优雅 stop intentional/崩溃自动重启）；server：compact-nonblocking（**NFR-6 专项**：摘要延迟窗口内 send 受理 <100ms + tools.list 探测 <100ms + compact.completed 收敛）；agent-core：tool-phase-path-escape（越界预检→放行钩子全链） |
 
-**预期输出**：`# pass N`（当前 104）且 `# fail 0`，退出码 0。提交前与门禁一起全绿。
+**预期输出**：`# pass N`（当前 105）且 `# fail 0`，退出码 0。提交前与门禁一起全绿。
 
 ## 3. 冒烟测试
 
@@ -54,7 +54,7 @@ pnpm smoke:p0   # 内部已并复 smoke:e2e / smoke:tools / smoke:permission / s
 
 ## 4. NFR 基准测试
 
-实现入口 [scripts/bench.mts](../scripts/bench.mts)（共享逻辑 [scripts/bench-lib.mts](../scripts/bench-lib.mts)），口径对照 01-PRD §6.1 性能指标基线表。
+实现入口 [scripts/bench.mts](../scripts/bench.mts)（共享逻辑 [scripts/bench-lib.mts](../scripts/bench-lib.mts)），口径对照 01-PRD §6.1 性能指标基线表。M2 起新增 [scripts/bench-mem-desktop.mts](../scripts/bench-mem-desktop.mts)（NFR-4 桌面端空载内存：先 `pnpm --filter @raincode/desktop build` 构建 dist 产物，再 `pnpm bench:mem:desktop`，electron 窗口会真实弹出，60s 预热 + 10×30s 采样进程树 WorkingSet）。基准结果留存：`docs/benchmarks/m1-2026-09-28.md`（M1）与 `docs/benchmarks/m2-2026-09-29.md`（M2，含 NFR-1 增长原因申报与 NFR-6 单测口径）。
 
 | 命令 | 指标 | M1 实测（详见 [benchmarks/m1-2026-09-28.md](benchmarks/m1-2026-09-28.md)） |
 | --- | --- | --- |
