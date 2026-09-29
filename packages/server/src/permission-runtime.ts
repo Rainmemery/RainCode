@@ -20,6 +20,7 @@ import type {
   PermissionRulesListResult,
   PermissionRulesRemoveParams,
   PermissionRulesRemoveResult,
+  PermissionRequestedPayload,
 } from "@raincode/shared";
 import { Storage } from "@raincode/storage";
 import {
@@ -110,6 +111,11 @@ export class PermissionRuntime {
     if (this.defaultWorkspaceHash === null) {
       this.defaultWorkspaceHash = workspaceId;
     }
+  }
+
+  /** 会话未决审批补推（T2.8 snapshot.pendingApprovals）；default-allow 无装配时为空集。 */
+  pendingGrantsOf(sessionId: string): PermissionRequestedPayload[] {
+    return this.broker.pendingGrantsOf(sessionId);
   }
 
   // ---------------------------------------------------------------------------

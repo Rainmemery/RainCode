@@ -22,6 +22,7 @@ import type {
   SessionSteerParams,
   SystemShutdownParams,
 } from "@raincode/shared";
+import type { MessageRecord } from "@raincode/shared";
 import { RpcCallError, createServiceBinding } from "@raincode/rpc";
 import type { IMessageTransport, RpcMethodHandler, RpcServiceBinding } from "@raincode/rpc";
 import { Storage, StorageError } from "@raincode/storage";
@@ -430,7 +431,8 @@ export class AgentService {
       workspaceHash: meta.workspaceId, mode: meta.mode, workspaceRoot, pending: null,
     };
     this.sessions.set(meta.id, entry);
-    return { sessionId: meta.id, snapshot: await this.snapshotOf(meta.id, entry) };
+    // 断线重连补推（06 §2.1/§3.4）：messages=checkpoint 后尾部增量（NFR-5），快照与 loop 装配同源 replay
+    return { sessionId: meta.id, snapshot: await this.snapshotOf(meta.id, entry, replay.messages) };
   }
 
   // system 域（06 §2.8）
@@ -458,13 +460,9 @@ export class AgentService {
     // AC-11（06 §2.3）：缺省绑定 = config.activeProviderId（switch 后新会话走新活跃项），
     // 无 active 或 active 即主 Provider 时回退主客户端（CLI 直传 provider 场景兼容）。
     const requested = providerId === undefined ? this.config.providersList().activeProviderId : providerId;
-    if (requested === undefined || requested === null || requested === this.providerId) {
-      return this.llm;
-    }
+    if (requested === undefined || requested === null || requested === this.providerId) return this.llm;
     const cached = this.llmByProvider.get(requested);
-    if (cached !== undefined) {
-      return cached;
-    }
+    if (cached !== undefined) return cached;
     const runtime = this.config.providerRuntime(requested); // 未知 id → CONFIG_PROVIDER_NOT_FOUND
     if (runtime === null) {
       throw new RpcCallError("CONFIG_PROVIDER_NOT_FOUND", `provider not found: ${requested}`);
@@ -494,7 +492,8 @@ export class AgentService {
     throw new RpcCallError("SESSION_NOT_FOUND", `session not found or not resumed: ${sessionId}`);
   }
 
-  private async snapshotOf(sessionId: string, entry: SessionEntry): Promise<SessionSnapshotPayload> {
-    return buildSessionSnapshot({ storage: this.options.storage, sessionId, lastSeq: entry.loop.lastEventSeq, phase: entry.loop.phase, model: this.providerModel, activeProviderId: this.providerId, maxContextTokens: this.maxContextTokens });
+  /** T2.8 补推（06 §3.2/02 §6.4）：messages=checkpoint 后尾部增量（内存态会话为空）；pendingApprovals=未决审批。 */
+  private async snapshotOf(sessionId: string, entry: SessionEntry, tailMessages: MessageRecord[] = []): Promise<SessionSnapshotPayload> {
+    return buildSessionSnapshot({ storage: this.options.storage, sessionId, lastSeq: entry.loop.lastEventSeq, phase: entry.loop.phase, model: this.providerModel, activeProviderId: this.providerId, maxContextTokens: this.maxContextTokens, messages: tailMessages, pendingApprovals: this.permission?.pendingGrantsOf(sessionId) ?? [] });
   }
 }

@@ -11,7 +11,7 @@ import {
   buildPermissionRequestedEvent,
   buildPermissionResolvedEvent,
 } from "@raincode/shared";
-import type { ToolMetadataSummary } from "@raincode/shared";
+import type { ToolMetadataSummary, PermissionRequestedPayload } from "@raincode/shared";
 import { PC_ERROR_CODES, PermissionError } from "./errors.js";
 import { AuditLogger } from "./audit-logger.js";
 import type {
@@ -206,6 +206,32 @@ export class ApprovalBroker {
       if (!grant.settled) count += 1;
     }
     return count;
+  }
+
+  /**
+   * 会话未决审批补推投影（T2.8 / 06 §3.2 snapshot.pendingApprovals、02 §6.4）：
+   * 仅返回指定会话 settled=false 的审批单，normalizedInput 与 permission.requested 事件同脱敏策略；
+   * 审批单超时器继续运行——补推副本不延长也不重置超时（06 §3.3 离线超时语义由端层呈现）。
+   */
+  pendingGrantsOf(sessionId: string): PermissionRequestedPayload[] {
+    const payloads: PermissionRequestedPayload[] = [];
+    for (const grant of this.grants.values()) {
+      if (grant.settled || grant.sessionId !== sessionId) continue;
+      payloads.push({
+        grantId: grant.grantId,
+        ...(grant.turnId !== undefined && { turnId: grant.turnId }),
+        ...(grant.toolCallId !== undefined && { toolCallId: grant.toolCallId }),
+        toolName: grant.toolName,
+        normalizedInput: sanitizeForEvent(grant.input),
+        metadata: grant.metadata,
+        mode: grant.mode,
+        matchedBy: grant.matchedBy,
+        reason: grant.reason,
+        expiresAt: grant.expiresAt,
+        ...(grant.ruleCandidates !== undefined && { ruleCandidates: grant.ruleCandidates }),
+      });
+    }
+    return payloads;
   }
 
   /** 停机清理：清超时器（不收敛状态——由持久层超时器兜底置 expired）。 */

@@ -95,7 +95,8 @@ export async function compactSession(entry: { loop: SessionTurnLoop }): Promise<
   return { compactionId: ticket.compactionId, epoch: ticket.epoch, alreadyRunning: ticket.alreadyRunning };
 }
 
-/** session.snapshot 投影（06 §3.2；内存态会话增量消息为空，端层被认为已跟进 lastSeq）。 */
+/** session.snapshot 投影（06 §3.2）：messages 仅含末尾 checkpoint 之后的尾部增量（NFR-5）；
+ * 内存态新会话增量为空（端层被认为已跟进 lastSeq）；pendingApprovals 为会话未决审批补推（02 §6.4）。 */
 export async function buildSessionSnapshot(input: {
   storage: Storage;
   sessionId: string;
@@ -104,6 +105,8 @@ export async function buildSessionSnapshot(input: {
   model: string;
   activeProviderId: string;
   maxContextTokens: number;
+  messages?: MessageRecord[];
+  pendingApprovals?: SessionSnapshotPayload["pendingApprovals"];
 }): Promise<SessionSnapshotPayload> {
   const { storage } = input;
   const meta = await storage.sessions.get(input.sessionId);
@@ -116,8 +119,8 @@ export async function buildSessionSnapshot(input: {
       tokens: (meta?.inputTokens ?? 0) + (meta?.outputTokens ?? 0),
       maxTokens: input.maxContextTokens,
     },
-    messages: [],
-    pendingApprovals: [],
+    messages: input.messages ?? [],
+    pendingApprovals: input.pendingApprovals ?? [],
   };
 }
 
