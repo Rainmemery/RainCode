@@ -160,6 +160,8 @@ export class ApprovalBroker {
       decision: input.decision,
       always: input.always ?? false,
       ...(input.scope !== undefined && { scope: input.scope }),
+      // ask_user_question 通道（T2.7 P1）：应答文本随 resolution 透传到事件与 askAndWait 等待侧
+      ...(input.answerText !== undefined && { answerText: input.answerText }),
       by: "user",
       respondLatencyMs: Date.now() - grant.requestedAt,
     });
@@ -173,6 +175,22 @@ export class ApprovalBroker {
     }
     const resolution = await grant.waiter;
     return resolution.decision;
+  }
+
+  /**
+   * ask_user_question 专用等待（T2.7 P1 最小侵入形态：wait() 签名不动，独立方法承载应答文本）。
+   * decision=allow 且 respond 带非空 answerText → { answerText }；deny/超时/空应答 → { cancelled: true }。
+   */
+  async askAndWait(grantId: string): Promise<{ answerText: string } | { cancelled: true }> {
+    const grant = this.grants.get(grantId);
+    if (grant === undefined) {
+      throw new PermissionError(PC_ERROR_CODES.GRANT_NOT_FOUND, `grant not found: ${grantId}`);
+    }
+    const resolution = await grant.waiter;
+    if (resolution.decision === "allow" && typeof resolution.answerText === "string" && resolution.answerText.length > 0) {
+      return { answerText: resolution.answerText };
+    }
+    return { cancelled: true };
   }
 
   grant(grantId: string): ApprovalGrantRecord | null {
@@ -237,6 +255,8 @@ export class ApprovalBroker {
         ...(resolution.scope !== undefined && { scope: resolution.scope }),
         by: resolution.by,
         respondLatencyMs: resolution.respondLatencyMs,
+        // ask_user_question 通道（T2.7 P1）：应答文本透出给 UI（出参宽松，旧端忽略）
+        ...(resolution.answerText !== undefined && { answerText: resolution.answerText }),
       }),
     );
 

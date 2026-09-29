@@ -170,7 +170,7 @@ export type RpcFrame =
 
 | 方法 | 请求 params | 返回 result | 业务错误码 | 说明 |
 | --- | --- | --- | --- | --- |
-| `permission.respond` | `{ grantId, decision: "allow"\|"deny", always?: boolean, scope?: "session"\|"project"\|"global" }` | `{ resolved, alreadyResolved?, decision?, ruleId? }` | `PERM_GRANT_NOT_FOUND` | 审批闭环应答（02 §6.2）；grantId 单消费——首个 respond 生效，其余返回 `alreadyResolved: true` 与既有决策（02 §6.4）；`always: true` 按 `scope` 落规则（默认 project），对应 UI「本会话/始终允许」四级决策（03 §5.2） |
+| `permission.respond` | `{ grantId, decision: "allow"\|"deny", always?: boolean, scope?: "session"\|"project"\|"global", answerText?: string }` | `{ resolved, alreadyResolved?, decision?, ruleId? }` | `PERM_GRANT_NOT_FOUND` | 审批闭环应答（02 §6.2）；grantId 单消费——首个 respond 生效，其余返回 `alreadyResolved: true` 与既有决策（02 §6.4）；`always: true` 按 `scope` 落规则（默认 project），对应 UI「本会话/始终允许」四级决策（03 §5.2）；`answerText` 为 ask_user_question 通道（T2.7 P1）的自由文本应答——仅 decision=allow 且 toolName=ask_user_question 有语义，经 `permission.resolved` 事件与等待侧透出（不落 approvals 表）；新增可选请求字段属需探测级（§7.1），capability `permission.respond.answer`（§7.2） |
 | `permission.rules.list` | `{ scope?: RuleScope, tool?: string }` | `{ rules: PermissionRule[] }` | — | 列出权限规则；PermissionRule 结构同 02 §6.3 |
 | `permission.rules.add` | `{ scope, tool, pattern?, behavior: "allow"\|"deny"\|"ask" }` | `{ rule: PermissionRule }` | `PERM_RULE_INVALID` | pattern 仅对 bash 求值器有意义（非 bash 工具配 pattern 拒绝）；高危根命令的 allow 通配不在此拒绝，由匹配期强制降级 ask（02 §6.4） |
 | `permission.rules.remove` | `{ id }` | `{ removed }` | `PERM_RULE_NOT_FOUND` | 即时生效——allow-always 误授权的撤销入口（02 §6.4） |
@@ -381,7 +381,7 @@ payload 惯例：所有事件 payload 继承 §3.1 的 `EventBase`；下表只�
 | `tool_call.progress` | `{ toolCallId, stream?: "stdout"\|"stderr"\|"generic", text?, elapsedMs }` | 长耗时执行周期性产出（500ms 窗口节流） | 卡片内进度与输出尾部 |
 | `tool_call.completed` | `{ toolCallId, isError, error?: { code, message }, contentPreview?, truncated, durationMs, display? }` | 单个调用收敛（含被拒/超时；02 ToolResult 投影） | 卡片终态（✓/✗/⚠）；内核聚合（同源消费） |
 | `permission.requested` | `{ grantId, turnId?, toolCallId?, toolName, normalizedInput, metadata, mode, matchedBy, reason, expiresAt }` | 判定链输出 ask，生成审批单（02 §6.2 AP 节点） | 审批条/审批弹窗（CLI 数字键 1–4 / 桌面四级决策，03 §5.2） |
-| `permission.resolved` | `{ grantId, decision: "allow"\|"deny", always?, scope?, by: "user"\|"timeout"\|"offline", ruleId?, respondLatencyMs }` | respond 到达 / 审批超时（默认 120s 视为 deny）/ 客户端离线兜底 | 审批 UI 折叠为单行结果；审计展示 |
+| `permission.resolved` | `{ grantId, decision: "allow"\|"deny", always?, scope?, by: "user"\|"timeout"\|"offline", ruleId?, respondLatencyMs, answerText? }` | respond 到达 / 审批超时（默认 120s 视为 deny）/ 客户端离线兜底；`answerText` 为 ask_user_question 通道的用户应答文本（T2.7 P1 可选扩展，出参宽松旧端忽略） | 审批 UI 折叠为单行结果；审计展示 |
 
 审批闭环示例：
 
@@ -506,8 +506,9 @@ flush 边界保证：`message.completed`、`tool_call.*`、`permission.*`、`tur
 | 6 memory | `MEMORY_WRITE_CONFLICT` | 并发修改检测，写入放弃（02 §7.4） |
 | 6 memory | `MEMORY_ENTRY_NOT_FOUND` | entryId 不存在 |
 | 7 tool | `TOOL_UNKNOWN` | 工具名不存在（02 §2.4 `unknown_tool` 的直接调用投影） |
-| 7 tool | `TOOL_UNAVAILABLE` | MCP 工具所在 server 不可用（`mcp_unavailable` 投影） |
+| 7 tool | `TOOL_UNAVAILABLE` | MCP 工具所在 server 不可用（`mcp_unavailable` 投影）；ask_user_question 无交互通道（headless fail-safe，02 §2.4）同码收敛 |
 | 7 tool | `TOOL_PERMISSION_ASK` | 判定为 ask 且 `waitApproval=false`（或客户端不可达走 deny 兜底，02 §2.4） |
+| 7 tool | `TOOL_SSRF_BLOCKED` | web_fetch 目标命中内网/环回/保留段黑名单（含重定向跳板），直接拒绝并注明原因（02 §2.4 SSRF 防护） |
 | 7 tool | `TOOL_INPUT_RETRY_EXCEEDED` | 单 turn 内工具参数校验失败次数超限（受限重试上限 3），强制收束 |
 | 8 system | — | system 域无专属业务码；停机中再收请求返回 `CANCELLED` |
 
@@ -662,7 +663,8 @@ capability 命名约定：`<domain>.<feature>`（小写点分），登记于 `sy
   "session.attachments",      // session.send 支持附件
   "subagent.spawn",           // 子代理域可用（P1 落地前置位）
   "mcp.transport.http",       // MCP HTTP transport 可用（P1）
-  "memory.promote"            // 记忆晋升接口可用
+  "memory.promote",           // 记忆晋升接口可用
+  "permission.respond.answer" // permission.respond 支持可选 answerText（ask_user_question 通道，T2.7 P1）
 ] }
 ```
 
@@ -700,6 +702,7 @@ capability 命名约定：`<domain>.<feature>`（小写点分），登记于 `sy
 | --- | --- | --- |
 | 1.0 | 2026-09-28 | 初版：八域控制面 43 方法、数据面 17 事件、错误码分段、schema 分域组织、三绑定映射 |
 | 1.1 | 2026-09-29 | T2.6 内核增强：新增 `session.rename` / `session.fork` / `session.usage` / `config.providers.switch` 四方法（向后兼容，minor+1）；Provider 增可选单价字段 `inputPricePerMtok`/`outputPricePerMtok`（AC-10 估算口径）；`session.created` 事件增可选 `kind`/`parentSessionId`；tool 域新增错误码 `TOOL_INPUT_RETRY_EXCEEDED`（AC-12 受限重试上限 3） |
+| 1.2 | 2026-09-29 | T2.7 P1 工具（minor+1）：`permission.respond` 增可选请求字段 `answerText`（ask_user_question 通道应答文本；需探测级，登记 capability `permission.respond.answer`）+ `permission.resolved` 事件增可选 `answerText`；tool 域新增错误码 `TOOL_SSRF_BLOCKED`（web_fetch SSRF 黑名单拒绝，02 §2.4）；内置工具清单新增 `web_fetch` / `ask_user_question`（02 §2.3 P1，经 tool.tools.list 可见） |
 
 ---
 

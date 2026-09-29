@@ -158,4 +158,31 @@ export interface ToolPhaseDeps {
   registry: ToolRegistry;
   executor: ToolExecutor;
   permission: PermissionPort;
+  /**
+   * ask_user_question 交互通道（T2.7 P1；可选——缺省即 headless，工具以 TOOL_UNAVAILABLE 收敛）。
+   * 真实实现由 server 装配（PermissionRuntime.askUser = ApprovalBroker 闭环复用），与权限
+   * evaluate/awaitApproval 判定链独立（提问本身无副作用，不进五级判定）。
+   */
+  askUser?: AskUserChannel;
 }
+
+// ---------------------------------------------------------------------------
+// ask_user_question 通道（T2.7 P1；02 §1.4 L322 简化落地的端口投影）
+// ---------------------------------------------------------------------------
+
+/** 提问请求（tool-phase 由 ToolExecutionContext 注入会话归属与事件出口）。 */
+export interface AskUserChannelRequest {
+  sessionId: string;
+  /** workspaceHash（approvals 表归属列，05 §3.7）。 */
+  workspaceId: string;
+  question: string;
+  choices?: string[];
+  /** ask 态审批事件的持久化出口（permission.requested/resolved 与工具事件共用 seq 链）。 */
+  events?: PermissionEventSink;
+}
+
+/** 应答形态：正常文本应答；或 cancelled（deny/超时/空应答——工具侧收敛为 TOOL_PERMISSION_DENIED）。 */
+export type AskUserAnswer = { answerText: string } | { cancelled: true };
+
+/** ask_user_question 通道（server 注入；approval-broker.request + askAndWait 的薄封装）。 */
+export type AskUserChannel = (request: AskUserChannelRequest) => Promise<AskUserAnswer>;

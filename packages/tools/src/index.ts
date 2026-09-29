@@ -31,8 +31,15 @@ export { editTool } from "./handlers/edit.js";
 export { globTool } from "./handlers/glob.js";
 export { grepTool } from "./handlers/grep.js";
 export { bashTool } from "./handlers/bash.js";
+export { webFetchTool, htmlToText } from "./handlers/web-fetch.js";
+export { askUserTool } from "./handlers/ask-user.js";
 export { createTodoReadTool, createTodoWriteTool } from "./handlers/todo.js";
 export { TodoStore } from "./todo-store.js";
+
+// SSRF 守卫（02 §2.4；web_fetch 强制底线，单测断言用）
+export { assertPublicHttpUrl } from "./ssrf.js";
+export type { SsrfLookupDeps } from "./ssrf.js";
+export type { AskUserAnswer, AskUserRequest } from "./tool.js";
 
 // 沙箱（02 §5）
 export { execLocal, killProcessTree, resolveShell, spawnLocal } from "./sandbox/local-executor.js";

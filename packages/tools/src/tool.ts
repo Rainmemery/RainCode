@@ -22,6 +22,25 @@ export interface ToolProgressEvent {
   text: string;
 }
 
+// ---------------------------------------------------------------------------
+// ask_user_question 通道（T2.7 P1；02 §1.4 L322 简化落地：等答与权限审批同构）
+// ---------------------------------------------------------------------------
+
+/** ask_user_question 提问请求（execute 由 ctx 填充会话归属；通道实现据此路由审批单）。 */
+export interface AskUserRequest {
+  question: string;
+  choices?: string[];
+  /** 会话键（turn 路径 = sessionId；审批单归属域）。 */
+  sessionId: string;
+}
+
+/**
+ * 应答形态：正常文本应答；或 cancelled（deny/超时/空应答——工具侧收敛为 TOOL_PERMISSION_DENIED）。
+ * 偏差注记（交付报告申报）：02 L322 原设计为 T14 收束 turn（awaiting_user）+ session.control/respond
+ * 开新 turn 续答；本实现复用审批闭环，应答即工具结果在同一 turn 内续答（见 handlers/ask-user.ts）。
+ */
+export type AskUserAnswer = { answerText: string } | { cancelled: true };
+
 export interface ToolExecutionContext {
   /** 贯穿取消（02 §1.4 T12：中断信号广播到工具执行器）。 */
   signal: AbortSignal;
@@ -35,6 +54,11 @@ export interface ToolExecutionContext {
   background: BackgroundTaskRegistry;
   /** 越界路径放行钩子（权限层接入点，path-guard；缺省不放行）。 */
   pathPolicy?: PathPolicyHook;
+  /**
+   * ask_user_question 交互通道（T2.7 P1；agent-core tool-phase 从 ToolPhaseDeps 注入）。
+   * 缺省 = headless/无 UI，ask_user_question 以 TOOL_UNAVAILABLE 收敛（02 §2.4 fail-safe）。
+   */
+  askUser?: (question: AskUserRequest) => Promise<AskUserAnswer>;
   /** 进度回调（长耗时工具周期性产出）。 */
   onProgress?: (event: ToolProgressEvent) => void;
 }

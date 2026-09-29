@@ -1,7 +1,7 @@
 /**
- * 内置工具装配（02 §2.3 清单 P0 子集）：read / write / edit / glob / grep / bash /
- * todo_write / todo_read（web_fetch / ask_user_question 属 P1，随后续波次）。
- * 全部 async、可取消、路径经 path-guard 校验；metadata 按 02 §2.3 逐个标注。
+ * 内置工具装配（02 §2.3 清单）：read / write / edit / glob / grep / bash / todo_write / todo_read +
+ * P1 波次（T2.7）web_fetch / ask_user_question。
+ * 全部 async、可取消、路径经 path-guard 校验（web_fetch 走 SSRF 守卫）；metadata 按 02 §2.3 逐个标注。
  */
 import { ToolRegistry } from "./registry.js";
 import { BackgroundTaskRegistry } from "./sandbox/background.js";
@@ -12,6 +12,8 @@ import { editTool } from "./handlers/edit.js";
 import { globTool } from "./handlers/glob.js";
 import { grepTool } from "./handlers/grep.js";
 import { bashTool } from "./handlers/bash.js";
+import { webFetchTool } from "./handlers/web-fetch.js";
+import { askUserTool } from "./handlers/ask-user.js";
 import { createTodoWriteTool, createTodoReadTool } from "./handlers/todo.js";
 
 export interface BuiltinToolSet {
@@ -40,6 +42,8 @@ export function createBuiltinTools(options: CreateBuiltinToolsOptions = {}): Bui
   registry.register(globTool);
   registry.register(grepTool);
   registry.register(bashTool);
+  registry.register(webFetchTool);
+  registry.register(askUserTool);
   registry.register(createTodoWriteTool(todos));
   registry.register(createTodoReadTool(todos));
   return { registry, background, todos };

@@ -58,6 +58,11 @@ export interface ApprovalRespondInput {
   decision: "allow" | "deny";
   always?: boolean;
   scope?: RuleScope;
+  /**
+   * ask_user_question 通道的自由文本应答（T2.7 P1；06 §2.2 可选请求字段）。
+   * 仅随 permission.resolved 事件与 askAndWait 等待侧透出（approvals 表不加列）。
+   */
+  answerText?: string;
 }
 
 /** 审批收敛结果（respond / 超时统一形态）。 */
@@ -67,6 +72,8 @@ export interface ApprovalResolution {
   scope?: RuleScope;
   by: "user" | "timeout" | "offline";
   respondLatencyMs: number;
+  /** ask_user_question 通道的用户应答文本（透传；deny/timeout 收敛无此字段）。 */
+  answerText?: string;
 }
 
 /** 审批单记录（broker 内部快照；审计与 always 落规则的数据源）。 */

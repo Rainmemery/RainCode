@@ -82,6 +82,9 @@ export { projectRegistry } from "./subagent/registry-projection.js";
 export type {
   LlmPort,
   ApprovePort,
+  AskUserAnswer,
+  AskUserChannel,
+  AskUserChannelRequest,
   PermissionEventSink,
   PermissionPort,
   PermissionVerdict,

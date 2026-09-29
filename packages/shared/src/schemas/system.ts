@@ -23,6 +23,9 @@ export const V1_CAPABILITIES = [
   "subagent.spawn",
   "mcp.transport.http",
   "memory.promote",
+  // T2.7 P1（06 §7.1 需探测级）：permission.respond 增可选请求字段 answerText
+  // （ask_user_question 通道），客户端经 system.ping 探测后启用提问卡渲染。
+  "permission.respond.answer",
 ] as const satisfies readonly string[];
 
 // ---------------------------------------------------------------------------

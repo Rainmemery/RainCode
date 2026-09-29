@@ -93,6 +93,12 @@ export const permissionRespondParamsSchema = z.strictObject({
   decision: z.enum(["allow", "deny"]),
   always: z.boolean().optional(),
   scope: ruleScopeSchema.optional(),
+  /**
+   * ask_user_question 通道的自由文本应答（T2.7 P1；capability: permission.respond.answer）。
+   * 仅 decision=allow 且 toolName=ask_user_question 的审批单有语义：应答文本经
+   * permission.resolved 事件与 askAndWait 等待侧透出（approvals 表不加列，不落库）。
+   */
+  answerText: z.string().optional(),
 });
 export type PermissionRespondParams = z.infer<typeof permissionRespondParamsSchema>;
 
@@ -181,6 +187,8 @@ export const permissionResolvedEventPayloadSchema = eventBaseSchema.extend({
   by: z.enum(["user", "timeout", "offline"]),
   ruleId: z.string().optional(),
   respondLatencyMs: z.number(),
+  /** ask_user_question 通道的用户应答文本（T2.7 P1 可选扩展；出参宽松，旧端忽略）。 */
+  answerText: z.string().optional(),
 });
 export type PermissionResolvedEventPayload = z.infer<typeof permissionResolvedEventPayloadSchema>;
 

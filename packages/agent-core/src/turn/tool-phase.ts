@@ -18,7 +18,7 @@ import {
 } from "@raincode/shared";
 import type { CollaborationMode, ToolErrorCode, ToolMetadata, ToolResult } from "@raincode/shared";
 import { guardPath, normalizeForGuard } from "@raincode/tools";
-import type { BackgroundTaskRegistry, ToolCallRequest, ToolProgressEvent } from "@raincode/tools";
+import type { AskUserRequest, BackgroundTaskRegistry, ToolCallRequest, ToolProgressEvent } from "@raincode/tools";
 import type { PermissionEventSink, PermissionPort, PermissionVerdict, ToolPhaseDeps } from "../ports.js";
 
 export interface PlannedToolCall {
@@ -302,6 +302,12 @@ export class ToolPhaseRunner {
           allowEscaped: (target: string): boolean =>
             approvedEscapes.some((abs) => normalizeForGuard(target) === normalizeForGuard(abs)),
         },
+      }),
+      // T2.7 P1 ask_user_question 通道：会话归属+审批事件出口注入；deps.askUser 缺省 → 工具 TOOL_UNAVAILABLE
+      ...(deps.askUser !== undefined && {
+        askUser: (question: AskUserRequest) => deps.askUser!({ sessionId: ctx.sessionKey, workspaceId: ctx.workspaceId,
+          question: question.question, ...(question.choices !== undefined && { choices: question.choices }),
+          events: this.permissionSink() }),
       }),
       onToolProgress: (event: ToolProgressEvent & { toolCallId: string }) => {
         this.publishThrottledProgress(event, progressThrottleMs);

@@ -243,7 +243,8 @@ async function main(): Promise<void> {
     try {
       await scenario.client.call("system.ping", {});
       const toolsList = await scenario.client.call<ToolToolsListResult>("tool.tools.list", {});
-      assert.equal(toolsList.tools.length, 8, "tool.tools.list 应返回 8 个内置工具");
+      // T2.7 P1 起内置清单含 web_fetch / ask_user_question（02 §2.3 全 10 项）
+      assert.equal(toolsList.tools.length, 10, "tool.tools.list 应返回 10 个内置工具");
       assert.ok(toolsList.tools.every((tool) => tool.source === "builtin"));
 
       const created = await scenario.client.call<{ sessionId: string }>("session.create", {

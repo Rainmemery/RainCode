@@ -29,7 +29,7 @@ import type { SessionResume } from "@raincode/storage";
 import { createBuiltinTools, ToolExecutor } from "@raincode/tools";
 import type { BackgroundTaskRegistry, ToolRegistry } from "@raincode/tools";
 import { alwaysAllowApprover, alwaysDenyApprover, createMetadataPermissionPort } from "@raincode/agent-core";
-import type { CompactionOptions, LlmPort, PermissionPort, SessionEventPublisher, ToolPhaseDeps, TurnOutcome } from "@raincode/agent-core";
+import type { AskUserChannelRequest, CompactionOptions, LlmPort, PermissionPort, SessionEventPublisher, ToolPhaseDeps, TurnOutcome } from "@raincode/agent-core";
 import { ConfigDomain } from "./config-domain.js";
 import { ConfigStore } from "./config-store.js";
 import { ToolDomain } from "./tool-domain.js";
@@ -155,6 +155,7 @@ export class AgentService {
       executor: new ToolExecutor({ registry }),
       permission,
       background: builtin.background,
+      ...(this.permission !== null && { askUser: (q: AskUserChannelRequest) => this.permission!.askUser(q) }), // T2.7 P1 ask_user_question 通道（ApprovalBroker 闭环复用；default-allow 无装配 → TOOL_UNAVAILABLE）
     };
     this.toolDomain = new ToolDomain({ registry, background: builtin.background });
     // MCP 域（02 §3）：命名空间工具进同一 registry；连接异步建立，状态经全局事件

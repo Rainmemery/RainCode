@@ -31,13 +31,16 @@ import {
   RulesManager,
 } from "@raincode/permission";
 import type { PermissionPort } from "@raincode/agent-core";
-import type { ToolPermissionRequest } from "@raincode/agent-core";
+import type { AskUserAnswer, AskUserChannelRequest, ToolPermissionRequest } from "@raincode/agent-core";
 
 export type PermissionPolicy = "default-allow" | "normal";
 
 export interface PermissionRuntimeOptions {
   approvalTimeoutMs?: number;
 }
+
+/** ask_user_question 审批单的固定 toolName（事件 payload 按 toolName 渲染提问卡）。 */
+const ASK_USER_TOOL_NAME = "ask_user_question";
 
 const DIAG_PREFIX = "[raincode/permission]";
 
@@ -119,10 +122,35 @@ export class PermissionRuntime {
         decision: params.decision,
         ...(params.always !== undefined && { always: params.always }),
         ...(params.scope !== undefined && { scope: params.scope }),
+        // ask_user_question 通道（T2.7 P1；capability: permission.respond.answer）：应答文本透传
+        ...(params.answerText !== undefined && { answerText: params.answerText }),
       });
     } catch (err: unknown) {
       throw toRpcError(err);
     }
+  }
+
+  /**
+   * ask_user_question 交互通道（T2.7 P1；agent-core ToolPhaseDeps.askUser 装配源）。
+   * 复用 ApprovalBroker 闭环（单消费/超时 deny/事件持久化），等待侧走 askAndWait 取应答文本；
+   * 与权限判定链独立（提问无副作用，不进五级判定/审计 decision 链——审计仅记录 ask 收敛）。
+   */
+  async askUser(request: AskUserChannelRequest): Promise<AskUserAnswer> {
+    const { grantId } = await this.broker.request({
+      sessionId: request.sessionId,
+      workspaceId: request.workspaceId || this.defaultWorkspaceHash || "",
+      toolName: ASK_USER_TOOL_NAME,
+      input: {
+        question: request.question,
+        ...(request.choices !== undefined && { choices: request.choices }),
+      },
+      mode: "normal",
+      matchedBy: "default",
+      reason: "ask_user_question 等待用户应答（交互通道，非权限审批）",
+      metadata: { readOnly: true, destructive: false, sideEffectScope: "none", riskLevel: "low" },
+      ...(request.events !== undefined && { sink: request.events }),
+    });
+    return this.broker.askAndWait(grantId);
   }
 
   async listRules(params: PermissionRulesListParams): Promise<PermissionRulesListResult> {

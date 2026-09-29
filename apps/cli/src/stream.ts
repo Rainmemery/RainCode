@@ -9,6 +9,7 @@
  * （auto-session / deny / interactive）→ permission.resolved 单行结果。
  * 供 run / chat 两个命令复用；Ink TUI 化时迁移为渲染组件。
  */
+import { createInterface } from "node:readline/promises";
 import { TOOL_ERROR_CODES } from "@raincode/shared";
 import type { RpcClient } from "@raincode/rpc";
 import type {
@@ -140,6 +141,12 @@ async function handleApprovalRequest(
   mode: ApprovalMode,
 ): Promise<void> {
   try {
+    // ask_user_question（T2.7 P1）：提问卡渲染 + 应答文本经 answerText 回传（capability:
+    // permission.respond.answer）；chat/run 共用本路径零额外改动
+    if (payload.toolName === "ask_user_question") {
+      await handleAskUserQuestion(client, payload, mode);
+      return;
+    }
     if (mode.kind === "auto-session") {
       // --yes：自动 allow，等价临时 session 规则（不落库，本会话内同调用免审批）
       await client.call("permission.respond", {
@@ -178,6 +185,84 @@ async function handleApprovalRequest(
   } catch (reason: unknown) {
     const code = reason instanceof Error && "code" in reason ? String((reason as { code: unknown }).code) : "";
     process.stderr.write(`[permission] respond failed${code.length > 0 ? ` (${code})` : ""}\n`);
+  }
+}
+
+/**
+ * ask_user_question 提问卡（T2.7 P1）：渲染问题 + 选项列表 + 自由输入提示；
+ * 应答经 respond allow + answerText 回传（审批单 toolName 固定 ask_user_question）。
+ * deny/未应答/非交互模式 → decision deny（工具侧收敛 TOOL_PERMISSION_DENIED；02 §2.4 fail-safe）。
+ */
+async function handleAskUserQuestion(
+  client: RpcClient,
+  payload: PermissionRequestedPayload,
+  mode: ApprovalMode,
+): Promise<void> {
+  const question = extractQuestion(payload.normalizedInput);
+  if (mode.kind !== "interactive" || question === null) {
+    // 提问必须由人类应答：--yes 自动放行无法生成应答文本，按 deny 收敛并说明
+    process.stderr.write(
+      `\n${err.warn("⚠ 用户提问")} ${payload.toolName}\n` +
+        `${err.dim("[ask_user] 非交互模式无法应答；使用 chat 命令交互应答")}\n`,
+    );
+    await client.call("permission.respond", { grantId: payload.grantId, decision: "deny" });
+    return;
+  }
+  process.stdout.write(
+    `\n${out.warn(`❓ 提问 ${payload.toolName}`)} ${question.question}\n` +
+      (question.choices !== null
+        ? `${question.choices.map((choice, index) => `  [${String(index + 1)}] ${choice}`).join("\n")}\n` +
+          `${out.dim("  输入选项序号，或直接输入自由文本（空行 = 放弃应答）")}\n`
+        : `${out.dim("  自由文本应答（空行 = 放弃应答）")}\n`),
+  );
+  const answerText = await readAnswerLine(question.choices);
+  if (answerText === null) {
+    // 未应答（空行）→ deny：等待侧按 cancelled 收敛（工具侧 TOOL_PERMISSION_DENIED）
+    await client.call("permission.respond", { grantId: payload.grantId, decision: "deny" });
+    return;
+  }
+  await client.call("permission.respond", {
+    grantId: payload.grantId,
+    decision: "allow",
+    answerText,
+  });
+}
+
+/** permission.requested.normalizedInput → { question, choices? }（形状不符返回 null → fail-safe deny）。 */
+function extractQuestion(normalizedInput: unknown): { question: string; choices: string[] | null } | null {
+  if (typeof normalizedInput !== "object" || normalizedInput === null) return null;
+  const raw = normalizedInput as { question?: unknown; choices?: unknown };
+  if (typeof raw.question !== "string" || raw.question.length === 0) return null;
+  const choices =
+    Array.isArray(raw.choices) && raw.choices.every((choice) => typeof choice === "string")
+      ? raw.choices
+      : null;
+  return { question: raw.question, choices };
+}
+
+/**
+ * 单行应答读取（一次性 readline，terminal=false 不与 chat 主 rl 的 raw mode 冲突；
+ * 审批发生在主 question resolve 之后，同一时刻无并发挂起）。选序号则映射选项文本。
+ */
+async function readAnswerLine(choices: string[] | null): Promise<string | null> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: false });
+  try {
+    for (;;) {
+      const line = (await rl.question("answer> ")).trim();
+      if (line.length === 0) return null;
+      const numeric = /^\d+$/.exec(line);
+      if (numeric !== null && choices !== null) {
+        const index = Number.parseInt(line, 10) - 1;
+        if (index >= 0 && index < choices.length) {
+          return choices[index]!;
+        }
+        process.stdout.write(out.warn("无效序号；请输入选项序号或自由文本\n"));
+        continue;
+      }
+      return line;
+    }
+  } finally {
+    rl.close();
   }
 }
 
