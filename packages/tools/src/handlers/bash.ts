@@ -6,7 +6,7 @@
  * 元数据：scope=machine / risk=high / needsApproval=true（02 §6.2 高危根命令逐次审批）。
  */
 import { z } from "zod";
-import { TOOL_ERROR_CODES } from "@novacode/shared";
+import { TOOL_ERROR_CODES } from "@raincode/shared";
 import type { Tool, ToolOutput, ToolExecutionContext } from "../tool.js";
 import { ToolExecutionError } from "../executor.js";
 import { guardPath } from "../path-guard.js";

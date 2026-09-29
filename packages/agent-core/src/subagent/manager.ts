@@ -10,8 +10,8 @@
  *   TURN_MAX_ROUNDS_EXCEEDED→Stopped（S4 超轮次截断，已产出内容保留）；其余 failed→Failed（S3）；
  * - 状态机防御：终态迁移一次性，非法迁移忽略 + 诊断输出（onDiagnostic 可注入，风格同 turn-loop）。
  */
-import { ulid } from "@novacode/storage";
-import type { SubagentId, TokenUsage } from "@novacode/shared";
+import { ulid } from "@raincode/storage";
+import type { SubagentId, TokenUsage } from "@raincode/shared";
 import { errorMessage } from "../turn/round-helpers.js";
 import type { TurnAdmission, TurnOutcome } from "../ports.js";
 import { previewText, SubagentMirror } from "./mirror.js";
@@ -395,7 +395,7 @@ export class SubagentManager {
 
   private diag(message: string, err?: unknown): void {
     const sink = this.options.onDiagnostic ?? console.error;
-    sink(`[novacode/agent-core subagent] ${message}`, err ?? "");
+    sink(`[raincode/agent-core subagent] ${message}`, err ?? "");
   }
 }
 

@@ -1,6 +1,6 @@
 # 贡献指南（CONTRIBUTING）
 
-感谢关注 NovaCode！本项目为 vibecoding 产物（AI 协作设计与开发），欢迎以同样的人机协作方式参与贡献。
+感谢关注 RainCode！本项目为 vibecoding 产物（AI 协作设计与开发），欢迎以同样的人机协作方式参与贡献。
 
 ## 1. 开发环境
 
@@ -44,7 +44,7 @@ pnpm smoke:p0                                            # 功能冒烟
 ## 4. 安全红线
 
 - **API Key 等凭据绝不入库**：本地配置使用 `config/*.local.json`（已被 .gitignore 隔离）或 `file:` 密钥引用；任何输出、日志、测试断言中不得出现明文密钥。
-- 测试一律使用临时 `NOVACODE_HOME` 与本机回环 mock，禁止污染真实用户数据。
+- 测试一律使用临时 `RAINCODE_HOME` 与本机回环 mock，禁止污染真实用户数据。
 
 ## 5. Issue 与 PR
 

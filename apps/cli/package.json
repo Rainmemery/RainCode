@@ -1,19 +1,19 @@
 {
-  "name": "@novacode/cli",
+  "name": "@raincode/cli",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "bin": {
-    "novacode": "./src/index.ts"
+    "raincode": "./src/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "novacode": "tsx src/index.ts"
+    "raincode": "tsx src/index.ts"
   },
   "dependencies": {
-    "@novacode/rpc": "workspace:*",
-    "@novacode/server": "workspace:*",
-    "@novacode/shared": "workspace:*"
+    "@raincode/rpc": "workspace:*",
+    "@raincode/server": "workspace:*",
+    "@raincode/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -71,12 +71,12 @@ export function runMigrations(db: SqliteDatabase, scripts: MigrationScript[]): v
 }
 
 /**
- * 打开全局单库（~/.novacode/novacode.db）并执行 §3.0 连接初始化 PRAGMA + 迁移。
+ * 打开全局单库（~/.raincode/raincode.db）并执行 §3.0 连接初始化 PRAGMA + 迁移。
  * 同步、毫秒级（NFR-1）；WAL 支撑多进程读 + 单写者。
  */
 export function openDatabase(dataRoot: string): SqliteDatabase {
   mkdirSync(dataRoot, { recursive: true });
-  const db = new BetterSqlite3(join(dataRoot, "novacode.db"));
+  const db = new BetterSqlite3(join(dataRoot, "raincode.db"));
   db.pragma("journal_mode = WAL");
   db.pragma("synchronous = NORMAL");
   db.pragma("foreign_keys = ON");

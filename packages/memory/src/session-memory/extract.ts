@@ -9,10 +9,10 @@
  *   新条目 confidence ≥ 全部相关旧者 → 插入新条目并 supersede 全部旧者（superseded_by=新 id）；
  *   存在 confidence 更高的旧者 → 丢弃新条目、touch 最高置信旧者。
  */
-import { memoryKindSchema } from "@novacode/shared";
-import type { MemoryEntry, MemoryKind } from "@novacode/shared";
-import type { MemoryRepo, SettingsRepo } from "@novacode/storage";
-import type { MessageRecord } from "@novacode/shared";
+import { memoryKindSchema } from "@raincode/shared";
+import type { MemoryEntry, MemoryKind } from "@raincode/shared";
+import type { MemoryRepo, SettingsRepo } from "@raincode/storage";
+import type { MessageRecord } from "@raincode/shared";
 
 /** 抽取幂等键前缀（settings 键 `memory.extracted.<sessionId>`，05 §5.4 末行）。 */
 export const MEMORY_EXTRACT_IDEMPOTENCY_PREFIX = "memory.extracted.";

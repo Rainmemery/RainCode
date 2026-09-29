@@ -2,7 +2,7 @@ import {
   EVENT_SCHEMAS,
   METHOD_SCHEMAS,
   SYSTEM_ERROR_CODES,
-} from "@novacode/shared";
+} from "@raincode/shared";
 import type { ZodError } from "zod";
 import { formatZodIssues } from "./validate.js";
 import type { IMessageTransport, RpcFrame, Unsubscribe } from "./transport.js";
@@ -71,7 +71,7 @@ export function createRpcClient(options: RpcClientOptions): RpcClient {
   const eventListeners = new Map<string, Set<(payload: unknown) => void>>();
 
   function warn(...args: unknown[]): void {
-    console.error("[novacode/rpc client]", ...args);
+    console.error("[raincode/rpc client]", ...args);
   }
 
   function rejectAllPending(err: RpcCallError): void {

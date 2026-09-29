@@ -1,5 +1,5 @@
 /**
- * @novacode/tools —— 工具调用系统（04-architecture §2.1）。
+ * @raincode/tools —— 工具调用系统（04-architecture §2.1）。
  *
  * 本包唯一 publicEntrypoint（architecture/policy.yaml）；依赖方向 tools→shared。
  * 职责（02-module-design §2 / §5）：工具契约与注册表、执行器、内置工具集、进程级沙箱。

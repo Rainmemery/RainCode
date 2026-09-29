@@ -1,5 +1,5 @@
 {
-  "name": "@novacode/agent-core",
+  "name": "@raincode/agent-core",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,10 +12,10 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@novacode/llm": "workspace:*",
-    "@novacode/shared": "workspace:*",
-    "@novacode/storage": "workspace:*",
-    "@novacode/tools": "workspace:*",
+    "@raincode/llm": "workspace:*",
+    "@raincode/shared": "workspace:*",
+    "@raincode/storage": "workspace:*",
+    "@raincode/tools": "workspace:*",
     "zod": "^3.25.0"
   },
   "devDependencies": {

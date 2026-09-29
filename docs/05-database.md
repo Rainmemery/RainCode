@@ -1,4 +1,4 @@
-# NovaCode 数据库设计（05-database）
+# RainCode 数据库设计（05-database）
 
 | 项目 | 内容 |
 | --- | --- |
@@ -20,9 +20,9 @@
 
 | 载体 | 物理位置 | 承载内容 | 角色 | 选型理由 |
 | --- | --- | --- | --- | --- |
-| SQLite（better-sqlite3，WAL） | `~/.novacode/novacode.db`（单库） | 会话元数据与索引、工具调用索引、子代理运行记录、权限规则、审批单、审计、记忆条目、MCP 运行态、运行期 KV、迁移版本 | 结构化可查询数据的唯一真源；其中会话侧统计/索引列为 JSONL 投影（可重算） | 同步 API 免连接池、单文件嵌入即用、毫秒级打开（NFR-1）；WAL 支撑多进程读 + 单写者；ADR-01 |
+| SQLite（better-sqlite3，WAL） | `~/.raincode/raincode.db`（单库） | 会话元数据与索引、工具调用索引、子代理运行记录、权限规则、审批单、审计、记忆条目、MCP 运行态、运行期 KV、迁移版本 | 结构化可查询数据的唯一真源；其中会话侧统计/索引列为 JSONL 投影（可重算） | 同步 API 免连接池、单文件嵌入即用、毫秒级打开（NFR-1）；WAL 支撑多进程读 + 单写者；ADR-01 |
 | JSONL 追加流 | `workspaces/<hash>/sessions/<id>/events.jsonl` | 会话全部事实：消息、工具调用与结果、审批与控制事件、checkpoint | **会话历史唯一真源**（ADR-09）；SQLite 中会话侧数据皆为其索引/投影 | 追加写天然抗强杀（NFR-7）；逐行即分帧；增量重放满足恢复 ≤1s（NFR-5） |
-| Markdown | `<workspace>/.novacode/MEMORY.md`、`agents/*.md` | 项目记忆第一层（人机共维护）、子代理 profile | 文件即真源（02 §7.4「以文件为准」） | 人工可读可编辑、可入版本管理；Agent 只做读-改-写 |
+| Markdown | `<workspace>/.raincode/MEMORY.md`、`agents/*.md` | 项目记忆第一层（人机共维护）、子代理 profile | 文件即真源（02 §7.4「以文件为准」） | 人工可读可编辑、可入版本管理；Agent 只做读-改-写 |
 | 文件（配置） | `config.json`、`mcp.json`、`secrets.json`（降级） | 配置层级（04 §5.1/5.2）、MCP 服务器清单、凭据降级存储 | 配置真源；SQLite 不复制配置（防双写） | zod strict 校验 + 三级就近覆盖；API Key 默认走系统凭据库，文件只存 `apiKeyRef`（04 §5.3） |
 
 ### 1.2 真源与投影原则
@@ -42,12 +42,12 @@
 
 ## 2. 目录布局
 
-### 2.1 全局数据根 `~/.novacode/`
+### 2.1 全局数据根 `~/.raincode/`
 
 ```text
-~/.novacode/
-├── novacode.db                    # 全局 SQLite 单库（WAL，§3）
-├── novacode.db-wal / -shm         # WAL 伴生文件
+~/.raincode/
+├── raincode.db                    # 全局 SQLite 单库（WAL，§3）
+├── raincode.db-wal / -shm         # WAL 伴生文件
 ├── config.json                    # 全局配置（04 §5.2，含 providers / activeProviderId / compaction）
 ├── mcp.json                       # 全局 MCP 服务器清单（04 §5.1，结构=02 §3.3 McpServerConfig）
 ├── secrets.json                   # 可选：凭据降级存储（0600，用户显式选择，04 §5.3）
@@ -67,13 +67,13 @@
 └── logs/                          # 运行日志（脱敏后滚动，保留 7 天；凭据类信息永不落盘，04 §5.3）
 ```
 
-CLI 与桌面端共享同一份 `~/.novacode/`（03-ui-design：本地单源，双端切换无同步成本）。
+CLI 与桌面端共享同一份 `~/.raincode/`（03-ui-design：本地单源，双端切换无同步成本）。
 
-### 2.2 项目级目录 `<workspace>/.novacode/`
+### 2.2 项目级目录 `<workspace>/.raincode/`
 
 ```text
 <workspace>/
-└── .novacode/
+└── .raincode/
     ├── config.json                # 项目级配置（覆盖全局，04 §5.1 层级②）
     ├── mcp.json                   # 项目级 MCP 清单（就近覆盖全局同名 serverKey）
     ├── MEMORY.md                  # 项目记忆 L1，唯一真源（02 §7.1/7.3 章节模板）
@@ -81,7 +81,7 @@ CLI 与桌面端共享同一份 `~/.novacode/`（03-ui-design：本地单源，�
         └── <name>.md
 ```
 
-项目级目录只放**人可读/人可编辑**的文件；会话事实与结构化数据全部在 `~/.novacode/workspaces/<hash>/`，保证「仓库内点目录干净、数据可整体清理」。
+项目级目录只放**人可读/人可编辑**的文件；会话事实与结构化数据全部在 `~/.raincode/workspaces/<hash>/`，保证「仓库内点目录干净、数据可整体清理」。
 
 ### 2.3 workspaceHash 生成规则
 
@@ -386,7 +386,7 @@ CREATE TABLE settings (
 
 ### 4.1 文件与命名
 
-- 路径：`~/.novacode/workspaces/<workspaceHash>/sessions/<sessionId>/events.jsonl`。
+- 路径：`~/.raincode/workspaces/<workspaceHash>/sessions/<sessionId>/events.jsonl`。
 - 单会话单文件，UTF-8，每行一条记录、行内不含裸换行（JSON 字符串转义保证）。
 - 写者唯一：持有该会话写权的 runtime（02 单写者语义）；多端订阅不产生第二个写者（04 §3.2）。
 
@@ -403,7 +403,7 @@ CREATE TABLE settings (
 流式 delta（`text_delta` 等）**不落盘**：它们是 UI 瞬态事件，落盘粒度是单条消息（01-PRD §6.3 / 04 NFR-7），delta 重放既无必要也会撑爆文件。
 
 ```jsonl
-{"v":1,"type":"event","seq":1,"ts":1769587200000,"name":"session.created","payload":{"workspaceHash":"9f1c3a2b7d4e5f60","root":"d:/work/api","novacodeVersion":"0.1.0"}}
+{"v":1,"type":"event","seq":1,"ts":1769587200000,"name":"session.created","payload":{"workspaceHash":"9f1c3a2b7d4e5f60","root":"d:/work/api","raincodeVersion":"0.1.0"}}
 {"v":1,"type":"message","seq":2,"ts":1769587203500,"message":{"id":"msg_01J9","role":"user","content":[{"type":"text","text":"修复 login 401"}],"attachments":[]}}
 {"v":1,"type":"message","seq":3,"ts":1769587205200,"message":{"id":"msg_01JA","role":"assistant","content":[{"type":"text","text":"先看仓库状态。"},{"type":"tool_call","toolCallId":"tc_01","name":"bash","arguments":{"command":"git status"}}]}}
 {"v":1,"type":"message","seq":4,"ts":1769587208100,"message":{"id":"msg_01JB","role":"tool","toolCallId":"tc_01","content":"On branch main","isError":false}}
@@ -449,7 +449,7 @@ CREATE TABLE settings (
 
 | 层 | 载体 | 关系 |
 | --- | --- | --- |
-| L1 项目记忆 | `<workspace>/.novacode/MEMORY.md` | 文件唯一真源，启动全文注入（读单文件，保冷启动 ≤ 2s） |
+| L1 项目记忆 | `<workspace>/.raincode/MEMORY.md` | 文件唯一真源，启动全文注入（读单文件，保冷启动 ≤ 2s） |
 | L2 会话记忆 | SQLite `memory_entries` | 会话结束 / compact 时抽取落盘；只经 `search()` 按需进入上下文 |
 | L3 自动抽取（P2） | memory_entries + MEMORY.md 草案 | 单向晋升：entries →（用户确认）→ MEMORY.md，无自动反向覆盖（02 §7.2） |
 
@@ -520,7 +520,7 @@ LIMIT :limit;
 - **破坏性变更规则**：
   - 加列：`ALTER TABLE ... ADD COLUMN`（必须带 DEFAULT 或允许 NULL）。
   - 改列 / 删约束 / 改语义：统一走**重建表**（CREATE 新表 → INSERT…SELECT 搬数 → DROP 旧表 → RENAME），放同一事务；不依赖 SQLite ≥ 3.35 的 DROP COLUMN，统一模式降低分叉。
-  - 破坏性脚本头部以 `-- destructive` 标记声明；执行前自动复制 `novacode.db` → `backups/pre-migration-v<NN>-<ts>.db`（保留最近 3 份），备份失败则不执行迁移。
+  - 破坏性脚本头部以 `-- destructive` 标记声明；执行前自动复制 `raincode.db` → `backups/pre-migration-v<NN>-<ts>.db`（保留最近 3 份），备份失败则不执行迁移。
   - 代码期望版本高于库版本且待执行迁移含破坏性脚本时，提示用户确认后再继续（个人工具，交互确认成本可接受）。
 - **启动时迁移流程**：
   1. 打开数据库，执行 §3.0 PRAGMA；
@@ -544,7 +544,7 @@ LIMIT :limit;
 | orphan 隔离区 | 永久保留，用户手动处理 | 不阻塞任何功能 |
 
 **用户手动清理入口**（执行均收敛到 storage 端口，方法注册进 04 §1.2 既有方法族）：
-- CLI：`novacode cleanup audit`（清过期审计）、`cleanup archived-sessions`（清归档包）、`cleanup memory --hash <hash>`（清某项目 memory_entries）、`cleanup workspace --hash <hash>`（删 `workspaces/<hash>/` 目录 + 登记行 + 其下各域表行，审计行保留）。
+- CLI：`raincode cleanup audit`（清过期审计）、`cleanup archived-sessions`（清归档包）、`cleanup memory --hash <hash>`（清某项目 memory_entries）、`cleanup workspace --hash <hash>`（删 `workspaces/<hash>/` 目录 + 登记行 + 其下各域表行，审计行保留）。
 - 桌面端：设置页「存储管理」提供同四项操作与占用统计（数据量来自各表 COUNT 与目录扫描）。
 - workspace 清理用显式逐表删除而非 FK 级联：审计表无外键（§3.8），语义上「业务数据可清、审计留痕」。
 
@@ -576,7 +576,7 @@ LIMIT :limit;
 | 02 §6.3 | decisions 审计记录清单（时间/会话/工具/脱敏输入/decision/matchedBy/grantId/respondLatencyMs） | `permission_decisions`，逐字段对应 | ✓ |
 | 02 §7.3 | MemoryEntry（kind/content/refs/confidence/source/createdAt/lastSeenAt） | `memory_entries`，逐字段对应 | ✓ |
 | 02 §7.4 | 矛盾条目标记 superseded、confidence 召回阈值 | `memory_entries.status/superseded_by` + 查询条件 | ✓ |
-| 02 §7.1/7.3 | MEMORY.md 章节模板与唯一真源 | `<workspace>/.novacode/MEMORY.md` 文件 | ✓ |
+| 02 §7.1/7.3 | MEMORY.md 章节模板与唯一真源 | `<workspace>/.raincode/MEMORY.md` 文件 | ✓ |
 | 04 §5.1/5.2 | 三级配置、Provider 四要素、apiKeyRef | `config.json` / `secrets.json` 文件 + 系统凭据库 | ✓ |
 | 04 §5.1 | MCP 清单独立文件 | `mcp.json`（全局 + 项目） | ✓ |
 | 01-PRD AC-5 / NFR-7 | 崩溃 100% 可恢复、消息计数一致 | JSONL 追加写 + `sessions.message_count` 对账 | ✓ |
@@ -587,7 +587,7 @@ LIMIT :limit;
 
 | # | 差异 | 本文处理 | 处理状态 |
 | --- | --- | --- | --- |
-| 1 | 02 §4.3/§7.1 写 `~/.nova/agents`、`<workspace>/.nova/MEMORY.md`；04 §5.1 全局与项目目录均为 `.novacode` | 统一采用 `.novacode`（04 为目录布局权威，任务基线同），02 中实体语义（文件载体、frontmatter、章节模板）全部保留 | ✅ 已修订：02 相关路径统一为 `.novacode` |
+| 1 | 02 §4.3/§7.1 写 `~/.nova/agents`、`<workspace>/.nova/MEMORY.md`；04 §5.1 全局与项目目录均为 `.raincode` | 统一采用 `.raincode`（04 为目录布局权威，任务基线同），02 中实体语义（文件载体、frontmatter、章节模板）全部保留 | ✅ 已修订：02 相关路径统一为 `.raincode` |
 | 2 | 02/04 引用「03-data-model（存储设计）」，实际文档编号已顺延为 05-database | 本文即该引用的落位文档 | ✅ 已修订：02 头部关联与表名引用改为 05-database；04 说明改为指向落位文档 |
 | 3 | 任务要求 `mcp_servers` 表，而 04 §5.1 规定 MCP 清单真源为 `mcp.json` 文件 | 拆分职责：mcp.json=配置真源；`mcp_servers`=运行期注册/状态投影，启动重建，不构成配置双写 | ✅ 已确认：04 §5.1 已写明 mcp.json 独立清单文件与权限规则入库的职责分离 |
 | 4 | 02 §6.3 `PermissionRule.scope` 类型含 `'session'`，但 02 §6.2 判定链明确会话规则载体为内存 | 表 CHECK 约束只允许 `project`/`global`；session 规则生命周期=会话期，落库反造成悬挂行 | ✅ 已确认：无需改 02；storage 实现注释对齐即可 |
@@ -598,6 +598,6 @@ LIMIT :limit;
 - [x] 02-module-design 涉及实体全部覆盖（§8 逐条核对），字段语义与 02 一致（枚举逐字对齐，如 subagent 状态 `Pending/Running/Completed/Failed/Stopped`）。
 - [x] NFR-5 ≤ 1s：恢复 = O(1) 定位 checkpoint + 尾部增量重放；最坏全量重放 1 万行约 0.3~0.6s，仍达标。
 - [x] NFR-7：JSONL 追加写唯一真源、每 turn checkpoint fsync、半行截断可诊断、悬挂 tool_call 补齐、message_count 对账。
-- [x] 与 04 目录布局一致：`~/.novacode/` 数据根、项目 `.novacode/config.json` 与 `mcp.json`、权限规则入库不进 config、apiKey 只存引用。
+- [x] 与 04 目录布局一致：`~/.raincode/` 数据根、项目 `.raincode/config.json` 与 `mcp.json`、权限规则入库不进 config、apiKey 只存引用。
 - [x] epoch 单调合并在存储层落地（追加接口拒绝旧 epoch 写入）；不做宽表、不做消息正文双写、不做向量库。
 - [x] 与 02/04 的三处编号/路径差异及一处职责拆分已在 §9 登记，未单方面改写上游文档。

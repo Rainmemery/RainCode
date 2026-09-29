@@ -4,7 +4,7 @@
  * 元数据：readOnly=true / scope=none / risk=low。
  */
 import { z } from "zod";
-import { TOOL_ERROR_CODES } from "@novacode/shared";
+import { TOOL_ERROR_CODES } from "@raincode/shared";
 import type { Tool, ToolOutput, ToolExecutionContext } from "../tool.js";
 import { ToolExecutionError } from "../executor.js";
 import { guardPath } from "../path-guard.js";

@@ -9,8 +9,8 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { mkdir } from "node:fs/promises";
-import { mcpConfigFileSchema, mcpServerConfigSchema } from "@novacode/shared";
-import type { McpServerConfig } from "@novacode/shared";
+import { mcpConfigFileSchema, mcpServerConfigSchema } from "@raincode/shared";
+import type { McpServerConfig } from "@raincode/shared";
 
 /** 内置工具名（02 §3.4：用户配置 serverKey 撞内置名时加载期拒绝）。 */
 export const BUILTIN_TOOL_NAMES: readonly string[] = [
@@ -25,7 +25,7 @@ export const BUILTIN_TOOL_NAMES: readonly string[] = [
 ];
 
 export interface McpConfigSource {
-  /** 配置文件绝对路径（project 级 <workspace>/.novacode/mcp.json 或 global NOVACODE_HOME/mcp.json）。 */
+  /** 配置文件绝对路径（project 级 <workspace>/.raincode/mcp.json 或 global RAINCODE_HOME/mcp.json）。 */
   path: string;
   level: "project" | "global";
 }

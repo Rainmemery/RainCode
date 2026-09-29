@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * novacode CLI 入口（bin：tsx 运行，04-architecture §3.1 单进程内嵌 Agent Service）。
+ * raincode CLI 入口（bin：tsx 运行，04-architecture §3.1 单进程内嵌 Agent Service）。
  *
  * 命令：ping / run "<prompt>" / chat（readline REPL）。
  * TUI 演进点：按 04 ADR-02，本波刻意不引入 Ink——readline 是最小可用形态，
@@ -38,7 +38,7 @@ export async function main(argv: string[]): Promise<number> {
     }
   } catch (reason: unknown) {
     // 参数解析失败等入口层错误；凭据绝不进入错误输出（04 §5.3）
-    process.stderr.write(`novacode: ${reason instanceof Error ? reason.message : String(reason)}\n`);
+    process.stderr.write(`raincode: ${reason instanceof Error ? reason.message : String(reason)}\n`);
     return 2;
   }
 }
@@ -46,15 +46,15 @@ export async function main(argv: string[]): Promise<number> {
 function printHelp(stream: NodeJS.WriteStream): void {
   stream.write(
     [
-      "novacode — coding agent CLI",
+      "raincode — coding agent CLI",
       "",
       "用法:",
-      "  novacode ping                  连接本进程 Agent Service 并握手（打印协议版本）",
-      '  novacode run "<prompt>"        非交互模式：创建会话 → 发送 → 流式打印 → 退出',
+      "  raincode ping                  连接本进程 Agent Service 并握手（打印协议版本）",
+      '  raincode run "<prompt>"        非交互模式：创建会话 → 发送 → 流式打印 → 退出',
       "                                 权限审批默认拒绝；--yes 自动允许（临时 session 规则）",
-      "  novacode chat                  交互 REPL（/exit /sessions /resume /mode /archive /providers；交互审批）",
+      "  raincode chat                  交互 REPL（/exit /sessions /resume /mode /archive /providers；交互审批）",
       "",
-      "Provider 选项（优先级: 参数 > NOVACODE_PROVIDER_* 环境变量 > config/providers.local.json）:",
+      "Provider 选项（优先级: 参数 > RAINCODE_PROVIDER_* 环境变量 > config/providers.local.json）:",
       "  --base-url <url>               OpenAI 兼容 baseURL",
       "  --model <model>                模型名",
       "  --api-key <key>                API key（明文参数有 shell 历史泄露风险，建议 env / file: 引用）",
@@ -68,7 +68,7 @@ function printHelp(stream: NodeJS.WriteStream): void {
   );
 }
 
-/** 直接执行（node_modules/.bin/novacode 或 tsx src/index.ts）时启动；被 import（smoke）时不自动运行。 */
+/** 直接执行（node_modules/.bin/raincode 或 tsx src/index.ts）时启动；被 import（smoke）时不自动运行。 */
 function isDirectRun(): boolean {
   const entry = process.argv[1];
   if (entry === undefined || entry === "") return false;

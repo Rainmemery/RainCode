@@ -7,7 +7,7 @@
  * - done/failed 终局性 progress 由 manager 在子 turn 收束时经本模块发出，永不合并；
  * - message.delta 等其余子事件不镜像（主会话只关心子代理在做什么，不消费逐字流）。
  */
-import type { SubagentId, TokenUsage } from "@novacode/shared";
+import type { SubagentId, TokenUsage } from "@raincode/shared";
 
 /** 主会话通知事件（06-api-spec §3.2 C 组 subagent.* 的内核层投影，02 §4.3 SubagentEvent）。 */
 export type SubagentEvent =

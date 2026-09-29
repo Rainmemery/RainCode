@@ -6,10 +6,10 @@
  *   （02 §7.1：用户章节的合入只能经 promote 由用户确认动作触发）；
  * - promote 只改 MEMORY.md，不改 memory_entries 行（05 §5.1：不为存储层发明字段）。
  */
-import { MEMORY_ERROR_CODES, memoryAgentSectionSchema } from "@novacode/shared";
-import type { MemoryEntry, MemoryKind, MemorySection, MemorySource } from "@novacode/shared";
-import { StorageError } from "@novacode/storage";
-import type { MemoryRepo, SettingsRepo, Storage } from "@novacode/storage";
+import { MEMORY_ERROR_CODES, memoryAgentSectionSchema } from "@raincode/shared";
+import type { MemoryEntry, MemoryKind, MemorySection, MemorySource } from "@raincode/shared";
+import { StorageError } from "@raincode/storage";
+import type { MemoryRepo, SettingsRepo, Storage } from "@raincode/storage";
 import { MemoryError } from "./errors.js";
 import { appendToSection, loadProjectMemory, updateAgentSection } from "./project-file/project-file.js";
 import { searchEntries } from "./recall/recall.js";

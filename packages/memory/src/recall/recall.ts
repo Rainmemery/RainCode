@@ -5,8 +5,8 @@
  * - 无结果返回空数组，不注入占位文本（02 §7.4）。
  * 两条路径都在 repo 层强制 workspaceId 过滤 + 召回默认集（active + confidence≥0.6）。
  */
-import type { MemoryEntry, MemoryKind } from "@novacode/shared";
-import type { MemoryRepo } from "@novacode/storage";
+import type { MemoryEntry, MemoryKind } from "@raincode/shared";
+import type { MemoryRepo } from "@raincode/storage";
 
 export interface SearchEntriesOptions {
   kind?: MemoryKind;

@@ -2,8 +2,8 @@
  * 子代理接入 smoke（T2.3 二阶段，02-module-design §4 / 06-api-spec §2.5）。
  * 运行：tsx scripts/smoke-subagent.mts（或 pnpm run smoke:subagent）
  *
- * 链路：node:http mock OpenAI SSE（主/子请求同源、按请求序回放）+ 临时 NOVACODE_HOME 双层 profile
- * 目录（global <home>/agents + workspace <ws>/.novacode/agents）→ createAgentServiceNode（subagent 域
+ * 链路：node:http mock OpenAI SSE（主/子请求同源、按请求序回放）+ 临时 RAINCODE_HOME 双层 profile
+ * 目录（global <home>/agents + workspace <ws>/.raincode/agents）→ createAgentServiceNode（subagent 域
  * 装配）→ 断言：
  * 用例 A 完成链路：主 turn 模型发 agent 工具调用 → 子会话（researcher profile）收束 → 完成通知经
  *   工具结果回传主循环 → 主 turn 纯文本收束；subagent.list 投影正确。
@@ -41,7 +41,7 @@ import { beginTurn, startMockLlmServer, textScript, toolCallFrame, waitFor, with
 import type { SseScript } from "./p0-lib.mts";
 
 // ---------------------------------------------------------------------------
-// 场景装配：临时 NOVACODE_HOME + 双层 profile 目录 + in-memory 服务节点 + RPC 客户端
+// 场景装配：临时 RAINCODE_HOME + 双层 profile 目录 + in-memory 服务节点 + RPC 客户端
 // ---------------------------------------------------------------------------
 
 type TimelineEntry = { name: string; payload: SubagentSpawnedEventPayload | SubagentProgressEventPayload | SubagentCompletedEventPayload };
@@ -83,16 +83,16 @@ const WRITER_MD = [
 const BAD_MD = ["---", "name: bad", "maxTurns: 4", "---", "", "缺少 description 的非法 profile。", ""].join("\n");
 
 async function startScenario(): Promise<Scenario> {
-  const home = await mkdtemp(join(tmpdir(), "novacode-smoke-subagent-"));
+  const home = await mkdtemp(join(tmpdir(), "raincode-smoke-subagent-"));
   const workspace = join(home, "ws");
   await mkdir(join(home, "agents"), { recursive: true });
-  await mkdir(join(workspace, ".novacode", "agents"), { recursive: true });
+  await mkdir(join(workspace, ".raincode", "agents"), { recursive: true });
   await writeFile(join(home, "agents", "researcher.md"), RESEARCHER_MD, "utf8"); // global 源
-  await writeFile(join(workspace, ".novacode", "agents", "writer.md"), WRITER_MD, "utf8"); // workspace 源
+  await writeFile(join(workspace, ".raincode", "agents", "writer.md"), WRITER_MD, "utf8"); // workspace 源
   const mock = await startMockLlmServer();
   const transports = createInMemoryTransportPair();
   const node = await createAgentServiceNode(transports[1], {
-    env: { NOVACODE_HOME: home },
+    env: { RAINCODE_HOME: home },
     provider: {
       name: "mock-subagent",
       baseURL: mock.url,

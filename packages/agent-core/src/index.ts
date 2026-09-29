@@ -1,5 +1,5 @@
 /**
- * @novacode/agent-core —— Agent 内核（04-architecture §2.1）。
+ * @raincode/agent-core —— Agent 内核（04-architecture §2.1）。
  *
  * 本包唯一 publicEntrypoint（architecture/policy.yaml）。
  * 职责（02-module-design §1）：Turn 循环、TurnPhase 状态机（8 态）、CommandInbox 串行接纳、

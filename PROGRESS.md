@@ -1,4 +1,6 @@
-# NovaCode 任务进度跟踪（PROGRESS）
+# RainCode 任务进度跟踪（PROGRESS）
+
+> 项目曾用名 NovaCode，2026-09-29 起更名 RainCode（ADR-07）；本文件 §3/§4 历史日志与 docs/benchmarks/ 历史基准报告中保留的旧名均为当时事实记录，不作回改。
 
 > **本文件是开发进度的唯一事实来源（Single Source of Truth）。**
 > 项目中断后恢复开发时，**第一步读本文件**，第二步读 `docs/07-dev-plan.md` 中当前里程碑的任务分解表，然后从「下一步队列」取第一个未完成任务继续。

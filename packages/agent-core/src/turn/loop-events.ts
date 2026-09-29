@@ -12,8 +12,8 @@ import {
   buildMessageCompletedEvent,
   buildMessageDeltaEvent,
   buildTurnPhaseChangedEvent,
-} from "@novacode/shared";
-import type { TokenUsage, TurnPhase } from "@novacode/shared";
+} from "@raincode/shared";
+import type { TokenUsage, TurnPhase } from "@raincode/shared";
 import type { StoragePort, SessionEventPublisher } from "../ports.js";
 import { parseLooseJson } from "./round-helpers.js";
 
@@ -170,6 +170,6 @@ export class LoopEvents {
 
   diag(message: string, err?: unknown): void {
     const sink = this.options.onDiagnostic ?? console.error;
-    sink(`[novacode/agent-core ${this.options.sessionId}] ${message}`, err ?? "");
+    sink(`[raincode/agent-core ${this.options.sessionId}] ${message}`, err ?? "");
   }
 }

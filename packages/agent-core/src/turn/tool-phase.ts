@@ -9,15 +9,15 @@
  * - 聚合：每个调用一条 role:"tool" 消息记录（原调用顺序，不留悬挂 tool_call，02 §1.4）；
  *   状态迁移经 onTransition 回调由 turn-loop 执行（保持状态机单点）。
  */
-import { ulid } from "@novacode/storage";
+import { ulid } from "@raincode/storage";
 import {
   TOOL_ERROR_CODES,
   buildToolCallCompletedEvent,
   buildToolCallProgressEvent,
   buildToolCallStartedEvent,
-} from "@novacode/shared";
-import type { CollaborationMode, ToolErrorCode, ToolMetadata, ToolResult } from "@novacode/shared";
-import type { BackgroundTaskRegistry, ToolCallRequest, ToolProgressEvent } from "@novacode/tools";
+} from "@raincode/shared";
+import type { CollaborationMode, ToolErrorCode, ToolMetadata, ToolResult } from "@raincode/shared";
+import type { BackgroundTaskRegistry, ToolCallRequest, ToolProgressEvent } from "@raincode/tools";
 import type { PermissionEventSink, PermissionPort, PermissionVerdict, ToolPhaseDeps } from "../ports.js";
 
 export interface PlannedToolCall {

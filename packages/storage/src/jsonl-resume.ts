@@ -8,7 +8,7 @@
  */
 import { open as openFile, writeFile } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
-import type { MessageRecord } from "@novacode/shared";
+import type { MessageRecord } from "@raincode/shared";
 import {
   COMPACTION_EVENT_NAME,
   HEADER_EVENT_NAME,

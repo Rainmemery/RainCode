@@ -3,7 +3,7 @@
  * SessionTurnLoop 构造（create/resume 共用）、session.snapshot 投影、session.list 查询、
  * usage 回写与 rpc seq 续起点。全部为无状态纯函数，依赖经参数注入（04 §2.4 铁律 4）。
  */
-import { RpcCallError, type RpcServiceBinding } from "@novacode/rpc";
+import { RpcCallError, type RpcServiceBinding } from "@raincode/rpc";
 import type {
   CollaborationMode,
   MessageRecord,
@@ -11,12 +11,12 @@ import type {
   SessionListResult,
   SessionSnapshotPayload,
   SessionSummary,
-} from "@novacode/shared";
-import type { BackgroundTaskRegistry } from "@novacode/tools";
-import type { SessionResume, Storage } from "@novacode/storage";
-import { computeWorkspaceHash } from "@novacode/storage";
-import { SessionTurnLoop } from "@novacode/agent-core";
-import type { CompactionOptions, LlmPort, SessionEventPublisher, ToolPhaseDeps } from "@novacode/agent-core";
+} from "@raincode/shared";
+import type { BackgroundTaskRegistry } from "@raincode/tools";
+import type { SessionResume, Storage } from "@raincode/storage";
+import { computeWorkspaceHash } from "@raincode/storage";
+import { SessionTurnLoop } from "@raincode/agent-core";
+import type { CompactionOptions, LlmPort, SessionEventPublisher, ToolPhaseDeps } from "@raincode/agent-core";
 
 /** SessionTurnLoop 构造依赖（agent-service 组装后注入；create/resume 两个入口共用）。 */
 export interface SessionLoopDeps {
@@ -59,7 +59,7 @@ export function createSessionLoop(deps: SessionLoopDeps): SessionTurnLoop {
     ...(deps.maxRoundsPerTurn !== undefined && { maxRoundsPerTurn: deps.maxRoundsPerTurn }),
     ...(deps.compaction !== undefined && { compaction: deps.compaction }),
     ...(deps.compactionOnBeforeReplace !== undefined && { compactionOnBeforeReplace: deps.compactionOnBeforeReplace }),
-    onDiagnostic: (message, err) => console.error(`[novacode/server] ${message}`, err ?? ""),
+    onDiagnostic: (message, err) => console.error(`[raincode/server] ${message}`, err ?? ""),
   });
 }
 
@@ -67,7 +67,7 @@ export function createSessionLoop(deps: SessionLoopDeps): SessionTurnLoop {
 export function eventPublisher(binding: RpcServiceBinding | null): SessionEventPublisher {
   return (event) => {
     if (!binding) {
-      console.error("[novacode/server] event dropped: no transport attached", event.name);
+      console.error("[raincode/server] event dropped: no transport attached", event.name);
       return;
     }
     binding.publish(event);

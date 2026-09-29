@@ -17,13 +17,13 @@ importers:
 
   apps/cli:
     dependencies:
-      '@novacode/rpc':
+      '@raincode/rpc':
         specifier: workspace:*
         version: link:../../packages/rpc
-      '@novacode/server':
+      '@raincode/server':
         specifier: workspace:*
         version: link:../../packages/server
-      '@novacode/shared':
+      '@raincode/shared':
         specifier: workspace:*
         version: link:../../packages/shared
     devDependencies:
@@ -42,16 +42,16 @@ importers:
 
   packages/agent-core:
     dependencies:
-      '@novacode/llm':
+      '@raincode/llm':
         specifier: workspace:*
         version: link:../llm
-      '@novacode/shared':
+      '@raincode/shared':
         specifier: workspace:*
         version: link:../shared
-      '@novacode/storage':
+      '@raincode/storage':
         specifier: workspace:*
         version: link:../storage
-      '@novacode/tools':
+      '@raincode/tools':
         specifier: workspace:*
         version: link:../tools
       zod:
@@ -67,7 +67,7 @@ importers:
 
   packages/llm:
     dependencies:
-      '@novacode/shared':
+      '@raincode/shared':
         specifier: workspace:*
         version: link:../shared
     devDependencies:
@@ -83,10 +83,10 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: 1.29.0
         version: 1.29.0(zod@3.25.76)
-      '@novacode/shared':
+      '@raincode/shared':
         specifier: workspace:*
         version: link:../shared
-      '@novacode/tools':
+      '@raincode/tools':
         specifier: workspace:*
         version: link:../tools
       zod:
@@ -102,10 +102,10 @@ importers:
 
   packages/memory:
     dependencies:
-      '@novacode/shared':
+      '@raincode/shared':
         specifier: workspace:*
         version: link:../shared
-      '@novacode/storage':
+      '@raincode/storage':
         specifier: workspace:*
         version: link:../storage
     devDependencies:
@@ -118,10 +118,10 @@ importers:
 
   packages/permission:
     dependencies:
-      '@novacode/shared':
+      '@raincode/shared':
         specifier: workspace:*
         version: link:../shared
-      '@novacode/storage':
+      '@raincode/storage':
         specifier: workspace:*
         version: link:../storage
     devDependencies:
@@ -134,7 +134,7 @@ importers:
 
   packages/rpc:
     dependencies:
-      '@novacode/shared':
+      '@raincode/shared':
         specifier: workspace:*
         version: link:../shared
       zod:
@@ -150,31 +150,31 @@ importers:
 
   packages/server:
     dependencies:
-      '@novacode/agent-core':
+      '@raincode/agent-core':
         specifier: workspace:*
         version: link:../agent-core
-      '@novacode/llm':
+      '@raincode/llm':
         specifier: workspace:*
         version: link:../llm
-      '@novacode/mcp':
+      '@raincode/mcp':
         specifier: workspace:*
         version: link:../mcp
-      '@novacode/memory':
+      '@raincode/memory':
         specifier: workspace:*
         version: link:../memory
-      '@novacode/permission':
+      '@raincode/permission':
         specifier: workspace:*
         version: link:../permission
-      '@novacode/rpc':
+      '@raincode/rpc':
         specifier: workspace:*
         version: link:../rpc
-      '@novacode/shared':
+      '@raincode/shared':
         specifier: workspace:*
         version: link:../shared
-      '@novacode/storage':
+      '@raincode/storage':
         specifier: workspace:*
         version: link:../storage
-      '@novacode/tools':
+      '@raincode/tools':
         specifier: workspace:*
         version: link:../tools
     devDependencies:
@@ -200,7 +200,7 @@ importers:
 
   packages/storage:
     dependencies:
-      '@novacode/shared':
+      '@raincode/shared':
         specifier: workspace:*
         version: link:../shared
       better-sqlite3:
@@ -219,7 +219,7 @@ importers:
 
   packages/tools:
     dependencies:
-      '@novacode/shared':
+      '@raincode/shared':
         specifier: workspace:*
         version: link:../shared
       zod:

@@ -1,5 +1,5 @@
 {
-  "name": "@novacode/memory",
+  "name": "@raincode/memory",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,8 +12,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@novacode/shared": "workspace:*",
-    "@novacode/storage": "workspace:*"
+    "@raincode/shared": "workspace:*",
+    "@raincode/storage": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -3,7 +3,7 @@
  * 同步 SQLite 内核、对外一律 async（04 §2.1）；SQL 全部收敛在本包内（04 §2.4 铁律 2）。
  * 只承载 scope=project/global（session 规则驻内存不入库，02 §6.2 / 05 §9 差异 4）。
  */
-import type { RuleBehavior } from "@novacode/shared";
+import type { RuleBehavior } from "@raincode/shared";
 import type { SqliteDatabase } from "./db.js";
 import { StorageError } from "./errors.js";
 import { ulid } from "./ulid.js";

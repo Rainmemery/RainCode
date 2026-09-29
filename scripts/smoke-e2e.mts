@@ -3,7 +3,7 @@
  * 运行：tsx scripts/smoke-e2e.mts（或 pnpm run smoke:e2e）
  *
  * 链路：node:http 本地 mock OpenAI SSE 服务器（固定脚本化 delta 序列 + usage + [DONE]）
- *   → 临时 NOVACODE_HOME（数据根隔离）→ CLI run 路径（进程内调用 apps/cli main()，
+ *   → 临时 RAINCODE_HOME（数据根隔离）→ CLI run 路径（进程内调用 apps/cli main()，
  *   覆盖 参数解析 → in-memory 绑定 → server 方法表 → agent-core turn 循环 → llm → storage 全链）
  *   → 断言：
  *     1) stdout 收到完整流式文本（50ms 批量节流后合并与原文一致）；
@@ -27,7 +27,7 @@ import type { MessageRecord, SessionListResult, SessionResumeResult } from "../p
 import { Storage } from "../packages/storage/src/index.ts";
 import type { DoneEventPayload } from "../packages/shared/src/index.ts";
 
-const SCRIPTED_DELTAS = ["你好，", "NovaCode！", " walking skeleton 已打通。"];
+const SCRIPTED_DELTAS = ["你好，", "RainCode！", " walking skeleton 已打通。"];
 const FULL_TEXT = SCRIPTED_DELTAS.join("");
 const DUMMY_API_KEY = "smoke-dummy-key-DO-NOT-PRINT";
 
@@ -107,24 +107,24 @@ function captureStreams(): { restore: () => void; getOut: () => string; getErr: 
 
 async function main(): Promise<void> {
   const mock = await startMockServer();
-  const home = await mkdtemp(join(tmpdir(), "novacode-smoke-e2e-"));
+  const home = await mkdtemp(join(tmpdir(), "raincode-smoke-e2e-"));
   const workspace = join(home, "ws");
   await mkdir(workspace, { recursive: true });
 
   const savedEnv: Array<[string, string | undefined]> = [
-    ["NOVACODE_HOME", process.env["NOVACODE_HOME"]],
-    ["NOVACODE_PROVIDER_BASE_URL", process.env["NOVACODE_PROVIDER_BASE_URL"]],
-    ["NOVACODE_PROVIDER_MODEL", process.env["NOVACODE_PROVIDER_MODEL"]],
-    ["NOVACODE_PROVIDER_API_KEY", process.env["NOVACODE_PROVIDER_API_KEY"]],
+    ["RAINCODE_HOME", process.env["RAINCODE_HOME"]],
+    ["RAINCODE_PROVIDER_BASE_URL", process.env["RAINCODE_PROVIDER_BASE_URL"]],
+    ["RAINCODE_PROVIDER_MODEL", process.env["RAINCODE_PROVIDER_MODEL"]],
+    ["RAINCODE_PROVIDER_API_KEY", process.env["RAINCODE_PROVIDER_API_KEY"]],
   ];
   const setEnv = (key: string, value: string | undefined): void => {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
   };
-  setEnv("NOVACODE_HOME", home);
-  setEnv("NOVACODE_PROVIDER_BASE_URL", `http://127.0.0.1:${String(mock.port)}/v1`);
-  setEnv("NOVACODE_PROVIDER_MODEL", "mock-model");
-  setEnv("NOVACODE_PROVIDER_API_KEY", DUMMY_API_KEY);
+  setEnv("RAINCODE_HOME", home);
+  setEnv("RAINCODE_PROVIDER_BASE_URL", `http://127.0.0.1:${String(mock.port)}/v1`);
+  setEnv("RAINCODE_PROVIDER_MODEL", "mock-model");
+  setEnv("RAINCODE_PROVIDER_API_KEY", DUMMY_API_KEY);
 
   try {
     // 1) CLI run 路径（进程内）：非交互 run
@@ -142,8 +142,8 @@ async function main(): Promise<void> {
     assert.ok(!captured.getErr().includes(DUMMY_API_KEY), "apiKey 不得出现在 stderr");
     console.log("step1 CLI run：exit=0，stdout 流式全文一致，apiKey 零泄露");
 
-    // 2) 持久化事实（临时 NOVACODE_HOME 下新开只读连接）
-    const storage = await Storage.open({ env: { NOVACODE_HOME: home } });
+    // 2) 持久化事实（临时 RAINCODE_HOME 下新开只读连接）
+    const storage = await Storage.open({ env: { RAINCODE_HOME: home } });
     const sessions = await storage.sessions.list({});
     assert.equal(sessions.length, 1, "session.list（storage 直查）应恰好 1 条");
     const sessionId = sessions[0]!.id;
@@ -169,7 +169,7 @@ async function main(): Promise<void> {
     // 4) RPC 路径：新服务实例挂同一数据根 → session.list / session.resume / 续聊第二个 turn
     const transports = createInMemoryTransportPair();
     const node = await createAgentServiceNode(transports[1], {
-      env: { NOVACODE_HOME: home },
+      env: { RAINCODE_HOME: home },
       provider: {
         name: "mock",
         baseURL: `http://127.0.0.1:${String(mock.port)}/v1`,
@@ -214,7 +214,7 @@ async function main(): Promise<void> {
       await transports[1].close();
     }
     await storage.close();
-    console.log(`数据根（临时 NOVACODE_HOME）: ${home}`);
+    console.log(`数据根（临时 RAINCODE_HOME）: ${home}`);
     console.log("");
     console.log("SMOKE OK");
   } finally {

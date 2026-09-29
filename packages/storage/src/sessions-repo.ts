@@ -3,7 +3,7 @@
  * 同步 SQLite 内核、对外一律 async（04 §2.1）；SQL 全部收敛在本包内（04 §2.4 铁律 2）。
  * 列投影经 SQL 别名映射为 camelCase；CHECK 约束保证枚举值合法，读取侧仅做类型收窄。
  */
-import type { CollaborationMode } from "@novacode/shared";
+import type { CollaborationMode } from "@raincode/shared";
 import type { SqliteDatabase } from "./db.js";
 import { ulid } from "./ulid.js";
 

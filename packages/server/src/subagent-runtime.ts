@@ -3,16 +3,16 @@
  *
  * - SubagentLoopHost 实现（ADR-06：server 是唯一组装点）：子会话记录（kind="subagent"）+
  *   工具白名单投影 + 共享权限链 + 复用 createSessionLoop 的子 turn 循环，不做第二套执行引擎；
- * - profile 双层目录解析（02 §4.3）：workspace `<ws>/.novacode/agents` 优先，global `<dataRoot>/agents` 兜底；
+ * - profile 双层目录解析（02 §4.3）：workspace `<ws>/.raincode/agents` 优先，global `<dataRoot>/agents` 兜底；
  * - `agent` 工具注册进主 registry（source="builtin"，构造时一次）；控制面 subagent 域 4 方法；
  * - subagent.* 全局事件：manager 镜像事件（kind）→ shared 构造函数（出口即合法）→ publish，
  *   全局 seq 自增（风格同 mcp-runtime），sessionId 缺省（06 §3.1 全局事件口径）。
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { RpcCallError } from "@novacode/rpc";
-import type { RpcServiceBinding } from "@novacode/rpc";
-import { buildSubagentCompletedEvent, buildSubagentProgressEvent, buildSubagentSpawnedEvent } from "@novacode/shared";
+import { RpcCallError } from "@raincode/rpc";
+import type { RpcServiceBinding } from "@raincode/rpc";
+import { buildSubagentCompletedEvent, buildSubagentProgressEvent, buildSubagentSpawnedEvent } from "@raincode/shared";
 import type {
   CollaborationMode,
   MessageRecord,
@@ -22,7 +22,7 @@ import type {
   SubagentProfileSummary,
   SubagentSpawnParams,
   SubagentStopParams,
-} from "@novacode/shared";
+} from "@raincode/shared";
 import {
   DEFAULT_SUBAGENT_MAX_TURNS,
   SubagentManager,
@@ -32,16 +32,16 @@ import {
   previewText,
   projectRegistry,
   resolveProfileFile,
-} from "@novacode/agent-core";
+} from "@raincode/agent-core";
 import type {
   SubagentEvent,
   SubagentProfile,
   SubagentProfileDir,
   TurnAdmission,
-} from "@novacode/agent-core";
-import type { LlmPort, ToolPhaseDeps } from "@novacode/agent-core";
-import type { BackgroundTaskRegistry } from "@novacode/tools";
-import type { Storage } from "@novacode/storage";
+} from "@raincode/agent-core";
+import type { LlmPort, ToolPhaseDeps } from "@raincode/agent-core";
+import type { BackgroundTaskRegistry } from "@raincode/tools";
+import type { Storage } from "@raincode/storage";
 import { createSessionLoop } from "./session-support.js";
 
 /** 子代理域装配依赖（agent-service 注入；风格对齐 McpRuntimeOptions）。 */
@@ -53,7 +53,7 @@ export interface SubagentRuntimeOptions {
   llmFor: (model?: string) => LlmPort | null;
   /** 数据根（global profile 目录 <dataRoot>/agents）。 */
   dataRoot: string;
-  /** workspace 根（workspace profile 目录 <ws>/.novacode/agents）；null = 未配置（仅 global 层）。 */
+  /** workspace 根（workspace profile 目录 <ws>/.raincode/agents）；null = 未配置（仅 global 层）。 */
   workspaceRoot: string | null;
   /** 全局事件出口（subagent.spawned/progress/completed）。 */
   publish: RpcServiceBinding["publish"];
@@ -256,7 +256,7 @@ export class SubagentRuntime {
   private profileDirs(): SubagentProfileDir[] {
     const dirs: SubagentProfileDir[] = [];
     if (this.options.workspaceRoot !== null) {
-      dirs.push({ path: join(this.options.workspaceRoot, ".novacode", "agents"), source: "workspace" });
+      dirs.push({ path: join(this.options.workspaceRoot, ".raincode", "agents"), source: "workspace" });
     }
     dirs.push({ path: join(this.options.dataRoot, "agents"), source: "global" });
     return dirs;
@@ -362,7 +362,7 @@ export class SubagentRuntime {
   private diag(message: string, err?: unknown): void {
     const sink =
       this.options.onDiagnostic ??
-      ((text: string, error?: unknown) => console.error(`[novacode/server] ${text}`, error ?? ""));
+      ((text: string, error?: unknown) => console.error(`[raincode/server] ${text}`, error ?? ""));
     sink(message, err);
   }
 }

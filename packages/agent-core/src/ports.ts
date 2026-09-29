@@ -1,8 +1,8 @@
 /**
  * agent-core 端口定义（04-architecture §2.4 铁律 5：端口注入精神）。
  *
- * - LlmPort：包 @novacode/llm 的 LlmClient 结构子集（本波直接复用其请求/结果类型，接口保持薄）；
- * - StoragePort：包 @novacode/storage 的 Storage 结构子集（appendMessage / appendEvent / writeCheckpoint）；
+ * - LlmPort：包 @raincode/llm 的 LlmClient 结构子集（本波直接复用其请求/结果类型，接口保持薄）；
+ * - StoragePort：包 @raincode/storage 的 Storage 结构子集（appendMessage / appendEvent / writeCheckpoint）；
  * - SessionEventPublisher：会话事件出口，由 server 注入（agent-core 对传输不可知，禁止 import rpc）；
  * - PermissionPort：权限三态判定的窄端口（02 §6）。真实实现由 packages/permission 注入
  *   （五级判定链 + 审批闭环在实现内部收敛）；ask 态经 evaluate 返回 grantId 后由
@@ -13,17 +13,17 @@
 import type {
   ChatCompletionStreamRequest,
   LlmStreamResult,
-} from "@novacode/llm";
-import type { ToolExecutor, ToolMetadata, ToolRegistry } from "@novacode/tools";
+} from "@raincode/llm";
+import type { ToolExecutor, ToolMetadata, ToolRegistry } from "@raincode/tools";
 import type {
   AppendResult,
   CheckpointResult,
   CheckpointState,
-} from "@novacode/storage";
-import type { CollaborationMode, MessageRecord, TokenUsage } from "@novacode/shared";
+} from "@raincode/storage";
+import type { CollaborationMode, MessageRecord, TokenUsage } from "@raincode/shared";
 import type { TurnPhase } from "./turn/phase.js";
 
-/** 模型流式端口（@novacode/llm LlmClient 的唯一被消费方法）。 */
+/** 模型流式端口（@raincode/llm LlmClient 的唯一被消费方法）。 */
 export interface LlmPort {
   streamChat(request: ChatCompletionStreamRequest): Promise<LlmStreamResult>;
 }
@@ -48,7 +48,7 @@ export interface TurnAdmission {
   done: Promise<TurnOutcome>;
 }
 
-/** 持久化端口（@novacode/storage Storage 的写路径子集；历史常驻内存，恢复由 server 完成）。 */
+/** 持久化端口（@raincode/storage Storage 的写路径子集；历史常驻内存，恢复由 server 完成）。 */
 export interface StoragePort {
   appendMessage(
     sessionId: string,
@@ -147,7 +147,7 @@ export function createMetadataPermissionPort(approve: ApprovePort): PermissionPo
   };
 }
 
-/** 工具阶段依赖（server 装配注入；registry/executor 见 @novacode/tools）。 */
+/** 工具阶段依赖（server 装配注入；registry/executor 见 @raincode/tools）。 */
 export interface ToolPhaseDeps {
   registry: ToolRegistry;
   executor: ToolExecutor;

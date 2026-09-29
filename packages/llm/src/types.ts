@@ -3,9 +3,9 @@
  * 以及归一化后的统一流事件（02-module-design §1.2.4 映射表左列）。
  *
  * 会话/工具语义不进本包：消息数组由调用方（agent-core）组装传入；
- * usage 复用 @novacode/shared 的 TokenUsage（跨包契约真源）。
+ * usage 复用 @raincode/shared 的 TokenUsage（跨包契约真源）。
  */
-import type { ProviderInput, TokenUsage } from "@novacode/shared";
+import type { ProviderInput, TokenUsage } from "@raincode/shared";
 
 // ---------------------------------------------------------------------------
 // 请求侧消息（OpenAI Chat Completions 线格式，walking skeleton 最小子集）
@@ -96,7 +96,7 @@ export type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
 
 export interface LlmClientOptions {
   /**
-   * Provider 配置：类型与运行时校验均复用 @novacode/shared 的
+   * Provider 配置：类型与运行时校验均复用 @raincode/shared 的
    * ProviderInput / providerInputSchema（含 name 与 maxContextTokens，zod 单一事实源）。
    * 只消费 baseURL / model；apiKeyRef 的解析由调用方完成——llm 不读文件、不读环境。
    */

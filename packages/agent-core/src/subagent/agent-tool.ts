@@ -11,10 +11,10 @@
  *   （profile 名无法解析/字段非法）映射为数据级 ToolExecutionError，风格同 mcp/adapter.ts。
  */
 import { z } from "zod";
-import { subagentProfileInlineSchema } from "@novacode/shared";
-import type { SubagentProfileInline, SubagentProfileSummary } from "@novacode/shared";
-import { ToolExecutionError } from "@novacode/tools";
-import type { Tool, ToolExecutionContext, ToolOutput } from "@novacode/tools";
+import { subagentProfileInlineSchema } from "@raincode/shared";
+import type { SubagentProfileInline, SubagentProfileSummary } from "@raincode/shared";
+import { ToolExecutionError } from "@raincode/tools";
+import type { Tool, ToolExecutionContext, ToolOutput } from "@raincode/tools";
 import { errorMessage } from "../turn/round-helpers.js";
 import type { SubagentHandle, SubagentManager, SubagentResult } from "./manager.js";
 import { DEFAULT_SUBAGENT_MAX_TURNS, SubagentProfileError } from "./profile.js";

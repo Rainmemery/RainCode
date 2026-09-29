@@ -1,5 +1,5 @@
 /**
- * @novacode/shared —— zod schema 单一事实源（06-api-spec §5 / 04-architecture §4.3 / ADR-07）。
+ * @raincode/shared —— zod schema 单一事实源（06-api-spec §5 / 04-architecture §4.3 / ADR-07）。
  *
  * 本包唯一 publicEntrypoint（architecture/policy.yaml）：跨包只允许从这里导入，禁止深导入。
  * 只放 schema、纯类型、常量与事件构造函数，禁止业务行为（04 §2.4 铁律 2）。

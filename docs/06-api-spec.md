@@ -1,4 +1,4 @@
-# NovaCode API 接口规范（06-api-spec）
+# RainCode API 接口规范（06-api-spec）
 
 | 项目 | 内容 |
 | --- | --- |

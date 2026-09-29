@@ -1,7 +1,7 @@
 /**
  * McpRuntime：MCP 域装配（06-api-spec §2.5；02-module-design §3）。
  *
- * - 启动时加载 global（NOVACODE_HOME/mcp.json）+ project（<workspace>/.novacode/mcp.json）
+ * - 启动时加载 global（RAINCODE_HOME/mcp.json）+ project（<workspace>/.raincode/mcp.json）
  *   两层配置（同名 serverKey 跨层冲突 → MCP_SERVER_CONFLICT），注册进 manager 并异步连接
  *   enabled server（受理即返语义，状态经 mcp.server_status_changed 全局事件）；
  * - 命名空间工具与内置工具共用 ToolRegistry（source="mcp"，mcp__<serverKey>__<toolName>）；
@@ -10,24 +10,24 @@
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { RpcCallError } from "@novacode/rpc";
-import type { RpcServiceBinding } from "@novacode/rpc";
+import { RpcCallError } from "@raincode/rpc";
+import type { RpcServiceBinding } from "@raincode/rpc";
 import {
   buildMcpServerStatusChangedEvent,
-} from "@novacode/shared";
-import type { McpServerConfig, McpServersAddParams, McpToolsCallParams, McpToolsListParams } from "@novacode/shared";
-import { ToolExecutor } from "@novacode/tools";
-import type { BackgroundTaskRegistry, ToolRegistry } from "@novacode/tools";
-import { McpConfigError, McpError, McpManager, loadMcpConfig, persistMcpConfig, toMcpToolName } from "@novacode/mcp";
-import type { McpConfigSource } from "@novacode/mcp";
-import { createMcpTool } from "@novacode/mcp";
+} from "@raincode/shared";
+import type { McpServerConfig, McpServersAddParams, McpToolsCallParams, McpToolsListParams } from "@raincode/shared";
+import { ToolExecutor } from "@raincode/tools";
+import type { BackgroundTaskRegistry, ToolRegistry } from "@raincode/tools";
+import { McpConfigError, McpError, McpManager, loadMcpConfig, persistMcpConfig, toMcpToolName } from "@raincode/mcp";
+import type { McpConfigSource } from "@raincode/mcp";
+import { createMcpTool } from "@raincode/mcp";
 
 /** MCP 域装配依赖（agent-service 注入；server 是唯一组装点）。 */
 export interface McpRuntimeOptions {
   registry: ToolRegistry;
   background: BackgroundTaskRegistry;
   executor: ToolExecutor;
-  /** NOVACODE_HOME（global mcp.json 数据根）。 */
+  /** RAINCODE_HOME（global mcp.json 数据根）。 */
   dataRoot: string;
   /** project 级 mcp.json 所在 workspace 根（缺省 = 不加载 project 层）。 */
   workspaceRoot?: string;
@@ -52,9 +52,9 @@ export class McpRuntime {
   constructor(private readonly options: McpRuntimeOptions) {
     this.globalConfigPath = join(options.dataRoot, "mcp.json");
     this.projectConfigPath =
-      options.workspaceRoot !== undefined ? join(options.workspaceRoot, ".novacode", "mcp.json") : null;
+      options.workspaceRoot !== undefined ? join(options.workspaceRoot, ".raincode", "mcp.json") : null;
     this.manager = new McpManager({
-      onDiagnostic: (message, err) => console.error(`[novacode/server] ${message}`, err ?? ""),
+      onDiagnostic: (message, err) => console.error(`[raincode/server] ${message}`, err ?? ""),
     });
     this.manager.onStatusChange((snapshot) => {
       this.syncTools(snapshot.serverKey, snapshot.status === "Connected");
@@ -230,7 +230,7 @@ export class McpRuntime {
         this.options.registry.register(tool, "mcp");
         registered.push({ fullName: tool.name, serverKey, toolName: descriptor.name });
       } catch (err: unknown) {
-        console.error(`[novacode/server] mcp tool register failed: ${tool.name}`, err);
+        console.error(`[raincode/server] mcp tool register failed: ${tool.name}`, err);
       }
     }
     this.registered.set(serverKey, registered);

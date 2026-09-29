@@ -2,10 +2,10 @@
  * Turn 循环的模块级纯函数（从 SessionTurnLoop 拆出，保持单文件 ≤500 行）。
  * 不持有状态、不做 IO：usage 合并、assistant 行内容块投影、OpenAI tools 线格式投影。
  */
-import type { LlmFunctionTool } from "@novacode/llm";
-import { ulid } from "@novacode/storage";
-import type { ContentBlock, MessageRecord, TokenUsage } from "@novacode/shared";
-import type { ToolRegistry } from "@novacode/tools";
+import type { LlmFunctionTool } from "@raincode/llm";
+import { ulid } from "@raincode/storage";
+import type { ContentBlock, MessageRecord, TokenUsage } from "@raincode/shared";
+import type { ToolRegistry } from "@raincode/tools";
 
 export function errorMessage(reason: unknown): string {
   return reason instanceof Error ? reason.message : String(reason);

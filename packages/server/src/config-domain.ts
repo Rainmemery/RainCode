@@ -1,14 +1,14 @@
 /**
  * ConfigDomain：config 域 5 方法（06-api-spec §2.3）+ Provider 运行时解析。
  *
- * - get/set：三级合并的 P0 子集 = 全局层（~/.novacode/config.json，04 §5.1）；
+ * - get/set：三级合并的 P0 子集 = 全局层（~/.raincode/config.json，04 §5.1）；
  *   get 按 path 定点读（缺省整文档），set 按路径定点改后整体过 strict schema 再落盘；
  * - providers.list/add/remove：Provider 四要素增删查（add 的明文 key 由 ConfigStore 隔离到密钥文件）；
  * - providerRuntime：session.create 的 providerId → 运行时 Provider 配置（明文 key 内存解析），
  *   未配置任何 Provider 时返回 null（调用方按 CONFIG_PROVIDER_NOT_FOUND 拒绝写入类操作）；
  * - 错误映射：ConfigStoreError → RpcCallError（06 §4.3 段 3 CONFIG_*）。
  */
-import { RpcCallError } from "@novacode/rpc";
+import { RpcCallError } from "@raincode/rpc";
 import type {
   ConfigDocument,
   ConfigGetParams,
@@ -20,7 +20,7 @@ import type {
   ConfigProvidersRemoveResult,
   ConfigSetParams,
   ConfigSetResult,
-} from "@novacode/shared";
+} from "@raincode/shared";
 import type { ProviderRuntimeConfig } from "./agent-service.js";
 import { ConfigStore, ConfigStoreError } from "./config-store.js";
 

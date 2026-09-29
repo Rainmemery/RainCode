@@ -2,7 +2,7 @@
  * 命令权限控制 smoke（第五波）。
  * 运行：tsx scripts/smoke-permission.mts（或 pnpm run smoke:permission）
  *
- * 链路：node:http 本地 mock OpenAI SSE 服务器（按请求序号脚本化 12 轮回复）→ 临时 NOVACODE_HOME
+ * 链路：node:http 本地 mock OpenAI SSE 服务器（按请求序号脚本化 12 轮回复）→ 临时 RAINCODE_HOME
  * → createAgentServiceNode（in-memory 绑定，normal 权限策略=默认）→ RPC session.send →
  * 五级判定链 + ApprovalBroker 审批闭环 → 断言：
  *
@@ -172,7 +172,7 @@ async function main(): Promise<void> {
   ];
 
   const mock = await startMockServer(script);
-  const home = await mkdtemp(join(tmpdir(), "novacode-smoke-permission-"));
+  const home = await mkdtemp(join(tmpdir(), "raincode-smoke-permission-"));
   const workspace = join(home, "ws");
   await mkdir(workspace, { recursive: true });
 
@@ -189,9 +189,9 @@ async function main(): Promise<void> {
   const startNode = async (): Promise<RpcClient> => {
     const transports = createInMemoryTransportPair();
     const node = await createAgentServiceNode(transports[1], {
-      env: { NOVACODE_HOME: home },
+      env: { RAINCODE_HOME: home },
       provider,
-      systemPrompt: "You are NovaCode (permission smoke).",
+      systemPrompt: "You are RainCode (permission smoke).",
       // normal 为默认策略；此处显式声明以自文档化
       permission: { policy: "normal" },
     });
@@ -251,7 +251,7 @@ async function main(): Promise<void> {
       );
       assert.ok(record.inputDigest.length > 0 && !record.inputDigest.includes("smoke-dummy-key"), "审计摘要应脱敏");
 
-      const storage = await Storage.open({ env: { NOVACODE_HOME: home } });
+      const storage = await Storage.open({ env: { RAINCODE_HOME: home } });
       const eventsFile = await storage.sessionEventsFile(sessionId);
       const raw = await readFile(eventsFile, "utf8");
       assert.ok(raw.includes('"name":"permission.requested"'), "permission.requested 应落 JSONL");
@@ -387,7 +387,7 @@ async function main(): Promise<void> {
 
     await mock.requests; // no-op 引用，防 TS 未使用告警（mock.requests 在上方用例间被隐式消费）
     console.log("");
-    console.log(`数据根（临时 NOVACODE_HOME）: ${home}`);
+    console.log(`数据根（临时 RAINCODE_HOME）: ${home}`);
     console.log("");
     console.log("SMOKE OK");
   } finally {

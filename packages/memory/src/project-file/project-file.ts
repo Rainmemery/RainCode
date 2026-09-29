@@ -1,9 +1,9 @@
 /**
- * MEMORY.md 文件真源读写（02 §7.1/§7.3；05 §5.1：`<workspace>/.novacode/MEMORY.md`）。
+ * MEMORY.md 文件真源读写（02 §7.1/§7.3；05 §5.1：`<workspace>/.raincode/MEMORY.md`）。
  *
  * 路径勘误（任务交付申报）：02 §7.1 原文写作 `<workspace>/.nova/MEMORY.md` 系笔误——
- * 项目数据目录统一为 `.novacode`（与 `.novacode/mcp.json`、`.novacode/agents/` 一致；
- * 05 §5.1 第一层行亦作 `.novacode`），本实现按 `.novacode` 落地。
+ * 项目数据目录统一为 `.raincode`（与 `.raincode/mcp.json`、`.raincode/agents/` 一致；
+ * 05 §5.1 第一层行亦作 `.raincode`），本实现按 `.raincode` 落地。
  *
  * 语义纪律：
  * - read 只读不落盘：文件不存在返回模板骨架 + exists:false（06 §2.6 memory.read）；
@@ -14,12 +14,12 @@
  */
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { MEMORY_ERROR_CODES } from "@novacode/shared";
-import type { MemorySection } from "@novacode/shared";
+import { MEMORY_ERROR_CODES } from "@raincode/shared";
+import type { MemorySection } from "@raincode/shared";
 import { MemoryError } from "../errors.js";
 
 /** MEMORY.md 项目数据目录与文件名（05 §5.1；02 §7.1 `.nova` 为笔误，见文件头勘误）。 */
-export const MEMORY_FILE_DIR = ".novacode";
+export const MEMORY_FILE_DIR = ".raincode";
 export const MEMORY_FILE_NAME = "MEMORY.md";
 
 /** MEMORY.md 绝对路径。 */

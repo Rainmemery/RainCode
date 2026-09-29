@@ -3,7 +3,7 @@
  * 运行：tsx scripts/verify-wave2.mts
  *
  * 覆盖：
- *  1) storage：临时 NOVACODE_HOME → 建 workspace/session → append 3 条 → checkpoint
+ *  1) storage：临时 RAINCODE_HOME → 建 workspace/session → append 3 条 → checkpoint
  *     （含 epoch 单调合并：旧 epoch 拒绝、compact epoch+1 提升）→ 重开 Storage →
  *     resumeRead O(1) 定位 + 增量重放一致 → 悬挂 tool_call 补齐 → 半行残尾诊断与修复；
  *  2) llm：本地 mock SSE 服务器（127.0.0.1）验证流式解析 / usage / HTTP 错误 / AbortSignal 贯穿取消。
@@ -30,9 +30,9 @@ import type { MessageRecord } from "../packages/shared/src/index.ts";
 // ---------------------------------------------------------------------------
 
 async function verifyStorage(): Promise<void> {
-  console.log("=== storage：临时 NOVACODE_HOME → 建会话 → 追加 → checkpoint → 重开恢复 ===");
-  const home = await mkdtemp(join(tmpdir(), "novacode-wave2-"));
-  const env = { NOVACODE_HOME: home };
+  console.log("=== storage：临时 RAINCODE_HOME → 建会话 → 追加 → checkpoint → 重开恢复 ===");
+  const home = await mkdtemp(join(tmpdir(), "raincode-wave2-"));
+  const env = { RAINCODE_HOME: home };
   const workspaceRoot = join(home, "workspace-demo");
   await mkdir(workspaceRoot, { recursive: true });
 
@@ -174,7 +174,7 @@ async function verifyStorage(): Promise<void> {
   assert.equal(listed[0]?.id, session.id);
   await storageD.close();
   console.log("resume#4: 修复后重放干净（dangling=0, history=5, 对账=5, list 命中 1 条）");
-  console.log(`数据根（临时 NOVACODE_HOME）: ${home}`);
+  console.log(`数据根（临时 RAINCODE_HOME）: ${home}`);
 }
 
 // ---------------------------------------------------------------------------

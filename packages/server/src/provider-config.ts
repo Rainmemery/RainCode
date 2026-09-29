@@ -3,12 +3,12 @@
  *
  * 优先级（低 → 高，字段级就近覆盖）：
  *   ① 配置文件  config/providers.local.json（.gitignore 已隔离 config/*.local.json）
- *   ② 环境变量  NOVACODE_PROVIDER_BASE_URL / _MODEL / _API_KEY / _NAME / _MAX_CONTEXT_TOKENS
+ *   ② 环境变量  RAINCODE_PROVIDER_BASE_URL / _MODEL / _API_KEY / _NAME / _MAX_CONTEXT_TOKENS
  *   ③ CLI 参数  --base-url / --model / --api-key / --name
  *
  * apiKey 两种来源（本波约定）：
  *   - 配置文件 apiKeyRef: "file:<path>"（相对路径以配置文件所在目录为基准）；不支持的前缀直接报错；
- *   - 明文 env 注入 NOVACODE_PROVIDER_API_KEY（或配置文件 apiKey 字段，仅限本地开发）。
+ *   - 明文 env 注入 RAINCODE_PROVIDER_API_KEY（或配置文件 apiKey 字段，仅限本地开发）。
  * 安全约束（04 §5.3）：明文 key 不落日志——本模块所有错误信息只含文件路径，绝不含 key 值。
  */
 import { existsSync, readFileSync } from "node:fs";
@@ -34,7 +34,7 @@ export interface ResolvedProviderConfig {
 export interface ResolveProviderOptions {
   args?: ProviderCliArgs;
   env?: NodeJS.ProcessEnv;
-  /** 显式配置文件路径；缺省 <cwd>/config/providers.local.json，可被 NOVACODE_PROVIDER_CONFIG 覆盖。 */
+  /** 显式配置文件路径；缺省 <cwd>/config/providers.local.json，可被 RAINCODE_PROVIDER_CONFIG 覆盖。 */
   configPath?: string;
 }
 
@@ -57,7 +57,7 @@ export const DEFAULT_MAX_CONTEXT_TOKENS = 32768;
 /** 解析 Provider 配置；无任何来源可用时返回 null（调用方决定报错方式）。 */
 export function resolveProviderConfig(options: ResolveProviderOptions = {}): ResolvedProviderConfig | null {
   const env = options.env ?? process.env;
-  const configPath = options.configPath ?? env["NOVACODE_PROVIDER_CONFIG"] ?? defaultConfigPath();
+  const configPath = options.configPath ?? env["RAINCODE_PROVIDER_CONFIG"] ?? defaultConfigPath();
   const configLayer = readConfigLayer(configPath);
   const envLayer = readEnvLayer(env);
   const argsLayer = options.args ?? {};
@@ -72,7 +72,7 @@ export function resolveProviderConfig(options: ResolveProviderOptions = {}): Res
   const model = argsLayer.model ?? envLayer.model ?? configLayer.model;
   if (model === undefined || model.length === 0) {
     throw new Error(
-      `provider model missing: set --model, NOVACODE_PROVIDER_MODEL, or "model" in ${configPath}`,
+      `provider model missing: set --model, RAINCODE_PROVIDER_MODEL, or "model" in ${configPath}`,
     );
   }
 
@@ -138,15 +138,15 @@ function readApiKeyRef(ref: string, baseDir: string): string | undefined {
 
 function readEnvLayer(env: NodeJS.ProcessEnv): ProviderConfigLayer {
   const layer: ProviderConfigLayer = {};
-  const baseURL = env["NOVACODE_PROVIDER_BASE_URL"];
+  const baseURL = env["RAINCODE_PROVIDER_BASE_URL"];
   if (typeof baseURL === "string" && baseURL.length > 0) layer.baseURL = baseURL;
-  const model = env["NOVACODE_PROVIDER_MODEL"];
+  const model = env["RAINCODE_PROVIDER_MODEL"];
   if (typeof model === "string" && model.length > 0) layer.model = model;
-  const name = env["NOVACODE_PROVIDER_NAME"];
+  const name = env["RAINCODE_PROVIDER_NAME"];
   if (typeof name === "string" && name.length > 0) layer.name = name;
-  const apiKey = env["NOVACODE_PROVIDER_API_KEY"];
+  const apiKey = env["RAINCODE_PROVIDER_API_KEY"];
   if (typeof apiKey === "string" && apiKey.length > 0) layer.apiKey = apiKey;
-  const tokens = env["NOVACODE_PROVIDER_MAX_CONTEXT_TOKENS"];
+  const tokens = env["RAINCODE_PROVIDER_MAX_CONTEXT_TOKENS"];
   if (typeof tokens === "string" && tokens.length > 0) {
     const parsed = Number.parseInt(tokens, 10);
     if (Number.isInteger(parsed) && parsed > 0) layer.maxContextTokens = parsed;

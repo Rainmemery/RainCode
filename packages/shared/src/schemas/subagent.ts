@@ -36,7 +36,7 @@ export type SubagentProfileInline = z.infer<typeof subagentProfileInlineSchema>;
 
 export const subagentSpawnParamsSchema = z.strictObject({
   sessionId: z.string(),
-  /** string = 按 name 解析（`.novacode/agents/*.md`）；对象 = 内联 profile。 */
+  /** string = 按 name 解析（`.raincode/agents/*.md`）；对象 = 内联 profile。 */
   profile: z.union([z.string().min(1), subagentProfileInlineSchema]),
   task: z.string().min(1),
 });

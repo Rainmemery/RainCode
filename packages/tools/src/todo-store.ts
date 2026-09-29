@@ -3,13 +3,13 @@
  *
  * 实现选型（任务约定二选一）：**内存 Map + 持久化到会话目录 todo.json**——
  * 每个会话键一个文件 `<stateDir>/<sessionKey>.json`（stateDir 由装配方注入，
- * 缺省 `<workspaceRoot>/.novacode/todos/`），原子写（tmp + rename）；
+ * 缺省 `<workspaceRoot>/.raincode/todos/`），原子写（tmp + rename）；
  * 不走 packages/storage（避免工具包反向依赖存储实现，保持 tools→shared 单向依赖）。
  * stateDir 为 null 时退化为纯内存（测试用）。
  */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { TodoItem } from "@novacode/shared";
+import type { TodoItem } from "@raincode/shared";
 
 export class TodoStore {
   private readonly state = new Map<string, TodoItem[]>();

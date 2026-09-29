@@ -54,17 +54,17 @@ async function main(): Promise<void> {
   assert.equal(P0_EVENTS.length, 12, "07 清单应为 12 个 P0 事件");
   console.log("step a: 注册表对照通过（22 方法 / 12 事件全量登记）");
 
-  // ---- 环境准备：mock LLM + 隔离 NOVACODE_HOME + in-memory 服务节点 ------
+  // ---- 环境准备：mock LLM + 隔离 RAINCODE_HOME + in-memory 服务节点 ------
   const mock = await startMockLlmServer();
-  const home = await mkdtemp(join(tmpdir(), "novacode-smoke-p0-"));
+  const home = await mkdtemp(join(tmpdir(), "raincode-smoke-p0-"));
   const workspace = join(home, "ws");
   await mkdir(workspace, { recursive: true });
-  const savedHome = process.env["NOVACODE_HOME"];
-  process.env["NOVACODE_HOME"] = home;
+  const savedHome = process.env["RAINCODE_HOME"];
+  process.env["RAINCODE_HOME"] = home;
 
   const transports = createInMemoryTransportPair();
   // provider: null —— 默认 Provider 缺席，全部会话经 config 域 providerId 绑定（用例 b 的被测路径）
-  const node = await createAgentServiceNode(transports[1], { env: { NOVACODE_HOME: home }, provider: null });
+  const node = await createAgentServiceNode(transports[1], { env: { RAINCODE_HOME: home }, provider: null });
   const client = createRpcClient({ transport: transports[0] });
 
   try {
@@ -248,7 +248,7 @@ async function main(): Promise<void> {
     } catch (reason: unknown) {
       expectRpcError(reason, "SESSION_ARCHIVED");
     }
-    const storage = await Storage.open({ env: { NOVACODE_HOME: home } });
+    const storage = await Storage.open({ env: { RAINCODE_HOME: home } });
     const eventsFile = await storage.sessionEventsFile(session4.sessionId);
     const raw = await readFile(eventsFile, "utf8");
     assert.ok(raw.includes("before archive"), "归档会话 JSONL 不删除且内容完整");
@@ -278,13 +278,13 @@ async function main(): Promise<void> {
     await node.close();
     await transports[0].close();
     await transports[1].close();
-    if (savedHome === undefined) delete process.env["NOVACODE_HOME"];
-    else process.env["NOVACODE_HOME"] = savedHome;
+    if (savedHome === undefined) delete process.env["RAINCODE_HOME"];
+    else process.env["RAINCODE_HOME"] = savedHome;
   }
 
   // ---- f) 既有 smoke 回归（子进程，隔离 env）------------------------------
   const cleanEnv: NodeJS.ProcessEnv = { ...process.env };
-  delete cleanEnv["NOVACODE_HOME"];
+  delete cleanEnv["RAINCODE_HOME"];
   for (const script of ["smoke-e2e.mts", "smoke-tools.mts", "smoke-permission.mts", "smoke-compact.mts", "smoke-mcp.mts", "smoke-subagent.mts", "smoke-memory.mts"]) {
     const result = spawnSync(process.execPath, ["--import", "tsx", join(REPO_ROOT, "scripts", script)], {
       cwd: REPO_ROOT,
@@ -303,7 +303,7 @@ async function main(): Promise<void> {
 
   await mock.close();
   await rm(home, { recursive: true, force: true });
-  console.log(`数据根（临时 NOVACODE_HOME）已清理: ${home}`);
+  console.log(`数据根（临时 RAINCODE_HOME）已清理: ${home}`);
   console.log("");
   console.log("SMOKE OK");
 }

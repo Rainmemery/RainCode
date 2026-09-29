@@ -25,7 +25,7 @@ export interface BuiltinToolSet {
 export interface CreateBuiltinToolsOptions {
   /**
    * todo 持久化目录回退（缺省 null）；实际持久化目录优先取执行 ctx 的
-   * `<workspaceRoot>/.novacode/todos`（见 handlers/todo.ts），此选项仅作显式覆盖。
+   * `<workspaceRoot>/.raincode/todos`（见 handlers/todo.ts），此选项仅作显式覆盖。
    */
   todoStateDir?: string | null;
 }

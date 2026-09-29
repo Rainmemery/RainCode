@@ -6,8 +6,8 @@
  * - 并行规则（02 §2.2）：readOnly 工具并行执行（上限 4），有副作用的工具按模型给出顺序串行；
  *   批内任一失败不影响其余调用。
  */
-import { TOOL_ERROR_CODES } from "@novacode/shared";
-import type { ToolErrorCode } from "@novacode/shared";
+import { TOOL_ERROR_CODES } from "@raincode/shared";
+import type { ToolErrorCode } from "@raincode/shared";
 import type {
   ToolCallRequest,
   ToolExecutionContext,

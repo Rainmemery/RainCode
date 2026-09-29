@@ -4,8 +4,8 @@
  * 打开 Storage → 组装 LlmClient + AgentService → 绑定到注入的 transport。
  * 端层只领取「组装好的服务」，禁止各自拼装内核依赖（杜绝第二组装点）。
  */
-import { Storage } from "@novacode/storage";
-import type { IMessageTransport, RpcServiceBinding } from "@novacode/rpc";
+import { Storage } from "@raincode/storage";
+import type { IMessageTransport, RpcServiceBinding } from "@raincode/rpc";
 import { AgentService } from "./agent-service.js";
 import type {
   AgentServiceOptions,
@@ -17,7 +17,7 @@ import type {
 export interface AgentServiceNodeOptions {
   /** 注入已打开的 Storage（生命周期由持有方管理）；缺省按 dataRoot/env 打开。 */
   storage?: Storage;
-  /** 未注入 storage 时的数据根（05 §2.1；缺省 NOVACODE_HOME → ~/.novacode）。 */
+  /** 未注入 storage 时的数据根（05 §2.1；缺省 RAINCODE_HOME → ~/.raincode）。 */
   dataRoot?: string;
   env?: NodeJS.ProcessEnv;
   /** Provider 运行时配置；null/缺省 = 无 Provider（ping/list/resume 可用，send 报 CONFIG_PROVIDER_NOT_FOUND）。 */

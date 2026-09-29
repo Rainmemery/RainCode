@@ -5,10 +5,10 @@
  * ask 态经 ApprovalBroker 挂起收敛）→ T9 ToolExecution → 结果落库 → T13 回传直至纯文本收束；
  * maxRoundsPerTurn（默认 32）保护；delta/progress 为 UI 瞬态不落盘（05 §4.2）；取消 T3/T5+T8/T12。
  */
-import { LlmAbortedError, LlmError, type LlmStreamEvent } from "@novacode/llm";
-import { ulid, type CheckpointState } from "@novacode/storage";
-import type { CollaborationMode, MessageRecord, TokenUsage } from "@novacode/shared";
-import type { BackgroundTaskRegistry } from "@novacode/tools";
+import { LlmAbortedError, LlmError, type LlmStreamEvent } from "@raincode/llm";
+import { ulid, type CheckpointState } from "@raincode/storage";
+import type { CollaborationMode, MessageRecord, TokenUsage } from "@raincode/shared";
+import type { BackgroundTaskRegistry } from "@raincode/tools";
 import { estimateContextTokens, createCompactionService } from "../compact/service.js";
 import type { CompactionOptions, CompactionService, CompactionTicket } from "../compact/service.js";
 import { CommandInbox } from "../inbox/command-inbox.js";
@@ -63,7 +63,7 @@ export interface SessionTurnLoopOptions {
   compactionOnBeforeReplace?: (prefix: MessageRecord[]) => Promise<void>; // 02 §7.2 compact 记忆抽取钩子（透传 CompactionDeps.onBeforeReplace）
 }
 
-/** 模型 tool_call 完成形态（@novacode/llm tool_calls.completed 事件的 calls 元素）。 */
+/** 模型 tool_call 完成形态（@raincode/llm tool_calls.completed 事件的 calls 元素）。 */
 type CompletedToolCall = { toolCallId: string; toolName: string; argumentsJSON: string };
 
 /** 单轮收敛：settled = turn 终态；continue = 工具结果已聚合，进入下一轮。 */

@@ -1,6 +1,6 @@
 /**
  * 数据根与目录编址（05-database §2）。
- * - 数据根：NOVACODE_HOME 环境变量覆盖（测试隔离），缺省 ~/.novacode（§2.1）；
+ * - 数据根：RAINCODE_HOME 环境变量覆盖（测试隔离），缺省 ~/.raincode（§2.1）；
  * - workspaceHash：realpath → 规范化 → sha256 前 16 hex（§2.3），即 02 所称 workspaceId；
  * - 会话目录：workspaces/<hash>/sessions/<id>/events.jsonl（§2.1/§4.1）。
  */
@@ -9,13 +9,13 @@ import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
-/** 数据根：NOVACODE_HOME 优先，缺省 ~/.novacode（05 §2.1）。 */
+/** 数据根：RAINCODE_HOME 优先，缺省 ~/.raincode（05 §2.1）。 */
 export function resolveDataRoot(env: NodeJS.ProcessEnv = process.env): string {
-  const override = env["NOVACODE_HOME"];
+  const override = env["RAINCODE_HOME"];
   if (typeof override === "string" && override.trim() !== "") {
     return resolve(override);
   }
-  return join(homedir(), ".novacode");
+  return join(homedir(), ".raincode");
 }
 
 /** 会话目录编址（05 §2.1）；attachments/ 与 background/ 由后续波次按需创建。 */

@@ -1,10 +1,10 @@
-# NovaCode 测试说明
+# RainCode 测试说明
 
-> 本文档描述 NovaCode 的测试体系：冒烟测试、NFR 基准、工程门禁。测试脚本变更时**必须同步更新本文档**（见 CONTRIBUTING 文档更新协议）。
+> 本文档描述 RainCode 的测试体系：冒烟测试、NFR 基准、工程门禁。测试脚本变更时**必须同步更新本文档**（见 CONTRIBUTING 文档更新协议）。
 
 ## 1. 测试策略总览
 
-NovaCode 采用「**冒烟 + 基准 + 门禁**」三层验证体系，全部可从仓库根目录一条命令运行：
+RainCode 采用「**冒烟 + 基准 + 门禁**」三层验证体系，全部可从仓库根目录一条命令运行：
 
 | 层 | 目的 | 运行方式 | 密钥/外呼 |
 | --- | --- | --- | --- |
@@ -16,7 +16,7 @@ NovaCode 采用「**冒烟 + 基准 + 门禁**」三层验证体系，全部可�
 
 ## 2. 冒烟测试
 
-所有冒烟脚本共享同一模式：`node:http` 本机 mock OpenAI SSE 服务器（脚本化多轮回复，tool_call delta 分片下发以覆盖 llm 侧累积）→ 临时 `NOVACODE_HOME` → 进程内创建 Agent Service（in-memory RPC 绑定）→ RPC 驱动 → 断言落盘数据与事件流。
+所有冒烟脚本共享同一模式：`node:http` 本机 mock OpenAI SSE 服务器（脚本化多轮回复，tool_call delta 分片下发以覆盖 llm 侧累积）→ 临时 `RAINCODE_HOME` → 进程内创建 Agent Service（in-memory RPC 绑定）→ RPC 驱动 → 断言落盘数据与事件流。
 
 | 命令 | 脚本 | 覆盖范围 |
 | --- | --- | --- |
@@ -66,7 +66,7 @@ NFR-4（桌面端空载内存）、NFR-6（压缩异步不阻塞）属 M2 验收
 
 ## 5. 已知边界与注意事项
 
-- 冒烟/基准全部使用**临时 NOVACODE_HOME** 与临时工作区，不污染真实用户数据；测试数据即用即弃。
+- 冒烟/基准全部使用**临时 RAINCODE_HOME** 与临时工作区，不污染真实用户数据；测试数据即用即弃。
 - `smoke:remote` 读取的 `config/*.local.json` 含真实密钥，已被 `.gitignore` 隔离（`config/*.local.json` 模式）——**任何测试脚本不得将密钥写入被跟踪文件或输出**，这是架构级安全约束（04-architecture §5.3）。
 - NFR-7 崩溃基准默认单轮专项口径；全量验收口径（强杀 ×20）可用 `--times 20` 扩展。
 - Windows 专用实现（如进程树终止 `taskkill /F /T`）在非 Windows 平台的行为未经验证。

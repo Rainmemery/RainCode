@@ -1,7 +1,7 @@
 /**
  * AgentService：服务层唯一组装点（04-architecture §2.4 铁律 4 / 06-api-spec §2）。
  * 组装 Storage + LlmClient + SessionTurnLoop（agent-core），经 createServiceBinding 暴露控制面；
- * 方法表 schema 全部引用 @novacode/shared METHOD_SCHEMAS（04 ADR-07）；事件由 agent-core 构造 payload。
+ * 方法表 schema 全部引用 @raincode/shared METHOD_SCHEMAS（04 ADR-07）；事件由 agent-core 构造 payload。
  */
 import { stat } from "node:fs/promises";
 import {
@@ -9,7 +9,7 @@ import {
   PROTOCOL_VERSION,
   V1_CAPABILITIES,
   buildSessionCreatedEvent,
-} from "@novacode/shared";
+} from "@raincode/shared";
 import type {
   CollaborationMode,
   SessionArchiveParams,
@@ -22,15 +22,15 @@ import type {
   SessionSnapshotPayload,
   SessionSteerParams,
   SystemShutdownParams,
-} from "@novacode/shared";
-import { RpcCallError, createServiceBinding } from "@novacode/rpc";
-import type { IMessageTransport, RpcMethodHandler, RpcServiceBinding } from "@novacode/rpc";
-import { Storage, StorageError } from "@novacode/storage";
-import type { SessionResume } from "@novacode/storage";
-import { createBuiltinTools, ToolExecutor } from "@novacode/tools";
-import type { BackgroundTaskRegistry, ToolRegistry } from "@novacode/tools";
-import { alwaysAllowApprover, alwaysDenyApprover, createMetadataPermissionPort } from "@novacode/agent-core";
-import type { CompactionOptions, LlmPort, PermissionPort, SessionEventPublisher, SessionTurnLoop, ToolPhaseDeps, TurnOutcome } from "@novacode/agent-core";
+} from "@raincode/shared";
+import { RpcCallError, createServiceBinding } from "@raincode/rpc";
+import type { IMessageTransport, RpcMethodHandler, RpcServiceBinding } from "@raincode/rpc";
+import { Storage, StorageError } from "@raincode/storage";
+import type { SessionResume } from "@raincode/storage";
+import { createBuiltinTools, ToolExecutor } from "@raincode/tools";
+import type { BackgroundTaskRegistry, ToolRegistry } from "@raincode/tools";
+import { alwaysAllowApprover, alwaysDenyApprover, createMetadataPermissionPort } from "@raincode/agent-core";
+import type { CompactionOptions, LlmPort, PermissionPort, SessionEventPublisher, SessionTurnLoop, ToolPhaseDeps, TurnOutcome } from "@raincode/agent-core";
 import { ConfigDomain } from "./config-domain.js";
 import { ConfigStore } from "./config-store.js";
 import { ToolDomain } from "./tool-domain.js";
@@ -312,7 +312,7 @@ export class AgentService {
     if (entry.llm === null) {
       throw new RpcCallError(
         "CONFIG_PROVIDER_NOT_FOUND",
-        "no provider configured: set --base-url/--model, NOVACODE_PROVIDER_* env, config/providers.local.json, or config.providers.add",
+        "no provider configured: set --base-url/--model, RAINCODE_PROVIDER_* env, config/providers.local.json, or config.providers.add",
       );
     }
     const admission = entry.loop.submit({ text: params.input.text, attachments: params.input.attachments });
@@ -321,7 +321,7 @@ export class AgentService {
     void admission.done.then((outcome: TurnOutcome) => {
       if (outcome.status === "completed" && outcome.usage !== undefined) {
         void recordUsage(this.options.storage, params.sessionId, outcome.usage).catch(
-          (err: unknown) => console.error("[novacode/server] failed to record usage", err),
+          (err: unknown) => console.error("[raincode/server] failed to record usage", err),
         );
       }
     });

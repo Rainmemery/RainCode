@@ -10,8 +10,8 @@
  * baseURL 兼容规则：尾斜杠归一；仅原点（无路径）时补 /v1（OpenAI 兼容端惯例），
  * 已带路径（含 /v1 或自定义前缀）则尊重原值，最终请求 {base}/chat/completions。
  */
-import { providerInputSchema } from "@novacode/shared";
-import type { TokenUsage } from "@novacode/shared";
+import { providerInputSchema } from "@raincode/shared";
+import type { TokenUsage } from "@raincode/shared";
 
 import { LlmAbortedError, LlmError, LlmHttpError, LlmNetworkError, LlmParseError, isAbortReason } from "./errors.js";
 import { SseParser } from "./sse.js";
@@ -82,7 +82,7 @@ export class LlmClient {
   private readonly defaultHeaders: Record<string, string>;
 
   constructor(options: LlmClientOptions) {
-    // 单点复用 shared schema 校验（zod 运行时经 @novacode/shared 解析，本包不直接依赖 zod）
+    // 单点复用 shared schema 校验（zod 运行时经 @raincode/shared 解析，本包不直接依赖 zod）
     const parsed = providerInputSchema.parse(options.provider);
     this.provider = { baseURL: parsed.baseURL, model: parsed.model };
     this.apiKey = options.apiKey ?? null;

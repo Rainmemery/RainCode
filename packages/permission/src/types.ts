@@ -1,6 +1,6 @@
 /**
  * permission 包领域类型（02-module-design §6）。
- * 只依赖 @novacode/shared 类型（不 import agent-core/tools 实现，任务依赖约束）；
+ * 只依赖 @raincode/shared 类型（不 import agent-core/tools 实现，任务依赖约束）；
  * PermissionEventSink 是 agent-core 持久事件通道的结构投影（server 装配时结构化满足）。
  */
 import type {
@@ -11,7 +11,7 @@ import type {
   RuleScope,
   ToolMetadata,
   ToolMetadataSummary,
-} from "@novacode/shared";
+} from "@raincode/shared";
 
 /** 会话持久事件出口（permission.requested / permission.resolved 先落 JSONL 再发布）。 */
 export interface PermissionEventSink {

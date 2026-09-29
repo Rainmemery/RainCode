@@ -1,16 +1,16 @@
 /**
  * CLI 公共装配：进程内 in-memory 绑定到 AgentService（04 §3.1 单进程内嵌；06 §6.1 in-memory 绑定）。
- * Provider 来源优先级在此落地：CLI 参数 > NOVACODE_PROVIDER_* env > config/providers.local.json。
+ * Provider 来源优先级在此落地：CLI 参数 > RAINCODE_PROVIDER_* env > config/providers.local.json。
  */
 import { parseArgs } from "node:util";
-import { createInMemoryTransportPair, createRpcClient } from "@novacode/rpc";
-import type { InMemoryTransport, RpcClient } from "@novacode/rpc";
-import { createAgentServiceNode, resolveProviderConfig } from "@novacode/server";
-import type { AgentServiceNode, ProviderCliArgs } from "@novacode/server";
+import { createInMemoryTransportPair, createRpcClient } from "@raincode/rpc";
+import type { InMemoryTransport, RpcClient } from "@raincode/rpc";
+import { createAgentServiceNode, resolveProviderConfig } from "@raincode/server";
+import type { AgentServiceNode, ProviderCliArgs } from "@raincode/server";
 
 /** 默认系统提示（walking skeleton 最小形态；提示词工程随工具系统波次演进）。 */
 export const DEFAULT_SYSTEM_PROMPT =
-  "You are NovaCode, a coding agent working inside the user's workspace. Answer concisely.";
+  "You are RainCode, a coding agent working inside the user's workspace. Answer concisely.";
 
 export interface ParsedCliArgs {
   positionals: string[];
@@ -100,8 +100,8 @@ export async function teardown(context: CliContext): Promise<void> {
 /** 无 Provider 时的统一报错（exit code 2）。 */
 export function missingProviderError(): number {
   process.stderr.write(
-    "no provider configured: set --base-url/--model, NOVACODE_PROVIDER_BASE_URL/NOVACODE_PROVIDER_MODEL env,\n" +
-      "or add config/providers.local.json (gitignored). See: novacode help\n",
+    "no provider configured: set --base-url/--model, RAINCODE_PROVIDER_BASE_URL/RAINCODE_PROVIDER_MODEL env,\n" +
+      "or add config/providers.local.json (gitignored). See: raincode help\n",
   );
   return 2;
 }

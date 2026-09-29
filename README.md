@@ -1,4 +1,4 @@
-# NovaCode
+# RainCode
 
 > 个人本地 AI 编程工作台 —— 单机优先、数据全本地、自带 API Key 接入任意 OpenAI 兼容模型。
 
@@ -8,7 +8,7 @@
 
 > **🤖 本项目为 vibecoding 产物**：本项目由 AI 编程助手（vibe coding 工作流）全程协作设计与开发，人类角色定位为需求提出、方案评审与验收。设计与实现过程见 [PROGRESS.md](PROGRESS.md) 与 [docs/](docs/README.md)。
 
-NovaCode 的功能定位与 Claude Code / Codex 对齐：整合**代码生成、工具调用、MCP 调用、子代理管理、沙箱执行环境、命令权限控制、项目记忆**七大核心模块，提供 CLI 与 Windows 桌面应用双端形态，两端共享同一套后端服务与协议。
+RainCode 的功能定位与 Claude Code / Codex 对齐：整合**代码生成、工具调用、MCP 调用、子代理管理、沙箱执行环境、命令权限控制、项目记忆**七大核心模块，提供 CLI 与 Windows 桌面应用双端形态，两端共享同一套后端服务与协议。
 
 ## 当前状态
 
@@ -44,9 +44,9 @@ pnpm typecheck && pnpm lint && pnpm architecture:check
 
 # 3. 配置模型 Provider（OpenAI 兼容协议，任选其一）
 #    方式 A：环境变量
-export NOVACODE_PROVIDER_BASE_URL="https://your-endpoint/v1"
-export NOVACODE_PROVIDER_MODEL="your-model"
-export NOVACODE_PROVIDER_API_KEY="sk-..."
+export RAINCODE_PROVIDER_BASE_URL="https://your-endpoint/v1"
+export RAINCODE_PROVIDER_MODEL="your-model"
+export RAINCODE_PROVIDER_API_KEY="sk-..."
 
 #    方式 B：本地配置文件（已被 .gitignore 隔离，不入库）
 #    创建 config/providers.local.json：
@@ -54,9 +54,9 @@ export NOVACODE_PROVIDER_API_KEY="sk-..."
 #    也可用 file: 引用：--api-key "file:config/apikey.txt"（密钥引用制，明文不落库）
 
 # 4. 运行
-pnpm --filter @novacode/cli novacode ping     # 握手，打印协议版本
-pnpm --filter @novacode/cli novacode run "解释这个仓库的目录结构"
-pnpm --filter @novacode/cli novacode chat     # 交互 REPL
+pnpm --filter @raincode/cli raincode ping     # 握手，打印协议版本
+pnpm --filter @raincode/cli raincode run "解释这个仓库的目录结构"
+pnpm --filter @raincode/cli raincode chat     # 交互 REPL
 ```
 
 `chat` REPL 内置命令：`/exit` `/sessions` `/resume` `/mode` `/archive` `/compact` `/providers`；写操作等敏感工具会触发交互式审批。
@@ -66,7 +66,7 @@ pnpm --filter @novacode/cli novacode chat     # 交互 REPL
 ## 项目结构
 
 ```
-NovaCode/
+RainCode/
 ├── apps/
 │   ├── cli/          # CLI（readline REPL，Ink TUI 为 M2+ 演进点）
 │   └── desktop/      # Windows 桌面端（M2 Alpha，Electron）

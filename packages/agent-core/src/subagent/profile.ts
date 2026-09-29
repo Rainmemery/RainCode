@@ -1,6 +1,6 @@
 /**
  * 子代理 profile（02-module-design §4.3）：
- * 位置约定 `<workspace>/.novacode/agents/<name>.md` 或全局 `~/.novacode/agents/<name>.md`；
+ * 位置约定 `<workspace>/.raincode/agents/<name>.md` 或全局 `~/.raincode/agents/<name>.md`；
  * 格式 markdown + frontmatter（`---` 围栏键值行），正文 = 子代理系统提示。
  *
  * 解析刻意手写、不引入 yaml 依赖（spawn 路径低频、字段集固定：name/description/tools/model/maxTurns）；

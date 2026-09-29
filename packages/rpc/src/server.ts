@@ -1,5 +1,5 @@
-import { SYSTEM_ERROR_CODES, rpcFrameSchema } from "@novacode/shared";
-import type { RequestFrame } from "@novacode/shared";
+import { SYSTEM_ERROR_CODES, rpcFrameSchema } from "@raincode/shared";
+import type { RequestFrame } from "@raincode/shared";
 import { RpcCallError } from "./client.js";
 import { formatZodIssues, isDevMode } from "./validate.js";
 import type { IMessageTransport, RpcFrame, Unsubscribe } from "./transport.js";
@@ -19,7 +19,7 @@ export interface CallContext {
 }
 
 export interface RpcMethodHandler {
-  /** 入口单点校验 schema（真源 @novacode/shared，04 §4.3 / ADR-07）。 */
+  /** 入口单点校验 schema（真源 @raincode/shared，04 §4.3 / ADR-07）。 */
   schema: import("zod").ZodTypeAny;
   handler: (params: unknown, ctx: CallContext) => Promise<unknown>;
 }
@@ -104,7 +104,7 @@ export function createServiceBinding(
         return;
       }
       // 响应不携带内部错误细节（04 §5.3：错误信息先过脱敏）；诊断进 stderr
-      console.error(`[novacode/rpc binding] handler failed for "${frame.method}"`, err);
+      console.error(`[raincode/rpc binding] handler failed for "${frame.method}"`, err);
       sendResponse(frame.id, false, undefined, {
         code: SYSTEM_ERROR_CODES.INTERNAL,
         message: "internal error",
@@ -119,7 +119,7 @@ export function createServiceBinding(
       const parsed = rpcFrameSchema.safeParse(frame);
       if (!parsed.success) {
         console.error(
-          "[novacode/rpc binding] malformed frame dropped",
+          "[raincode/rpc binding] malformed frame dropped",
           formatZodIssues(parsed.error),
         );
         return;
@@ -127,11 +127,11 @@ export function createServiceBinding(
     }
     if (frame.kind === "request") {
       void handleRequest(frame).catch((err) => {
-        console.error("[novacode/rpc binding] failed to handle request frame", err);
+        console.error("[raincode/rpc binding] failed to handle request frame", err);
       });
       return;
     }
-    console.error(`[novacode/rpc binding] unexpected ${frame.kind} frame on server side, dropped`);
+    console.error(`[raincode/rpc binding] unexpected ${frame.kind} frame on server side, dropped`);
   }
 
   const unsubscribe: Unsubscribe = transport.onFrame(handleFrame);
@@ -144,7 +144,7 @@ export function createServiceBinding(
       try {
         transport.send({ kind: "event", name: event.name, payload: event.payload });
       } catch (err) {
-        console.error("[novacode/rpc binding] failed to publish event", event.name, err);
+        console.error("[raincode/rpc binding] failed to publish event", event.name, err);
       }
     },
     close(): void {

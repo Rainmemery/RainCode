@@ -1,17 +1,17 @@
 /**
  * Storage 端口门面：唯一持久化出口（04-architecture §2.4 铁律 2）。
  * - 同步 SQLite（better-sqlite3 + WAL）与同步 fs 内核之上提供全异步端口（walking skeleton 约定）；
- * - 数据根：NOVACODE_HOME 覆盖 → 缺省 ~/.novacode（05 §2.1）；workspace 打开即登记（§3.1）；
+ * - 数据根：RAINCODE_HOME 覆盖 → 缺省 ~/.raincode（05 §2.1）；workspace 打开即登记（§3.1）；
  * - 会话创建 = sessions 行 + 会话目录 + JSONL 头行（02 §1.2.2 C1）；
  * - append / checkpoint 经单写者 SessionStream；checkpoint 落盘后回写 sessions 投影列（§4.3）；
  * - resume 走 checkpoint O(1) 定位 + 增量重放，并对账回写（§4.4 第 6 步）。
  */
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
-import type { MessageRecord } from "@novacode/shared";
+import type { MessageRecord } from "@raincode/shared";
 import { openDatabase, type SqliteDatabase } from "./db.js";
 import { StorageError } from "./errors.js";
-import { HEADER_EVENT_NAME, JSONL_SCHEMA_VERSION, NOVACODE_VERSION, type CheckpointState } from "./jsonl-lines.js";
+import { HEADER_EVENT_NAME, JSONL_SCHEMA_VERSION, RAINCODE_VERSION, type CheckpointState } from "./jsonl-lines.js";
 import { replaySessionFile, repairDanglingTail, scanTailState, type ResumeReplay } from "./jsonl-resume.js";
 import { SessionStream, type AppendResult, type CheckpointResult } from "./jsonl-stream.js";
 import { canonicalWorkspacePath, computeWorkspaceHash, resolveDataRoot, sessionPaths } from "./paths.js";
@@ -31,9 +31,9 @@ export interface WorkspaceInfo {
 }
 
 export interface StorageOpenOptions {
-  /** 显式数据根；缺省按 NOVACODE_HOME → ~/.novacode 解析（测试注入用）。 */
+  /** 显式数据根；缺省按 RAINCODE_HOME → ~/.raincode 解析（测试注入用）。 */
   dataRoot?: string;
-  /** 环境变量来源（缺省 process.env；测试隔离 NOVACODE_HOME 用）。 */
+  /** 环境变量来源（缺省 process.env；测试隔离 RAINCODE_HOME 用）。 */
   env?: NodeJS.ProcessEnv;
 }
 
@@ -125,7 +125,7 @@ export class Storage {
         epoch: 0,
         workspaceHash: meta.workspaceId,
         root,
-        novacodeVersion: NOVACODE_VERSION,
+        raincodeVersion: RAINCODE_VERSION,
       },
     };
     await writeFile(paths.eventsFile, `${JSON.stringify(header)}\n`, { flag: "ax" });

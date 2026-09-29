@@ -5,7 +5,7 @@
  * 审批闭环（06 §3.2 B 组）：permission.requested → respond（auto-session / deny / interactive）
  * → permission.resolved 单行结果。供 run / chat 两个命令复用；Ink TUI 化时迁移为渲染组件。
  */
-import type { RpcClient } from "@novacode/rpc";
+import type { RpcClient } from "@raincode/rpc";
 import type {
   DoneEventPayload,
   ErrorEventPayload,
@@ -14,7 +14,7 @@ import type {
   PermissionResolvedEventPayload,
   ToolCallCompletedEventPayload,
   ToolCallStartedEventPayload,
-} from "@novacode/shared";
+} from "@raincode/shared";
 
 export interface StreamOutcome {
   done: DoneEventPayload;

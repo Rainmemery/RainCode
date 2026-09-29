@@ -6,8 +6,8 @@
  * - epoch 单调合并最小落地：append 拒绝 epoch 小于会话当前值的写入，被拒写入直接丢弃并计数。
  */
 import { open, type FileHandle } from "node:fs/promises";
-import { messageRecordSchema } from "@novacode/shared";
-import type { MessageRecord } from "@novacode/shared";
+import { messageRecordSchema } from "@raincode/shared";
+import type { MessageRecord } from "@raincode/shared";
 import {
   JSONL_SCHEMA_VERSION,
   serializeLine,

@@ -3,7 +3,7 @@
  * 运行：tsx scripts/smoke-tools.mts（或 pnpm run smoke:tools）
  *
  * 链路：node:http 本地 mock OpenAI SSE 服务器（按请求次数脚本化多轮回复，tool_call delta
- * 分片下发以覆盖 llm 侧累积）→ 临时 NOVACODE_HOME → createAgentServiceNode（in-memory 绑定，
+ * 分片下发以覆盖 llm 侧累积）→ 临时 RAINCODE_HOME → createAgentServiceNode（in-memory 绑定，
  * 显式 default-allow 权限策略——回归第四波测试审批路径，见 startScenario 注记）
  * → RPC session.send → agent-core 多轮 turn（ToolSchedule → ToolExecution → 回传）→ 断言：
  *
@@ -91,7 +91,7 @@ function startMockServer(
 }
 
 // ---------------------------------------------------------------------------
-// 场景装配：临时 NOVACODE_HOME + workspace + in-memory 服务节点 + RPC 客户端
+// 场景装配：临时 RAINCODE_HOME + workspace + in-memory 服务节点 + RPC 客户端
 // ---------------------------------------------------------------------------
 
 interface Scenario {
@@ -107,13 +107,13 @@ async function startScenario(
   approval: "always-allow" | "always-deny",
   script: SseScript[],
 ): Promise<Scenario> {
-  const home = await mkdtemp(join(tmpdir(), `novacode-smoke-tools-${name}-`));
+  const home = await mkdtemp(join(tmpdir(), `raincode-smoke-tools-${name}-`));
   const workspace = join(home, "ws");
   await mkdir(workspace, { recursive: true });
   const mock = await startMockServer(script);
   const transports = createInMemoryTransportPair();
   const node = await createAgentServiceNode(transports[1], {
-    env: { NOVACODE_HOME: home },
+    env: { RAINCODE_HOME: home },
     provider: {
       name: `mock-${name}`,
       baseURL: `http://127.0.0.1:${String(mock.port)}/v1`,
@@ -121,7 +121,7 @@ async function startScenario(
       apiKey: "smoke-dummy-key",
       maxContextTokens: 8192,
     },
-    systemPrompt: "You are NovaCode (smoke).",
+    systemPrompt: "You are RainCode (smoke).",
     tools: { approval },
     // 第五波回归申报：显式 default-allow（仅开发策略）走第四波测试审批路径，保持本 smoke 语义不变
     permission: { policy: "default-allow" },
@@ -279,7 +279,7 @@ async function main(): Promise<void> {
       );
 
       // 2) events.jsonl 持久化（started/completed 落盘；progress 为瞬态不落盘；tool 消息行落库）
-      const storage = await Storage.open({ env: { NOVACODE_HOME: scenario.home } });
+      const storage = await Storage.open({ env: { RAINCODE_HOME: scenario.home } });
       const eventsFile = await storage.sessionEventsFile(sessionId);
       const raw = await readFile(eventsFile, "utf8");
       assert.ok(raw.includes('"name":"tool_call.started"'), "events.jsonl 应含 tool_call.started");
@@ -347,7 +347,7 @@ async function main(): Promise<void> {
       assert.equal(outcome.toolCompleted[0]?.error?.code, "TOOL_PERMISSION_DENIED");
 
       // 拒绝结果以 tool 消息行落库（模型可见），且无悬挂 tool_call
-      const storage = await Storage.open({ env: { NOVACODE_HOME: scenario.home } });
+      const storage = await Storage.open({ env: { RAINCODE_HOME: scenario.home } });
       const replay = await storage.resumeSession(created.sessionId);
       const toolRow = replay.history.find((message) => message.role === "tool");
       assert.ok(toolRow !== undefined, "拒绝结果应落库为 tool 消息行");

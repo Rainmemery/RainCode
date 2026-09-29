@@ -1,4 +1,4 @@
-# NovaCode 架构治理策略（04-architecture §6.1）
+# RainCode 架构治理策略（04-architecture §6.1）
 #
 # 波次登记进度（07-dev-plan §8.1：目录与 policy 同步登记）：
 #   第一/二波：shared / rpc / storage / llm；
@@ -18,7 +18,7 @@ modules:
   - id: shared
     roots: [packages/shared/src]
     managed: true
-    requires: []                                   # 底座：不依赖任何 NovaCode 包（仅三方 zod）
+    requires: []                                   # 底座：不依赖任何 RainCode 包（仅三方 zod）
     publicEntrypoints: [packages/shared/src/index.ts]
   - id: rpc
     roots: [packages/rpc/src]

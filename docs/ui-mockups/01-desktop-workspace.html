@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NovaCode · 主工作区 设计稿 01</title>
+<title>RainCode · 主工作区 设计稿 01</title>
 <style>
-/* ============ NovaCode Design Tokens（与 03-ui-design.md 3.1–3.5 一致） ============ */
+/* ============ RainCode Design Tokens（与 03-ui-design.md 3.1–3.5 一致） ============ */
 :root{
   --bg-void:#0A0E13; --bg-base:#0D1219; --bg-panel:#111823; --bg-card:#141C28;
   --bg-raised:#1A2432; --bg-hover:#1C2735; --bg-selected:#24384F; --bg-popover:#161F2C;
@@ -293,11 +293,11 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
   <div class="titlebar">
     <div class="brand">
       <div class="brand-mark">✦</div>
-      <span class="brand-name">NovaCode</span>
+      <span class="brand-name">RainCode</span>
     </div>
     <div class="ws-crumb">
-      <span class="proj">novacode</span>
-      <span class="path">d:\LYX\MyClaudeCode\NovaCode</span>
+      <span class="proj">raincode</span>
+      <span class="path">d:\LYX\MyClaudeCode\RainCode</span>
       <span style="color:var(--text-faint);font-size:10px">· main ✓</span>
     </div>
     <div class="tb-right">
@@ -317,8 +317,8 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
       <div class="ws-switch">
         <span class="dot"></span>
         <div style="min-width:0">
-          <div class="name">novacode</div>
-          <div class="dir">d:\LYX\MyClaudeCode\NovaCode</div>
+          <div class="name">raincode</div>
+          <div class="dir">d:\LYX\MyClaudeCode\RainCode</div>
         </div>
         <span class="chev" style="margin-left:auto;color:var(--text-faint);font-size:10px">▾</span>
       </div>
@@ -400,7 +400,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 
           <!-- 助手消息 -->
           <div class="msg-assistant">
-            <div class="msg-sign"><span class="star">✦</span><span class="who">NovaCode</span><span class="model">sonnet-4.5</span><span class="time">14:33</span></div>
+            <div class="msg-sign"><span class="star">✦</span><span class="who">RainCode</span><span class="model">sonnet-4.5</span><span class="time">14:33</span></div>
             <p>好的。我先查看 <code class="inline">manager.ts</code> 的现状，统计所有 <code class="inline">throw new Error</code> 的位置，再统一替换为 <code class="inline">Result&lt;T, SessionError&gt;</code>，最后由子代理并行补齐测试。</p>
           </div>
 
@@ -501,7 +501,7 @@ RUNS  test/session/persistence.test.ts …</pre>
 
           <!-- 流式输出中 -->
           <div class="msg-assistant streaming">
-            <div class="msg-sign"><span class="star">✦</span><span class="who">NovaCode</span><span class="model">sonnet-4.5</span><span class="time">正在生成</span></div>
+            <div class="msg-sign"><span class="star">✦</span><span class="who">RainCode</span><span class="model">sonnet-4.5</span><span class="time">正在生成</span></div>
             <p>测试已覆盖 <span class="mono" style="font-size:var(--fs-sm)">MissingModel</span> 与 <span class="mono" style="font-size:var(--fs-sm)">NoWorkspace</span> 两个分支，接下来我会<span class="caret"></span></p>
             <span class="shimmer">正在生成后续内容…</span>
           </div>

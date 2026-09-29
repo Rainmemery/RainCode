@@ -12,8 +12,8 @@ import { dirname, isAbsolute, join } from "node:path";
 import {
   configDocumentSchema,
   configDocumentStrictSchema,
-} from "@novacode/shared";
-import type { ConfigDocument, ProviderAddInput, ProviderInfo, ProviderInput } from "@novacode/shared";
+} from "@raincode/shared";
+import type { ConfigDocument, ProviderAddInput, ProviderInfo, ProviderInput } from "@raincode/shared";
 
 /** config.json 结构版本（04 §5.1 configVersion；与协议版本独立演进）。 */
 export const CONFIG_VERSION = 1;
@@ -36,7 +36,7 @@ export class ConfigStoreError extends Error {
 }
 
 export interface ConfigStoreOptions {
-  /** 数据根（NOVACODE_HOME → ~/.novacode，05 §2.1）；config.json 与密钥文件的编址基准。 */
+  /** 数据根（RAINCODE_HOME → ~/.raincode，05 §2.1）；config.json 与密钥文件的编址基准。 */
   dataRoot: string;
 }
 

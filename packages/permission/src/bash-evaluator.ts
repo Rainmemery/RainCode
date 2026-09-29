@@ -10,7 +10,7 @@
  *    跳过 allow 语义」），匹配由 Service 层结合本求值器的 dangerous 标记执行。
  */
 import type { BashCommandAnalysis, BashSegment } from "./types.js";
-import type { PermissionRule } from "@novacode/shared";
+import type { PermissionRule } from "@raincode/shared";
 import {
   DANGEROUS_ROOTS,
   ENV_ASSIGNMENT,

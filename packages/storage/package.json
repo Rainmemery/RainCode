@@ -1,5 +1,5 @@
 {
-  "name": "@novacode/storage",
+  "name": "@raincode/storage",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@novacode/shared": "workspace:*",
+    "@raincode/shared": "workspace:*",
     "better-sqlite3": "^12.4.1"
   },
   "devDependencies": {

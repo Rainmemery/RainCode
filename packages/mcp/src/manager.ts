@@ -13,7 +13,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import type { McpServerConfig, McpServerStatus, McpToolDescriptor } from "@novacode/shared";
+import type { McpServerConfig, McpServerStatus, McpToolDescriptor } from "@raincode/shared";
 import { McpConfigError, validateServerKey } from "./config.js";
 import type { McpServerConfigLevel } from "./config.js";
 const BACKOFF_MS = [1000, 2000, 4000, 8000, 16000]; // M4 退避序列
@@ -66,7 +66,7 @@ export class McpManager {
   private readonly diag: (message: string, err?: unknown) => void;
 
   constructor(private readonly options: McpManagerOptions = {}) {
-    this.diag = options.onDiagnostic ?? ((message, err) => console.error(`[novacode/mcp] ${message}`, err ?? ""));
+    this.diag = options.onDiagnostic ?? ((message, err) => console.error(`[raincode/mcp] ${message}`, err ?? ""));
   }
 
   /** 注册配置并进入状态机（不做 IO；连接由 connect/restoreAll 驱动）。 */
@@ -264,7 +264,7 @@ export class McpManager {
     connection.intentionalClose = false;
     this.setState(connection, serverKey, "Connecting");
     const client = new Client(
-      { name: this.options.clientName ?? "novacode", version: this.options.clientVersion ?? "0.1.0" },
+      { name: this.options.clientName ?? "raincode", version: this.options.clientVersion ?? "0.1.0" },
       { capabilities: {} },
     );
     try {

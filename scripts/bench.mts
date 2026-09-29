@@ -27,7 +27,7 @@ async function main(): Promise<number> {
   const sub = process.argv[2];
   const timesFlag = process.argv.indexOf("--times");
   const times = timesFlag >= 0 ? Number.parseInt(process.argv[timesFlag + 1] ?? "1", 10) || 1 : 1;
-  console.log(`NovaCode M1 NFR 基准 · ${new Date().toISOString()} · Node ${process.version} · ${process.platform}`);
+  console.log(`RainCode M1 NFR 基准 · ${new Date().toISOString()} · Node ${process.version} · ${process.platform}`);
   console.log("");
   const single = new Map<string, () => Promise<CheckResult>>([
     ["start", () => benchStart(20)],

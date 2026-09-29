@@ -7,7 +7,7 @@
  * - 权限判定不属于本包（02 §2.1：三态判定在 permission 侧，本系统只消费其结果）。
  */
 import type { z } from "zod";
-import type { ToolErrorCode, ToolMetadata } from "@novacode/shared";
+import type { ToolErrorCode, ToolMetadata } from "@raincode/shared";
 import type { BackgroundTaskRegistry } from "./sandbox/background.js";
 import type { PathPolicyHook } from "./path-guard.js";
 

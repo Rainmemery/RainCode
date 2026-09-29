@@ -3,7 +3,7 @@
  * @Date: 2026-09-28 16:16:29
  * @LastEditors: 卢宇翔 luyuxiang@shwpg.com
  * @LastEditTime: 2026-09-28 16:27:51
- * @FilePath: \MyClaudeCode\NovaCode\packages\agent-core\src\turn\settle.ts
+ * @FilePath: \MyClaudeCode\RainCode\packages\agent-core\src\turn\settle.ts
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
 /**

@@ -1,5 +1,5 @@
 {
-  "name": "@novacode/llm",
+  "name": "@raincode/llm",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@novacode/shared": "workspace:*"
+    "@raincode/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

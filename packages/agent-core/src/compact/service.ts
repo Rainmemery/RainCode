@@ -12,15 +12,15 @@ import {
   COMPACTION_EVENT_NAME,
   compactionSummaryRecord,
   ulid,
-} from "@novacode/storage";
-import type { CheckpointState } from "@novacode/storage";
+} from "@raincode/storage";
+import type { CheckpointState } from "@raincode/storage";
 import type { StoragePort } from "../ports.js";
 import type { LlmPort } from "../ports.js";
-import type { MessageRecord } from "@novacode/shared";
+import type { MessageRecord } from "@raincode/shared";
 import {
   buildCompactCompletedEvent,
   buildCompactStartedEvent,
-} from "@novacode/shared";
+} from "@raincode/shared";
 
 /** 压缩选项（02 §1.3 CompactionOptions；contextWindowTokens 由 server 按 Provider 注入）。 */
 export interface CompactionOptions {

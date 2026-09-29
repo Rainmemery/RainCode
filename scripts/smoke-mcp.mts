@@ -4,7 +4,7 @@
  *
  * 链路：node:http mock OpenAI SSE（turn 内模型工具调用用）+ 两个手写 JSON-RPC fixture server
  * （scripts/mcp-fixture-stdio.mjs stdio 子进程 / mcp-fixture-http.mjs Streamable HTTP）——
- * 与 SDK client 的真实互操作（协议层真实，非 mock）→ 临时 NOVACODE_HOME + mcp.json 双 server 配置
+ * 与 SDK client 的真实互操作（协议层真实，非 mock）→ 临时 RAINCODE_HOME + mcp.json 双 server 配置
  * → createAgentServiceNode（mcp 域装配）→ 断言：
  * 用例 A 配置加载与连接状态机：alpha → Connected（事件），broken（命令不存在）→ Failed（M3，
  *   失败隔离不阻塞 alpha）；servers.list 状态投影正确。
@@ -47,7 +47,7 @@ const FIXTURE_HTTP = join(import.meta.dirname, "mcp-fixture-http.mjs");
 const CONNECT_TIMEOUT = 15000;
 
 // ---------------------------------------------------------------------------
-// 场景装配：临时 NOVACODE_HOME + mcp.json + in-memory 服务节点 + RPC 客户端
+// 场景装配：临时 RAINCODE_HOME + mcp.json + in-memory 服务节点 + RPC 客户端
 // ---------------------------------------------------------------------------
 
 interface StatusWatch {
@@ -66,7 +66,7 @@ interface Scenario {
 }
 
 async function startScenario(script: SseScript[]): Promise<Scenario> {
-  const home = await mkdtemp(join(tmpdir(), "novacode-smoke-mcp-"));
+  const home = await mkdtemp(join(tmpdir(), "raincode-smoke-mcp-"));
   const workspace = join(home, "ws");
   await mkdir(workspace, { recursive: true });
   const mcpConfig = {
@@ -92,7 +92,7 @@ async function startScenario(script: SseScript[]): Promise<Scenario> {
   mock.setScript(script);
   const transports = createInMemoryTransportPair();
   const node = await createAgentServiceNode(transports[1], {
-    env: { NOVACODE_HOME: home },
+    env: { RAINCODE_HOME: home },
     provider: {
       name: "mock-mcp",
       baseURL: mock.url,

@@ -1,8 +1,8 @@
-import type { RpcFrame } from "@novacode/shared";
+import type { RpcFrame } from "@raincode/shared";
 
 /**
  * 传输抽象（04-architecture §4.1）：rpc 层只关心「帧」，对业务零感知（不解析方法名与 payload 语义）。
- * RpcFrame 的 zod schema 真源在 @novacode/shared（06-api-spec §5 common.ts），
+ * RpcFrame 的 zod schema 真源在 @raincode/shared（06-api-spec §5 common.ts），
  * 此处按 04 §4.1 原样导出类型，供端层与 server 从本包导入。
  */
 export type { RpcFrame };

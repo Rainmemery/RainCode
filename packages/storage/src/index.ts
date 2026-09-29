@@ -1,8 +1,8 @@
 /**
- * @novacode/storage —— SQLite（better-sqlite3, WAL）+ JSONL 会话事件流（05-database）。
+ * @raincode/storage —— SQLite（better-sqlite3, WAL）+ JSONL 会话事件流（05-database）。
  *
  * 本包唯一 publicEntrypoint（architecture/policy.yaml）：跨包只允许从这里导入，禁止深导入。
- * 只依赖 @novacode/shared；storage 之外禁止直接触碰 fs/sqlite（04 §2.4 铁律 2）。
+ * 只依赖 @raincode/shared；storage 之外禁止直接触碰 fs/sqlite（04 §2.4 铁律 2）。
  * 波次裁剪：迁移 001_init 仅建 schema_migrations / workspaces / sessions 三表；
  * SessionsRepo + 会话 JSONL 流（append / checkpoint fsync / resume 增量重放 / epoch 单调合并）。
  */
@@ -58,7 +58,7 @@ export {
   COMPACTION_EVENT_NAME,
   HEADER_EVENT_NAME,
   JSONL_SCHEMA_VERSION,
-  NOVACODE_VERSION,
+  RAINCODE_VERSION,
   compactionSummaryRecord,
   parseLine,
   serializeLine,

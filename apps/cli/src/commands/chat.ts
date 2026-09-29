@@ -1,5 +1,5 @@
 /**
- * novacode chat：readline 交互 REPL（最小命令集 /exit /sessions /resume <id> /mode /archive /providers）。
+ * raincode chat：readline 交互 REPL（最小命令集 /exit /sessions /resume <id> /mode /archive /providers）。
  * 首条输入自动创建会话；/resume 切换活动会话后续输入续接该会话历史（session.resume 幂等）。
  * 审批：permission.requested 交互四级决策（[1]仅本次 [2]本会话始终 [3]项目始终 [4]拒绝），
  * 选项[2]写 session 规则、[3]写 project 规则、[4]respond deny（02 §6.2 审批闭环）。
@@ -7,8 +7,8 @@
  */
 import { createInterface } from "node:readline/promises";
 import { resolve } from "node:path";
-import { RpcCallError } from "@novacode/rpc";
-import type { RpcClient } from "@novacode/rpc";
+import { RpcCallError } from "@raincode/rpc";
+import type { RpcClient } from "@raincode/rpc";
 import type {
   CollaborationMode,
   ConfigProvidersListResult,
@@ -16,7 +16,7 @@ import type {
   SessionCreateResult,
   SessionListResult,
   SessionResumeResult,
-} from "@novacode/shared";
+} from "@raincode/shared";
 import { parseCliArgs, startServiceNode, teardown } from "../context.js";
 import { sendAndStream } from "../stream.js";
 import type { ApprovalChoice } from "../stream.js";
@@ -47,7 +47,7 @@ export async function chatCommand(argv: string[]): Promise<number> {
   try {
     await context.client.call("system.ping", {});
     process.stdout.write(
-      `NovaCode chat · workspace ${workspaceRoot}\n` +
+      `RainCode chat · workspace ${workspaceRoot}\n` +
         "命令: /exit /sessions /resume <id> /mode <normal|plan|auto-accept> /archive [--force] /compact /providers\n" +
         "其余输入直接发送\n",
     );

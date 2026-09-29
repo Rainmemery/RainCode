@@ -7,8 +7,8 @@
  * private 字段不阻断 extends——投影经闭包委托底层 registry，而非自有注册表）。
  * 投影不可变：register/unregister 一律抛错；sourceOf 透传（来源信息无保密需求，02 §4.3）。
  */
-import { ToolRegistry } from "@novacode/tools";
-import type { Tool, ToolDescriptor, ToolSource } from "@novacode/tools";
+import { ToolRegistry } from "@raincode/tools";
+import type { Tool, ToolDescriptor, ToolSource } from "@raincode/tools";
 
 /** 只读白名单投影：get/has/list/size 只暴露 allow 集合内的工具；写操作一律抛错。 */
 export function projectRegistry(registry: ToolRegistry, allow: ReadonlySet<string>): ToolRegistry {

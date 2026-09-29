@@ -5,7 +5,7 @@
  * - 召回默认集：status='active' AND confidence>=0.6（02 §7.4 幻觉防线，05 §5.4）；
  * - 管理视图不过滤 confidence/status（与召回默认集区分，06 §2.6 语义）。
  */
-import type { MemoryEntry, MemoryKind, MemorySource } from "@novacode/shared";
+import type { MemoryEntry, MemoryKind, MemorySource } from "@raincode/shared";
 import type { SqliteDatabase } from "./db.js";
 import { ulid } from "./ulid.js";
 
@@ -16,7 +16,7 @@ export const MEMORY_RECALL_MIN_CONFIDENCE = 0.6;
 const DEFAULT_PAGE_LIMIT = 50;
 const MAX_PAGE_LIMIT = 200;
 
-/** memory_entries 行投影（camelCase，与表列一一对应，05 §3.9）；MemoryEntry 类型复用 @novacode/shared。 */
+/** memory_entries 行投影（camelCase，与表列一一对应，05 §3.9）；MemoryEntry 类型复用 @raincode/shared。 */
 
 /** 新条目入参；id 由 repo 生成（entry_${ulid}，与 rules-repo 同约定）。 */
 export interface NewMemoryEntry {

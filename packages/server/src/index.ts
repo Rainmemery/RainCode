@@ -1,5 +1,5 @@
 /**
- * @novacode/server —— Agent Service 唯一组装点（04-architecture §2.1 / ADR-06）。
+ * @raincode/server —— Agent Service 唯一组装点（04-architecture §2.1 / ADR-06）。
  *
  * 本包唯一 publicEntrypoint（architecture/policy.yaml）。
  * 职责：装配 agent-core + llm + storage 为 Agent Service、方法表（06 §2）、会话事件流出口；

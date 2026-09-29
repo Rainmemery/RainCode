@@ -7,7 +7,7 @@
  * - 依赖方向：server → permission/shared/storage（agent-core 只消费 PermissionPort 窄端口）；
  * - PermissionError → RpcCallError 转换（06 §4.3 业务码 PC_*）。
  */
-import { RpcCallError } from "@novacode/rpc";
+import { RpcCallError } from "@raincode/rpc";
 import type {
   PermissionDecisionsListParams,
   PermissionDecisionsListResult,
@@ -20,8 +20,8 @@ import type {
   PermissionRulesListResult,
   PermissionRulesRemoveParams,
   PermissionRulesRemoveResult,
-} from "@novacode/shared";
-import { Storage } from "@novacode/storage";
+} from "@raincode/shared";
+import { Storage } from "@raincode/storage";
 import {
   ApprovalBroker,
   AuditLogger,
@@ -29,9 +29,9 @@ import {
   PermissionError,
   PermissionService,
   RulesManager,
-} from "@novacode/permission";
-import type { PermissionPort } from "@novacode/agent-core";
-import type { ToolPermissionRequest } from "@novacode/agent-core";
+} from "@raincode/permission";
+import type { PermissionPort } from "@raincode/agent-core";
+import type { ToolPermissionRequest } from "@raincode/agent-core";
 
 export type PermissionPolicy = "default-allow" | "normal";
 
@@ -39,7 +39,7 @@ export interface PermissionRuntimeOptions {
   approvalTimeoutMs?: number;
 }
 
-const DIAG_PREFIX = "[novacode/permission]";
+const DIAG_PREFIX = "[raincode/permission]";
 
 function diag(message: string, err?: unknown): void {
   console.error(`${DIAG_PREFIX} ${message}`, err ?? "");

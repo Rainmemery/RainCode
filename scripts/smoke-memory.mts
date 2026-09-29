@@ -3,7 +3,7 @@
  * 运行：tsx scripts/smoke-memory.mts（或 pnpm run smoke:memory）
  *
  * 链路：node:http mock OpenAI SSE（主/抽取请求同源、按请求序回放 + 请求体捕获）+ 临时
- * NOVACODE_HOME/workspace → createAgentServiceNode（memory 域装配 + compaction keepRecent=1
+ * RAINCODE_HOME/workspace → createAgentServiceNode（memory 域装配 + compaction keepRecent=1
  * 供用例 F 手动 compact）→ 断言：
  * 用例 A 模板与注入：memory.read 不存在 → exists:false + 模板骨架；session.create + 一轮对话 →
  *   模型请求体 system 含标题行与模板章节标题（04 L86 启动全文注入，02 §7.4 不存在时注入模板）。
@@ -36,7 +36,7 @@ import { beginTurn, startMockLlmServer, textScript, withTimeout } from "./p0-lib
 import type { MockLlmServer, SseScript } from "./p0-lib.mts";
 
 // ---------------------------------------------------------------------------
-// 场景装配：临时 NOVACODE_HOME + workspace + mock LLM + memory 域装配的服务节点
+// 场景装配：临时 RAINCODE_HOME + workspace + mock LLM + memory 域装配的服务节点
 // ---------------------------------------------------------------------------
 
 interface Scenario {
@@ -69,13 +69,13 @@ const EXTRACT_COMPACT = {
 };
 
 async function startScenario(): Promise<Scenario> {
-  const home = await mkdtemp(join(tmpdir(), "novacode-smoke-memory-"));
+  const home = await mkdtemp(join(tmpdir(), "raincode-smoke-memory-"));
   const workspace = join(home, "ws");
   await mkdir(workspace, { recursive: true });
   const mock = await startMockLlmServer();
   const transports = createInMemoryTransportPair();
   const node = await createAgentServiceNode(transports[1], {
-    env: { NOVACODE_HOME: home },
+    env: { RAINCODE_HOME: home },
     provider: {
       name: "mock-memory",
       baseURL: mock.url,
@@ -192,7 +192,7 @@ async function caseWrite(scenario: Scenario): Promise<void> {
   // writeFileSync 阻塞直改」模拟并发窗口——handler 的「记 mtime(S1) → 提交前复检(S2)」两步 stat
   // 跨越至少一次阻塞写收尾，S1/S2 观测到不同 mtime → MEMORY_WRITE_CONFLICT。
   // 注：外部修改若在读前完成则被读-改-写正确吸收（文件是唯一真源），故按轮重放直至命中。
-  const memPath = join(workspace, ".novacode", "MEMORY.md");
+  const memPath = join(workspace, ".raincode", "MEMORY.md");
   let conflicted = false;
   for (let round = 0; round < 5 && !conflicted; round += 1) {
     const base = await readFile(memPath, "utf8");

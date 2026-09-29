@@ -6,8 +6,8 @@ import type {
   ToolBackgroundKillParams,
   ToolBackgroundOutputParams,
   ToolToolsListParams,
-} from "@novacode/shared";
-import type { BackgroundTaskRegistry, ToolRegistry } from "@novacode/tools";
+} from "@raincode/shared";
+import type { BackgroundTaskRegistry, ToolRegistry } from "@raincode/tools";
 
 export class ToolDomain {
   constructor(private readonly deps: { registry: ToolRegistry; background: BackgroundTaskRegistry }) {}

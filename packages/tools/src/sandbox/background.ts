@@ -7,7 +7,7 @@
  * 提示/移交属 server/session 生命周期波次。
  */
 import { killProcessTree, spawnLocal, type ExecRequest, type SpawnHandle } from "./local-executor.js";
-import type { BackgroundTaskInfo } from "@novacode/shared";
+import type { BackgroundTaskInfo } from "@raincode/shared";
 
 export type KillOutcomeReason = "not_found" | "not_running" | "ownership_rejected" | "terminated";
 

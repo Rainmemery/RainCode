@@ -6,7 +6,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { z } from "zod";
-import { TOOL_ERROR_CODES } from "@novacode/shared";
+import { TOOL_ERROR_CODES } from "@raincode/shared";
 import type { Tool, ToolOutput, ToolExecutionContext } from "../tool.js";
 import { ToolExecutionError } from "../executor.js";
 import { guardPath } from "../path-guard.js";

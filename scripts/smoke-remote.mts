@@ -4,7 +4,7 @@
  *
  * 读取 config/test-provider.local.json（已被 .gitignore 隔离，不入库；OpenAI 兼容，
  * baseURL https://llm-afjocnwxv51vfnrj.cn-beijing.maas.aliyuncs.com/compatible-mode/v1，
- * model qwen3.7-flash）→ 临时 NOVACODE_HOME → 进程内调用 apps/cli main(["run", ...])。
+ * model qwen3.7-flash）→ 临时 RAINCODE_HOME → 进程内调用 apps/cli main(["run", ...])。
  *
  * 安全约束（04-architecture §5.3）：apiKey 只存在于内存与本地配置文件，
  * 绝不出现在任何输出/日志/被跟踪文件中——本脚本对 stdout/stderr 全量捕获并断言无密钥泄露。
@@ -74,21 +74,21 @@ async function main(): Promise<void> {
   );
   console.log("（apiKey 已加载，不打印）");
 
-  const home = await mkdtemp(join(tmpdir(), "novacode-smoke-remote-"));
+  const home = await mkdtemp(join(tmpdir(), "raincode-smoke-remote-"));
   const savedEnv: Array<[string, string | undefined]> = [
-    ["NOVACODE_HOME", process.env["NOVACODE_HOME"]],
-    ["NOVACODE_PROVIDER_BASE_URL", process.env["NOVACODE_PROVIDER_BASE_URL"]],
-    ["NOVACODE_PROVIDER_MODEL", process.env["NOVACODE_PROVIDER_MODEL"]],
-    ["NOVACODE_PROVIDER_API_KEY", process.env["NOVACODE_PROVIDER_API_KEY"]],
+    ["RAINCODE_HOME", process.env["RAINCODE_HOME"]],
+    ["RAINCODE_PROVIDER_BASE_URL", process.env["RAINCODE_PROVIDER_BASE_URL"]],
+    ["RAINCODE_PROVIDER_MODEL", process.env["RAINCODE_PROVIDER_MODEL"]],
+    ["RAINCODE_PROVIDER_API_KEY", process.env["RAINCODE_PROVIDER_API_KEY"]],
   ];
   const setEnv = (key: string, value: string | undefined): void => {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
   };
-  setEnv("NOVACODE_HOME", home);
-  setEnv("NOVACODE_PROVIDER_BASE_URL", config.baseURL);
-  setEnv("NOVACODE_PROVIDER_MODEL", config.model);
-  setEnv("NOVACODE_PROVIDER_API_KEY", config.apiKey);
+  setEnv("RAINCODE_HOME", home);
+  setEnv("RAINCODE_PROVIDER_BASE_URL", config.baseURL);
+  setEnv("RAINCODE_PROVIDER_MODEL", config.model);
+  setEnv("RAINCODE_PROVIDER_API_KEY", config.apiKey);
 
   const captured = captureStreams();
   try {
@@ -113,7 +113,7 @@ async function main(): Promise<void> {
     // 输出捕获期间的内容（回答正文）；确保不含密钥后再打印
     process.stdout.write("\n--- 模型回答（stdout 捕获回放）---\n");
     process.stdout.write(stdoutText);
-    process.stdout.write("\n--- 会话事实已落临时 NOVACODE_HOME，resume 历史与本地 smoke 同链路 ---\n");
+    process.stdout.write("\n--- 会话事实已落临时 RAINCODE_HOME，resume 历史与本地 smoke 同链路 ---\n");
     console.log("");
     console.log("SMOKE REMOTE OK");
   } catch (reason: unknown) {

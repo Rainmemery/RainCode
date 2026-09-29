@@ -4,8 +4,8 @@
  * grantId、respondLatencyMs（02 §6.3 decisions 记录清单）。
  * 写入失败不阻塞判定（02 §6.4）：仅诊断告警；本地重试队列随后续波次补齐。
  */
-import type { CollaborationMode, MatchedBy, PermissionDecision } from "@novacode/shared";
-import type { DecisionsRepo } from "@novacode/storage";
+import type { CollaborationMode, MatchedBy, PermissionDecision } from "@raincode/shared";
+import type { DecisionsRepo } from "@raincode/storage";
 
 /** 输入摘要截断上限（脱敏 + 截断，任务交付「参数截断+apiKey 模式抹除」）。 */
 const INPUT_DIGEST_MAX_CHARS = 512;

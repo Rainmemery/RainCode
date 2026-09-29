@@ -217,7 +217,7 @@ export function spawnLocal(req: ExecRequest): SpawnHandle {
     });
     proc.once("error", () => {
       settle(null); // spawn 失败（如 shell 不存在）：exitCode null，stderr 带诊断
-      stderr.push(Buffer.from(`[novacode] failed to spawn ${shell.file}\n`, "utf8"));
+      stderr.push(Buffer.from(`[raincode] failed to spawn ${shell.file}\n`, "utf8"));
     });
   });
 

@@ -1,10 +1,10 @@
 /**
- * @novacode/mcp —— MCP Integration（04-architecture §2.1 / 02-module-design §3）。
+ * @raincode/mcp —— MCP Integration（04-architecture §2.1 / 02-module-design §3）。
  *
  * 本包唯一 publicEntrypoint（architecture/policy.yaml）。
  * 职责（02 §3）：MCP server 连接生命周期（stdio/http/sse 三 transport + 状态机 M1~M8）、
  * 失败隔离与重连退避、mcp.json 配置加载与持久化、远端工具适配（命名空间 + 从严 metadata）。
- * 依赖：@modelcontextprotocol/sdk（协议交互）、@novacode/shared（schema）、@novacode/tools（Tool 契约）。
+ * 依赖：@modelcontextprotocol/sdk（协议交互）、@raincode/shared（schema）、@raincode/tools（Tool 契约）。
  */
 
 export {

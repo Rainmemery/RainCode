@@ -1,6 +1,6 @@
 /**
  * MCP 工具适配（02-module-design §3.3）：
- * 远端工具描述符 → NovaCode Tool（注册进 ToolRegistry，source="mcp"）。
+ * 远端工具描述符 → RainCode Tool（注册进 ToolRegistry，source="mcp"）。
  *
  * - 命名：mcp__<serverKey>__<toolName>（toMcpToolName）；
  * - schema：原始 inputSchema 直通（provider function parameters），运行时仅保留宽松
@@ -12,9 +12,9 @@
  *   不影响其他 server 与内置工具。
  */
 import { z } from "zod";
-import type { McpToolDescriptor } from "@novacode/shared";
-import { ToolExecutionError } from "@novacode/tools";
-import type { Tool, ToolExecutionContext, ToolOutput } from "@novacode/tools";
+import type { McpToolDescriptor } from "@raincode/shared";
+import { ToolExecutionError } from "@raincode/tools";
+import type { Tool, ToolExecutionContext, ToolOutput } from "@raincode/tools";
 import { McpError } from "./manager.js";
 import type { McpManager } from "./manager.js";
 

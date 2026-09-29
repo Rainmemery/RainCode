@@ -1,5 +1,5 @@
 {
-  "name": "@novacode/server",
+  "name": "@raincode/server",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,15 +12,15 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@novacode/agent-core": "workspace:*",
-    "@novacode/llm": "workspace:*",
-    "@novacode/permission": "workspace:*",
-    "@novacode/rpc": "workspace:*",
-    "@novacode/shared": "workspace:*",
-    "@novacode/storage": "workspace:*",
-    "@novacode/tools": "workspace:*",
-    "@novacode/mcp": "workspace:*",
-    "@novacode/memory": "workspace:*"
+    "@raincode/agent-core": "workspace:*",
+    "@raincode/llm": "workspace:*",
+    "@raincode/permission": "workspace:*",
+    "@raincode/rpc": "workspace:*",
+    "@raincode/shared": "workspace:*",
+    "@raincode/storage": "workspace:*",
+    "@raincode/tools": "workspace:*",
+    "@raincode/mcp": "workspace:*",
+    "@raincode/memory": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

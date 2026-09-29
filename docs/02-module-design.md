@@ -1,4 +1,4 @@
-# NovaCode 模块详细设计（02-module-design）
+# RainCode 模块详细设计（02-module-design）
 
 > 版本：v0.1（设计稿）
 > 日期：2026-09-24
@@ -86,7 +86,7 @@ flowchart TD
 - 不维护持久化存储细节（属于 `packages/storage`），内核只依赖其端口接口。
 
 **关于「代码生成能力」的定位（必须声明）：**
-NovaCode **不设独立的代码生成引擎**。代码生成 = 模型在 Turn 循环中经 `write` / `edit` 等工具直接读写工作区文件实现的。理由：
+RainCode **不设独立的代码生成引擎**。代码生成 = 模型在 Turn 循环中经 `write` / `edit` 等工具直接读写工作区文件实现的。理由：
 1. 生成即副作用——写文件必须走权限三态与沙箱路径约束，独立引擎会绕开安全链路；
 2. 生成需要上下文——read/glob/grep 的结果在同一会话历史中，独立引擎会造成状态双写；
 3. 对齐 Claude Code / Codex 的已被验证的形态：一个循环 + 一组工具，而非流水线式生成器。
@@ -621,7 +621,7 @@ sequenceDiagram
 
 ```typescript
 // packages/agent-core/src/subagent/profile.ts —— profile 文件规范
-// 位置：<workspace>/.novacode/agents/<name>.md 或全局 ~/.novacode/agents/<name>.md
+// 位置：<workspace>/.raincode/agents/<name>.md 或全局 ~/.raincode/agents/<name>.md
 // 格式：markdown + YAML frontmatter
 
 export interface SubagentProfile {

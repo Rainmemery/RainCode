@@ -1,4 +1,4 @@
-# NovaCode 项目开发计划（07-dev-plan）
+# RainCode 项目开发计划（07-dev-plan）
 
 | 项目 | 内容 |
 | --- | --- |
@@ -73,7 +73,7 @@ gantt
 | `packages/permission` | 五级判定链（M1：metadata + 协作模式 + 会话内存规则 + 默认 ask）、bash argv 求值与只读白名单、审批闭环（四级决策、grantId 单消费）、决策审计落盘 | PC-1 / PC-2 / TL-3 |
 | `packages/agent-core` | TurnPhase 状态机（T1~T15）、TurnController、CommandInbox（三分类 + steering）、会话生命周期（create / resume / list / archive）、checkpoint 增量重放、上下文组装与截断 | AC-1 / AC-5 / AC-6 / AC-8 |
 | `packages/server` | Agent Service 唯一组装点、P0 22 方法接线、事件出口 | 04 §2.4 铁律 4 |
-| `apps/cli` | Ink TUI（消息流 / 工具行 / 审批块 / 输入区 / 状态栏）、`novacode` 与 `--resume` 等参数、快捷键、Markdown 渲染 | UI-1 / UI-2 |
+| `apps/cli` | Ink TUI（消息流 / 工具行 / 审批块 / 输入区 / 状态栏）、`raincode` 与 `--resume` 等参数、快捷键、Markdown 渲染 | UI-1 / UI-2 |
 
 ### 2.2 任务分解表
 
@@ -137,7 +137,7 @@ pnpm architecture:check --changed   # 04 §6 治理五检查
 1. 五 Provider 连通矩阵：OpenAI / DeepSeek / Kimi / GLM / Ollama 各 ≥1 模型完成一次真实任务。
 2. 工具集逐个用例：八内置工具正反用例（含 edit 多处匹配报错、write 未先 read 被拦截、输出超预算截断标记）。
 3. 三态审批闭环：allow 直接执行 / ask 四级决策（仅本次/本会话/始终/拒绝）/ deny 拒绝；allow-always 会话内生效；审批记录经 `permission.decisions.list` 可查。
-4. 长任务中断续做：20+ 工具调用任务中 Ctrl+C 中断 → `novacode --resume` 恢复 → 续做到完成。
+4. 长任务中断续做：20+ 工具调用任务中 Ctrl+C 中断 → `raincode --resume` 恢复 → 续做到完成。
 5. **端到端任务样例**：在真实开源仓库中，Agent 独立完成「修复一个含复现步骤的 Bug」全流程（定位 → 修复 → 测试 → 汇报），人工仅审批。
 6. 治理核对：无新增未登记包、无越权依赖、无超 500 行文件。
 
@@ -159,7 +159,7 @@ pnpm architecture:check --changed   # 04 §6 治理五检查
 | `packages/rpc` | StdioTransport（JSONL 帧）、半开检测 | 04 §4.4（P1 绑定） |
 | `packages/shared` | 新增 mcp / subagent / memory schema 域 + 5 个新事件 schema | 06 §5 |
 | `packages/storage` | `002_p1_tables.sql`：permission_rules、memory_entries + memory_fts、mcp_servers、subagent_runs | 05 §3 / §5 |
-| `apps/desktop` | Electron 三泳道（main 帧桥 / renderer / agent 子进程）、React 18 + Zustand + Tailwind：会话管理、工作区选择、权限审批弹窗、Provider 设置，与 CLI 共享 `~/.novacode/` | UI-3 |
+| `apps/desktop` | Electron 三泳道（main 帧桥 / renderer / agent 子进程）、React 18 + Zustand + Tailwind：会话管理、工作区选择、权限审批弹窗、Provider 设置，与 CLI 共享 `~/.raincode/` | UI-3 |
 
 ### 3.2 任务分解表
 
@@ -211,7 +211,7 @@ M2 小计：**65~95 人日**（其中桌面端 Alpha 约 1/4~1/3）。
 
 ### 4.1 目标与范围清单
 
-**目标 = P2 全量**：ES-3~5、MR-3~4、TL-6~7、SB-3~4、MI-4、UI-4~5；M3 收尾时以 01-PRD §4.2 对比矩阵 NovaCode 列为核对表逐项确认落地。
+**目标 = P2 全量**：ES-3~5、MR-3~4、TL-6~7、SB-3~4、MI-4、UI-4~5；M3 收尾时以 01-PRD §4.2 对比矩阵 RainCode 列为核对表逐项确认落地。
 
 | 包 / 模块 | M3 交付范围 | 对应功能点 |
 | --- | --- | --- |
@@ -261,7 +261,7 @@ M3 小计：**50~80 人日**。
 4. SSH / WSL 远程执行端到端任务（远程修改 → 远程测试 → 结果回传），本地审计记录完整。
 5. Web 界面可用（会话、审批、恢复补尝路径）。
 6. 记忆自动抽取产出经确认晋升 MEMORY.md；桌面端记忆管理器可查看 / 编辑 / 清除。
-7. **全量对齐**：01-PRD §4.2 对比矩阵 NovaCode 列逐项打勾；七大模块能力清单（§5 各表）逐条核对为已交付。
+7. **全量对齐**：01-PRD §4.2 对比矩阵 RainCode 列逐项打勾；七大模块能力清单（§5 各表）逐条核对为已交付。
 
 ---
 

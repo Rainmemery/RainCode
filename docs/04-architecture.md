@@ -1,4 +1,4 @@
-# NovaCode 系统架构设计（04-architecture）
+# RainCode 系统架构设计（04-architecture）
 
 | 项目 | 内容 |
 | --- | --- |
@@ -131,7 +131,7 @@ pnpm monorepo，`apps/*` 为可执行端，`packages/*` 为库包。
 | `packages/mcp` | 领域层 | MCP server 连接管理、工具适配与命名空间注册（02 §3） | `tools`、`shared` | `permission`、`agent-core`、`llm`、`storage`、`memory`、`rpc`、`server`、`apps/*` |
 | `packages/llm` | 领域层 | OpenAI 兼容协议适配、SSE 归一化、Provider 预设与工具 schema 编码 | `shared` | 一切领域包与会话/工具语义（02 规则：只做协议适配） |
 | `packages/storage` | 基础设施 | SQLite（better-sqlite3，WAL）元数据 / 规则 / 记忆条目 + JSONL 会话事件流 + checkpoint | `shared` | 一切领域包与上层 |
-| `packages/shared` | 基础设施 | zod schema 单一事实源、跨包契约类型、纯函数 | （无——底座，仅三方 zod） | 任何 NovaCode 包 |
+| `packages/shared` | 基础设施 | zod schema 单一事实源、跨包契约类型、纯函数 | （无——底座，仅三方 zod） | 任何 RainCode 包 |
 | `packages/rpc` | 接入层 | 帧协议、`IMessageTransport` 抽象、三种绑定、请求-响应关联 | `shared` | 领域包、`storage`、`server`、`apps/*`（业务语义不可见） |
 
 ### 2.2 模块归属对应（与 02-module-design §0.1 逐条一致）
@@ -234,7 +234,7 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    subgraph P["novacode 进程（唯一 Node 进程）"]
+    subgraph P["raincode 进程（唯一 Node 进程）"]
         subgraph UI["Ink TUI（React 树）"]
             IN["输入提交 / 审批交互"]
             OUT["流式渲染"]
@@ -408,14 +408,14 @@ export interface RpcServiceBinding {
 
 ```text
 优先级（低 → 高）：
-  ① 全局     ~/.novacode/config.json
-  ② 项目     <workspace>/.novacode/config.json
-  ③ 会话级   CLI 参数 / 环境变量（如 NOVACODE_PROVIDER）
+  ① 全局     ~/.raincode/config.json
+  ② 项目     <workspace>/.raincode/config.json
+  ③ 会话级   CLI 参数 / 环境变量（如 RAINCODE_PROVIDER）
 ```
 
 - **就近覆盖**：② 覆盖 ①，③ 覆盖 ②；对象深合并，数组整体替换。
 - **严格 schema**：配置以 zod schema 解析（真源 shared），未知字段拒绝（strict），防拼写错误静默失效；`configVersion` 字段做向前兼容迁移。
-- **职责分离**：MCP 服务器清单用独立文件（全局 `~/.novacode/mcp.json` + 项目 `.novacode/mcp.json`，结构见 02 §3.3 `McpServerConfig`）；权限规则持久化在 SQLite `permission_rules` 表而非 config.json（02 §6.3，因其需要 allow-always 的运行期高频写入与优先级合并）。
+- **职责分离**：MCP 服务器清单用独立文件（全局 `~/.raincode/mcp.json` + 项目 `.raincode/mcp.json`，结构见 02 §3.3 `McpServerConfig`）；权限规则持久化在 SQLite `permission_rules` 表而非 config.json（02 §6.3，因其需要 allow-always 的运行期高频写入与优先级合并）。
 
 ### 5.2 配置结构与 Provider 四要素
 
@@ -429,7 +429,7 @@ export interface RpcServiceBinding {
       "id": "deepseek",
       "name": "DeepSeek",
       "baseURL": "https://api.deepseek.com/v1",
-      "apiKeyRef": "keyring://novacode/deepseek",
+      "apiKeyRef": "keyring://raincode/deepseek",
       "model": "deepseek-chat",
       "maxContextTokens": 65536
     },
@@ -483,7 +483,7 @@ modules:
   - id: shared
     roots: [packages/shared/src]
     managed: true
-    requires: []                                   # 底座：不依赖任何 NovaCode 包
+    requires: []                                   # 底座：不依赖任何 RainCode 包
   - id: storage
     roots: [packages/storage/src]
     managed: true
@@ -577,6 +577,7 @@ exceptions: []               # 白名单外豁免必须显式登记并附理由�
 | ADR-08 | 传输无关 RPC：in-memory / stdio / websocket 三绑定，自研 JSONL 帧协议 | 双端一体（终端会话桌面续接）要求同一服务协议；gRPC/protobuf 对个人工具过重；自研帧协议保持零依赖与可调试性（stdio 可人工 cat 调试） | 帧协议需自行处理粘包（JSONL 逐行天然分帧）、版本演进；缓解：`configVersion`/帧版本字段 + 端到端透传保持 main 不感知版本 |
 | ADR-09 | 会话历史唯一真源 = JSONL 事件流，checkpoint 为可重建派生快照 | NFR-7 要求任意强杀零丢失：追加写 > 原地更新；SQLite 存可索引元数据，事件流存全部事实，两者职责不同不构成状态双写（checkpoint 丢了可从 JSONL 全量重建） | 恢复需重放，大历史慢；缓解：「末尾 checkpoint + 增量重放」达成 NFR-5 ≤ 1s |
 | ADR-10 | 多 Provider 统一 OpenAI 兼容协议，而非逐家官方 SDK | PRD 基线（AC-3/AC-4）：一套协议接入任意 Provider 含本地 Ollama，模型自由是产品差异化主张；逐家 SDK 会把 llm 包变成 N 个厂商的粘合巨石 | 个别厂商特有能力（原生工具语义、缓存控制等）需在兼容层近似或放弃；缓解：llm 包内以「统一事件 + 归一化差异」收敛（02 §1.2.4 映射表），新增 Provider 只改 llm 包 |
+| ADR-11 | 产品更名 NovaCode → RainCode（2026-09-29） | 用户品牌统一决策：个人开源仓库以 RainCode 命名，CLI / 桌面端等后续形态遵循同一命名 | 全仓标识符同步替换（包名 @raincode/*、bin raincode、env RAINCODE_HOME/RAINCODE_PROVIDER_*、数据目录 .raincode、文档与 UI 文案）；PROGRESS §3/§4 历史日志与 docs/benchmarks/ 历史基准报告保留旧名作为当时事实记录，不作回改 |
 
 ---
 

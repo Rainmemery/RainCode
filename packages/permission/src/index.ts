@@ -1,5 +1,5 @@
 /**
- * @novacode/permission —— 命令权限控制（04-architecture §2.1 / 02-module-design §6）。
+ * @raincode/permission —— 命令权限控制（04-architecture §2.1 / 02-module-design §6）。
  *
  * 本包唯一 publicEntrypoint（architecture/policy.yaml）。
  * 依赖方向（任务约束）：permission → shared / storage；不 import agent-core/tools 实现

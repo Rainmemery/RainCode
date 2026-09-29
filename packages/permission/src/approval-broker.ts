@@ -6,12 +6,12 @@
  * - 超时（默认 120s，可配）→ 按 deny 收敛（02 §6.4），状态置 expired；
  * - 收敛统一发 permission.resolved（by: user/timeout）并回调 onSettled（审计终判落库）。
  */
-import { ulid } from "@novacode/storage";
+import { ulid } from "@raincode/storage";
 import {
   buildPermissionRequestedEvent,
   buildPermissionResolvedEvent,
-} from "@novacode/shared";
-import type { ToolMetadataSummary } from "@novacode/shared";
+} from "@raincode/shared";
+import type { ToolMetadataSummary } from "@raincode/shared";
 import { PC_ERROR_CODES, PermissionError } from "./errors.js";
 import { AuditLogger } from "./audit-logger.js";
 import type {
@@ -20,7 +20,7 @@ import type {
   ApprovalRespondInput,
   PermissionEventSink,
 } from "./types.js";
-import type { MatchedBy, CollaborationMode } from "@novacode/shared";
+import type { MatchedBy, CollaborationMode } from "@raincode/shared";
 
 export const DEFAULT_APPROVAL_TIMEOUT_MS = 120_000; // 02 §6.4：审批单超时默认 120s
 

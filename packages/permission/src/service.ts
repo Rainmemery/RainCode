@@ -12,7 +12,7 @@ import type {
   PermissionRule,
   RuleScope,
   ToolMetadataSummary,
-} from "@novacode/shared";
+} from "@raincode/shared";
 import { AuditLogger } from "./audit-logger.js";
 import { BashRuleEvaluator } from "./bash-evaluator.js";
 import { PC_ERROR_CODES, PermissionError } from "./errors.js";

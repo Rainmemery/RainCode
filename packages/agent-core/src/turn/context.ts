@@ -3,8 +3,8 @@
  * 系统提示 + 历史消息（常驻内存）+ steering 合并 → OpenAI Chat 消息线格式。
  * 消息经 zod 校验落库后进入历史，此处只做内存态投影，不产生 IO。
  */
-import type { ChatRequestMessage } from "@novacode/llm";
-import type { ContentBlock, MessageRecord } from "@novacode/shared";
+import type { ChatRequestMessage } from "@raincode/llm";
+import type { ContentBlock, MessageRecord } from "@raincode/shared";
 
 export interface AssembleContextInput {
   systemPrompt?: string;

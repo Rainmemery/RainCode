@@ -1,6 +1,6 @@
 /**
  * todo_write / todo_read 工具（02 §2.3 清单）：会话任务清单的覆盖式更新与读取。
- * 状态存内存并持久化到 <workspaceRoot>/.novacode/todos/<sessionKey>.json
+ * 状态存内存并持久化到 <workspaceRoot>/.raincode/todos/<sessionKey>.json
  * （选型「内存 + 会话目录 todo.json」；ctx.workspaceRoot 由执行 ctx 提供，见 todo-store.ts）。
  * 元数据：write → scope=workspace / low risk / needsApproval=false（会话内低风险清单）。
  */
@@ -17,7 +17,7 @@ const todoItemSchema = z.object({
 
 /** 会话 todo.json 目录（workspace 级，随 sessionKey 分文件）。 */
 function todoDir(ctx: ToolExecutionContext): { stateDir: string } {
-  return { stateDir: join(ctx.workspaceRoot, ".novacode", "todos") };
+  return { stateDir: join(ctx.workspaceRoot, ".raincode", "todos") };
 }
 
 export function createTodoWriteTool(store: TodoStore): Tool<{ todos: Array<z.infer<typeof todoItemSchema>> }> {

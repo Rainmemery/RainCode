@@ -59,7 +59,7 @@ export class InMemoryTransport implements IMessageTransport {
         listener(frame);
       } catch (err) {
         // 单个 listener 异常不破坏通道（stderr 告警，06 §1.3：诊断日志走 stderr）
-        console.error("[novacode/rpc in-memory] frame listener threw", err);
+        console.error("[raincode/rpc in-memory] frame listener threw", err);
       }
     }
   }

@@ -23,7 +23,7 @@
  * 未列出的 (状态, 触发) 组合一律非法：transitionPhase 抛 IllegalPhaseTransitionError
  * （fail-fast，02 §1.4：不尝试自动纠偏）。
  */
-import type { TurnPhase as ProtocolTurnPhase } from "@novacode/shared";
+import type { TurnPhase as ProtocolTurnPhase } from "@raincode/shared";
 
 export type TurnPhase =
   | "Idle"

@@ -7,8 +7,8 @@
  * 作为 append 拒绝旧 epoch 的文件内基准之一，05 §4.3 第 5 点单调合并）。
  * 本模块只做信封解析与序列化，行内偏移/字节计算在 jsonl-resume（Buffer 层，多字节安全）。
  */
-import { messageRecordSchema } from "@novacode/shared";
-import type { CollaborationMode, MessageRecord, TodoItem, TokenUsage } from "@novacode/shared";
+import { messageRecordSchema } from "@raincode/shared";
+import type { CollaborationMode, MessageRecord, TodoItem, TokenUsage } from "@raincode/shared";
 
 /** JSONL 格式版本（信封 v 字段）。 */
 export const JSONL_SCHEMA_VERSION = 1;
@@ -16,8 +16,8 @@ export const JSONL_SCHEMA_VERSION = 1;
 /** 头行事件名（05 §4.2 示例首行）。 */
 export const HEADER_EVENT_NAME = "session.created";
 
-/** NOVACODE 版本（头行 payload.novacodeVersion，与包版本一致）。 */
-export const NOVACODE_VERSION = "0.1.0";
+/** RAINCODE 版本（头行 payload.raincodeVersion，与包版本一致）。 */
+export const RAINCODE_VERSION = "0.1.0";
 
 export interface MessageLine {
   v: number;

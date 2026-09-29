@@ -10,8 +10,8 @@
  *   compact 抽取钩子（02 §7.2/§7.4）；未装配（AgentServiceOptions.memory 缺省）时
  *   不注册方法、不注入 MEMORY.md、不挂抽取钩子。
  */
-import { RpcCallError } from "@novacode/rpc";
-import { memoryKindSchema } from "@novacode/shared";
+import { RpcCallError } from "@raincode/rpc";
+import { memoryKindSchema } from "@raincode/shared";
 import type {
   MemoryEntriesListParams,
   MemoryPromoteParams,
@@ -19,11 +19,11 @@ import type {
   MemorySearchParams,
   MemoryWriteParams,
   MessageRecord,
-} from "@novacode/shared";
-import type { LlmPort } from "@novacode/agent-core";
-import type { Storage } from "@novacode/storage";
-import { MEMORY_TEMPLATE, MemoryError, createProjectMemoryService } from "@novacode/memory";
-import type { ExtractedCandidate, MemoryExtractPort, ProjectMemoryService } from "@novacode/memory";
+} from "@raincode/shared";
+import type { LlmPort } from "@raincode/agent-core";
+import type { Storage } from "@raincode/storage";
+import { MEMORY_TEMPLATE, MemoryError, createProjectMemoryService } from "@raincode/memory";
+import type { ExtractedCandidate, MemoryExtractPort, ProjectMemoryService } from "@raincode/memory";
 
 // ---------------------------------------------------------------------------
 // LLM 抽取端口（02 §7.2：要点抽取 = 同会话模型一次调用）
@@ -255,7 +255,7 @@ export class MemoryRuntime {
   private diag(message: string, err?: unknown): void {
     const sink =
       this.options.onDiagnostic ??
-      ((text: string, error?: unknown) => console.error(`[novacode/server] ${text}`, error ?? ""));
+      ((text: string, error?: unknown) => console.error(`[raincode/server] ${text}`, error ?? ""));
     sink(message, err);
   }
 }

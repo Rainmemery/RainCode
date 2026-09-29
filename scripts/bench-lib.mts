@@ -1,7 +1,7 @@
 /**
  * M1 NFR 基准实现库（口径=07-dev-plan §2.4 / 01-PRD §6.1，不另行定义新口径）。
  * 由 scripts/bench.mts（子命令入口）调用。五个基准：
- *   start   NFR-1  `novacode ping` 冷启动 ×20 中位数（spawn tsx CLI，计时至 stdout 首个版本输出；附 P95）
+ *   start   NFR-1  `raincode ping` 冷启动 ×20 中位数（spawn tsx CLI，计时至 stdout 首个版本输出；附 P95）
  *   send    NFR-2  session.send 受理→ModelRequest 发出 ×100 P95（p0-lib mock 请求捕获时间戳）
  *   render  NFR-3  tool_call.completed→CLI 渲染完成 ×100 P95（进程内 harness，复刻 stream.ts completed 分支）
  *   resume  NFR-5  1 万条消息会话（批量写入 events.jsonl，无 checkpoint=full-replay 最坏路径）
@@ -74,9 +74,9 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
 }
 
-/** 临时隔离环境：独立 NOVACODE_HOME + workspace 目录。 */
+/** 临时隔离环境：独立 RAINCODE_HOME + workspace 目录。 */
 async function isolatedEnv(prefix: string): Promise<{ home: string; workspace: string; dispose: () => Promise<void> }> {
-  const home = await mkdtemp(join(tmpdir(), `novacode-bench-${prefix}-`));
+  const home = await mkdtemp(join(tmpdir(), `raincode-bench-${prefix}-`));
   const workspace = join(home, "ws");
   await mkdir(workspace, { recursive: true });
   return { home, workspace, dispose: () => rm(home, { recursive: true, force: true }) };
@@ -91,7 +91,7 @@ function toolCallScript(id: string, name: string, args: object): SseScript {
   return { frames, finish: "tool_calls" as const };
 }
 
-// --- NFR-1 start：novacode ping 冷启动 ---
+// --- NFR-1 start：raincode ping 冷启动 ---
 
 function pingColdStartOnce(home: string): Promise<number> {
   return new Promise((resolvePromise, rejectPromise) => {
@@ -100,7 +100,7 @@ function pingColdStartOnce(home: string): Promise<number> {
     let stderr = "";
     const child = spawn(process.execPath, ["--import", "tsx", CLI_ENTRY, "ping"], {
       cwd: REPO_ROOT,
-      env: { ...process.env, NOVACODE_HOME: home },
+      env: { ...process.env, RAINCODE_HOME: home },
       stdio: ["ignore", "pipe", "pipe"],
     });
     child.stdout?.on("data", () => {
@@ -111,7 +111,7 @@ function pingColdStartOnce(home: string): Promise<number> {
     });
     child.on("error", rejectPromise);
     child.on("exit", (code: number | null) => {
-      if (code !== 0) rejectPromise(new Error(`novacode ping exit ${String(code)}: ${stderr.slice(0, 400)}`));
+      if (code !== 0) rejectPromise(new Error(`raincode ping exit ${String(code)}: ${stderr.slice(0, 400)}`));
       else resolvePromise(firstOutputAt);
     });
   });
@@ -130,7 +130,7 @@ export async function benchStart(runs = 20): Promise<CheckResult> {
   const s = stats(samples);
   return {
     nfr: "NFR-1",
-    name: "CLI 冷启动（novacode ping）",
+    name: "CLI 冷启动（raincode ping）",
     target: "≤ 2s（20 次中位数）",
     targetMs: 2000,
     actualMs: s.median,
@@ -153,7 +153,7 @@ async function startHarness(prefix: string): Promise<Harness> {
   const mock = await startMockLlmServer();
   const transports = createInMemoryTransportPair();
   const node = await createAgentServiceNode(transports[1], {
-    env: { NOVACODE_HOME: env.home },
+    env: { RAINCODE_HOME: env.home },
     provider: {
       name: `bench-${prefix}`,
       baseURL: mock.url,
@@ -290,7 +290,7 @@ const RESUME_MESSAGES = 10000;
 export async function benchResume(runs = 10): Promise<CheckResult> {
   const env = await isolatedEnv("resume");
   try {
-    const storage = await Storage.open({ env: { NOVACODE_HOME: env.home } });
+    const storage = await Storage.open({ env: { RAINCODE_HOME: env.home } });
     const wsInfo = await storage.ensureWorkspace(env.workspace);
     const meta = await storage.createSession({ workspaceHash: wsInfo.hash, title: "bench resume 10k" });
     const sessionId = meta.id;
@@ -312,7 +312,7 @@ export async function benchResume(runs = 10): Promise<CheckResult> {
     let replaySource = "";
     let replayCount = 0;
     for (let r = 0; r < runs; r += 1) {
-      const s = await Storage.open({ env: { NOVACODE_HOME: env.home } }); // 重开 storage（崩溃重启等价路径）
+      const s = await Storage.open({ env: { RAINCODE_HOME: env.home } }); // 重开 storage（崩溃重启等价路径）
       try {
         const t0 = performance.now();
         const replay = await s.resumeSession(sessionId);
@@ -362,11 +362,11 @@ async function crashOnce(index: number): Promise<void> {
       cwd: REPO_ROOT, // tsx 从仓库根解析（与 smoke 回归子进程同口径）；工作区经 --workspace 注入
       env: {
         ...process.env,
-        NOVACODE_HOME: harness.env.home,
-        NOVACODE_PROVIDER_BASE_URL: harness.mock.url,
-        NOVACODE_PROVIDER_MODEL: "mock-model",
-        NOVACODE_PROVIDER_API_KEY: "bench-crash-dummy-NOT-A-SECRET",
-        NOVACODE_PROVIDER_NAME: "bench-crash",
+        RAINCODE_HOME: harness.env.home,
+        RAINCODE_PROVIDER_BASE_URL: harness.mock.url,
+        RAINCODE_PROVIDER_MODEL: "mock-model",
+        RAINCODE_PROVIDER_API_KEY: "bench-crash-dummy-NOT-A-SECRET",
+        RAINCODE_PROVIDER_NAME: "bench-crash",
       },
       stdio: ["ignore", "pipe", "pipe"],
     },
@@ -407,7 +407,7 @@ async function assertCrashRecovery(
   command: string,
   index: number,
 ): Promise<void> {
-  const storage = await Storage.open({ env: { NOVACODE_HOME: harness.env.home } });
+  const storage = await Storage.open({ env: { RAINCODE_HOME: harness.env.home } });
   try {
     const match = /session (\S+) · model/.exec(childStderr);
     const active = await storage.sessions.list({ status: "active" });

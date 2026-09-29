@@ -223,7 +223,7 @@ function main() {
     exceptions.map((entry) => (typeof entry === "string" ? entry : String(entry?.file ?? ""))).filter((f) => f.length > 0),
   );
 
-  // 包名 → module（读各包 package.json 的 name；@novacode/x 裸导入归一到 module 对象）
+  // 包名 → module（读各包 package.json 的 name；@raincode/x 裸导入归一到 module 对象）
   const packageNameToModule = new Map();
   for (const mod of modules) {
     for (const root of mod.roots ?? []) {
@@ -267,8 +267,8 @@ function main() {
       if (exemptFiles.has(relPath)) break;
       let targetModule = null;
       let targetFile = null;
-      if (specifier.startsWith("@novacode/")) {
-        const rest = specifier.slice("@novacode/".length);
+      if (specifier.startsWith("@raincode/")) {
+        const rest = specifier.slice("@raincode/".length);
         const pkgName = specifier.split("/").slice(0, 2).join("/");
         targetModule = packageNameToModule.get(pkgName) ?? null;
         if (targetModule === null) continue; // 未登记包名交由 managedOnly/外部依赖口径

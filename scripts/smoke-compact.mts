@@ -3,7 +3,7 @@
  * 运行：tsx scripts/smoke-compact.mts（或 pnpm run smoke:compact）
  *
  * 链路：node:http 本机 mock OpenAI SSE 服务器（按请求序号脚本化多轮回复 + usage 注入 +
- * 摘要响应延迟制造压缩窗口）→ 临时 NOVACODE_HOME → createAgentServiceNode（in-memory 绑定，
+ * 摘要响应延迟制造压缩窗口）→ 临时 RAINCODE_HOME → createAgentServiceNode（in-memory 绑定，
  * default-allow 策略，maxContextTokens=200 / keepRecentCount=1 收紧触发条件）
  * → 断言：
  * 用例 A（auto 触发 + 异步不阻塞 + 提交语义 + resume 连续性）：
@@ -39,7 +39,7 @@ const WINDOW_TOKENS = 200; // 收紧的上下文窗口（触发阈值 0.8×200=1
 const SUMMARY_MARKER = "[上下文压缩]";
 
 // ---------------------------------------------------------------------------
-// 场景装配：临时 NOVACODE_HOME + workspace + in-memory 服务节点 + RPC 客户端
+// 场景装配：临时 RAINCODE_HOME + workspace + in-memory 服务节点 + RPC 客户端
 // ---------------------------------------------------------------------------
 
 interface Scenario {
@@ -52,14 +52,14 @@ interface Scenario {
 }
 
 async function startScenario(name: string, script: SseScript[]): Promise<Scenario> {
-  const home = await mkdtemp(join(tmpdir(), `novacode-smoke-compact-${name}-`));
+  const home = await mkdtemp(join(tmpdir(), `raincode-smoke-compact-${name}-`));
   const workspace = join(home, "ws");
   await mkdir(workspace, { recursive: true });
   const mock = await startMockLlmServer();
   mock.setScript(script);
   const transports = createInMemoryTransportPair();
   const node = await createAgentServiceNode(transports[1], {
-    env: { NOVACODE_HOME: home },
+    env: { RAINCODE_HOME: home },
     provider: {
       name: `mock-compact-${name}`,
       baseURL: mock.url,

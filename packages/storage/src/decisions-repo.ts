@@ -2,9 +2,9 @@
  * DecisionsRepo：permission_decisions 表薄 repo 层（05-database §3.8 DDL 逐字段对齐）。
  * 追加型审计（append-only），无外键（审计生命周期独立于会话/workspace 清理）。
  */
-import type { CollaborationMode } from "@novacode/shared";
+import type { CollaborationMode } from "@raincode/shared";
 import type { SqliteDatabase } from "./db.js";
-import type { MatchedBy, PermissionDecision } from "@novacode/shared";
+import type { MatchedBy, PermissionDecision } from "@raincode/shared";
 
 export type AuditMode = CollaborationMode;
 

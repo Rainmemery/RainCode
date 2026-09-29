@@ -6,12 +6,12 @@
  * 偏差注记：matchType 为任务交付扩展字段（02 §6.3 / 05 §3.6 未定义）；
  * DDL 逐字段对齐优先，非 wildcard matchType 仅会话内存态保真，落库规则按 wildcard 求值。
  */
-import { ulid } from "@novacode/storage";
-import type { PermissionRule, RuleBehavior, RuleScope } from "@novacode/shared";
-import { StorageError } from "@novacode/storage";
-import type { PermissionRuleRow, RulesRepo, RuleSource } from "@novacode/storage";
+import { ulid } from "@raincode/storage";
+import type { PermissionRule, RuleBehavior, RuleScope } from "@raincode/shared";
+import { StorageError } from "@raincode/storage";
+import type { PermissionRuleRow, RulesRepo, RuleSource } from "@raincode/storage";
 import { PC_ERROR_CODES, PermissionError } from "./errors.js";
-import type { RuleMatchType } from "@novacode/shared";
+import type { RuleMatchType } from "@raincode/shared";
 
 export interface RuleAddInput {
   scope: RuleScope;
