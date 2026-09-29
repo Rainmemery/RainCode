@@ -18,14 +18,25 @@ export interface MigrationScript {
   sql: string;
 }
 
-const MIGRATIONS_DIR = fileURLToPath(new URL("./migrations/", import.meta.url));
+/**
+ * 迁移脚本目录：缺省随源码位置解析（dev/CLI）；打包形态（T2.9 esbuild bundle 内
+ * import.meta.url shim 不可用）经 RAINCODE_MIGRATIONS_DIR 显式指向随包分发的 migrations 目录。
+ */
+function migrationsDir(): string {
+  const override = process.env["RAINCODE_MIGRATIONS_DIR"];
+  if (override !== undefined && override.length > 0) {
+    return override;
+  }
+  return fileURLToPath(new URL("./migrations/", import.meta.url));
+}
 
 /** 迁移脚本清单（升序应用；新增脚本在此登记）。 */
 export function loadMigrationScripts(): MigrationScript[] {
+  const dir = migrationsDir();
   return [
-    { version: 1, name: "001_init", sql: readFileSync(join(MIGRATIONS_DIR, "001_init.sql"), "utf8") },
-    { version: 2, name: "002_permission", sql: readFileSync(join(MIGRATIONS_DIR, "002_permission.sql"), "utf8") },
-    { version: 3, name: "003_memory", sql: readFileSync(join(MIGRATIONS_DIR, "003_memory.sql"), "utf8") },
+    { version: 1, name: "001_init", sql: readFileSync(join(dir, "001_init.sql"), "utf8") },
+    { version: 2, name: "002_permission", sql: readFileSync(join(dir, "002_permission.sql"), "utf8") },
+    { version: 3, name: "003_memory", sql: readFileSync(join(dir, "003_memory.sql"), "utf8") },
   ];
 }
 

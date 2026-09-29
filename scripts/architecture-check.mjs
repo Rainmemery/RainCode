@@ -273,12 +273,22 @@ function main() {
         targetModule = packageNameToModule.get(pkgName) ?? null;
         if (targetModule === null) continue; // 未登记包名交由 managedOnly/外部依赖口径
         if (rest.includes("/")) {
-          if (forbidDeepImports) {
+          // 登记式子路径入口（T2.9）：policy publicEntrypoints 支持 "@raincode/x/y=path" 形态
+          const subpathEntrypoints = (targetModule.publicEntrypoints ?? [])
+            .filter((entry) => typeof entry === "string" && entry.startsWith(`${specifier}=`))
+            .map((entry) => entry.slice(specifier.length + 1));
+          if (subpathEntrypoints.length > 0) {
+            targetFile = subpathEntrypoints[0];
+            targetModule = targetModule; // 同包子路径入口，继续走 requires/entrypoint 校验
+          } else if (forbidDeepImports) {
             push("forbidDeepImports", relPath, line, `深导入 "${specifier}"（跨包只允许 publicEntrypoints）`);
+            continue;
+          } else {
+            continue;
           }
-          continue;
+        } else {
+          targetFile = (targetModule.publicEntrypoints ?? []).find((entry) => !entry.includes("=")) ?? null;
         }
-        targetFile = (targetModule.publicEntrypoints ?? [])[0] ?? null;
       } else if (specifier.startsWith(".")) {
         const base = isAbsolute(specifier) ? specifier : join(dirname(file), specifier);
         if (!existsSync(base) && existsSync(`${base}.ts`)) targetFile = toRel(`${base}.ts`);
@@ -295,8 +305,10 @@ function main() {
       if (!requires.includes(targetModule.id)) {
         push("requires", relPath, line, `越权依赖：${sourceModule.id} → ${targetModule.id}（白名单: [${requires.join(", ")}]）`);
       }
-      // d) 深导入（相对路径绕过包名也要落到 publicEntrypoints）
-      const entrypoints = targetModule.publicEntrypoints ?? [];
+      // d) 深导入（相对路径绕过包名也要落到 publicEntrypoints；子路径入口按 "=" 右侧路径比对）
+      const entrypoints = (targetModule.publicEntrypoints ?? []).map((entry) =>
+        typeof entry === "string" && entry.includes("=") ? entry.slice(entry.indexOf("=") + 1) : entry,
+      );
       if (forbidDeepImports && entrypoints.length > 0 && !entrypoints.includes(targetFile)) {
         push("forbidDeepImports", relPath, line, `深导入 ${targetFile}（只允许 ${entrypoints.join(", ")}）`);
       }

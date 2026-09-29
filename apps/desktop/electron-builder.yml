@@ -1,0 +1,24 @@
+# electron-builder Windows 打包（T2.9 Alpha）
+appId: com.raincode.desktop
+productName: RainCode
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - "!**/node_modules/**"
+asar: true
+# better-sqlite3 原生模块不进 asar（node ABI 加载要求）
+asarUnpack:
+  - "**/better_sqlite3.node"
+  - "**/better-sqlite3/**"
+win:
+  target:
+    - nsis
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  artifactName: RainCode-Setup-${version}.exe
+npmRebuild: false
+nodeGypRebuild: false

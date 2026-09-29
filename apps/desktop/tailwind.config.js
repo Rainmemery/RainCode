@@ -1,0 +1,46 @@
+/** Tailwind 配置：03 §3.1 tokens 同源映射为语义色（组件代码不写死色值）。 */
+export default {
+  content: ["./src/renderer/**/*.{ts,tsx,html}"],
+  theme: {
+    extend: {
+      colors: {
+        void: "var(--bg-void)",
+        base: "var(--bg-base)",
+        panel: "var(--bg-panel)",
+        card: "var(--bg-card)",
+        raised: "var(--bg-raised)",
+        hover: "var(--bg-hover)",
+        selected: "var(--bg-selected)",
+        popover: "var(--bg-popover)",
+        "border-faint": "var(--border-faint)",
+        "border-base": "var(--border)",
+        "border-strong": "var(--border-strong)",
+        hi: "var(--text-hi)",
+        mid: "var(--text-mid)",
+        low: "var(--text-low)",
+        faint: "var(--text-faint)",
+        accent: "var(--accent)",
+        "accent-hover": "var(--accent-hover)",
+        "accent-dim": "var(--accent-dim)",
+        "accent-bg": "var(--accent-bg)",
+        ok: "var(--ok)",
+        warn: "var(--warn)",
+        danger: "var(--danger)",
+        info: "var(--info)",
+        violet: "var(--violet)",
+        cyan: "var(--cyan)",
+        mint: "var(--mint)",
+      },
+      fontSize: {
+        "2xs": ["11px", "14px"],
+      },
+      borderRadius: {
+        sm: "4px",
+        md: "6px",
+        lg: "8px",
+        xl: "12px",
+      },
+    },
+  },
+  plugins: [],
+};

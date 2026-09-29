@@ -24,7 +24,9 @@ modules:
     roots: [packages/rpc/src]
     managed: true
     requires: [shared]
-    publicEntrypoints: [packages/rpc/src/index.ts]
+    # 子路径入口（T2.9，"specifier=path" 登记）：renderer 浏览器图只引 client
+    # （stdio 绑定依赖 node 内建，不可进 renderer bundle）；包名入口仍为 index.ts。
+    publicEntrypoints: [packages/rpc/src/index.ts, "@raincode/rpc/client=packages/rpc/src/client.ts"]
   - id: storage
     roots: [packages/storage/src]
     managed: true
@@ -70,7 +72,9 @@ modules:
   - id: app-desktop
     roots: [apps/desktop/src]
     managed: true
-    requires: []            # 占位包（未落码），落码波次按 04 §2.1 改为 [server, rpc, shared]
+    # T2.9 桌面端 Alpha（04 §2.1）：main/preload（main.ts/agent-host.ts/preload.ts）+ renderer（React）
+    # + agent 子进程打包入口（agent/entry.ts = raincode serve 同形态组装点）。
+    requires: [server, rpc, shared]
   - id: memory
     roots: [packages/memory/src]
     managed: true

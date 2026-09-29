@@ -21,9 +21,9 @@ node:test 原生测试运行器 + tsx 加载器（根 package.json `pnpm test`�
 
 | 命令 | 覆盖范围 |
 | --- | --- |
-| `pnpm test` | tools：truncate（字节预算头 70/尾 30 + 截断提示）、path-guard（workspace 越界）、executor-concurrency（只读并行上限/写串行）、ssrf（黑名单网段/localhost/scheme/重定向跳板/DNS mock）、web-fetch（HTML→文本转换/JSON 原文/非 2xx/maxBytes 截断/重定向跟随与拦截）、ask-user（通道应答/TOOL_UNAVAILABLE/TOOL_PERMISSION_DENIED）；permission：path-escape（越界强制 ask + 审批闭环）、ask-user-broker（respond answerText ↔ askAndWait/resolved 事件透出）、broker-pending（pendingGrantsOf 会话过滤/脱敏/收敛消失/可选字段透传）；rpc：stdio（跨 chunk 分帧/JSONL 出站/畸形行 PARSE_ERROR 与丢弃不断开/delta 窗口合并与边界 flush/跨 turn 不合并/tool_call argsPartial 拼接/close flush/onInputEnd 半开语义）；agent-core：tool-phase-path-escape（越界预检→放行钩子全链） |
+| `pnpm test` | tools：truncate（字节预算头 70/尾 30 + 截断提示）、path-guard（workspace 越界）、executor-concurrency（只读并行上限/写串行）、ssrf（黑名单网段/localhost/scheme/重定向跳板/DNS mock）、web-fetch（HTML→文本转换/JSON 原文/非 2xx/maxBytes 截断/重定向跟随与拦截）、ask-user（通道应答/TOOL_UNAVAILABLE/TOOL_PERMISSION_DENIED）；permission：path-escape（越界强制 ask + 审批闭环）、ask-user-broker（respond answerText ↔ askAndWait/resolved 事件透出）、broker-pending（pendingGrantsOf 会话过滤/脱敏/收敛消失/可选字段透传）；rpc：stdio（跨 chunk 分帧/JSONL 出站/畸形行 PARSE_ERROR 与丢弃不断开/delta 窗口合并与边界 flush/跨 turn 不合并/tool_call argsPartial 拼接/close flush/onInputEnd 半开语义）；desktop：agent-host（stdout 帧行转发/sendLine/优雅 stop intentional/崩溃自动重启）；agent-core：tool-phase-path-escape（越界预检→放行钩子全链） |
 
-**预期输出**：`# pass N`（当前 101）且 `# fail 0`，退出码 0。提交前与门禁一起全绿。
+**预期输出**：`# pass N`（当前 104）且 `# fail 0`，退出码 0。提交前与门禁一起全绿。
 
 ## 3. 冒烟测试
 
@@ -42,6 +42,7 @@ node:test 原生测试运行器 + tsx 加载器（根 package.json `pnpm test`�
 | `pnpm smoke:migrations` | [scripts/smoke-migrations.mts](../scripts/smoke-migrations.mts) | **迁移回放（M2 T2.5 验收）**：t1 空库全量迁移 001→003（settings/permission_rules/memory_entries 功能探针）；t2 重开幂等（版本不重复执行、数据保留）；t3 存量库升级路径（模拟 001+002 时代库：DROP 003 表 + 删版本行 → 重开重放 003：表恢复、002 数据行原样保留、重建表可写入） |
 | `pnpm smoke:p1tools` | [scripts/smoke-p1tools.mts](../scripts/smoke-p1tools.mts) | **P1 工具（T2.7 二阶段）**：用例 A web_fetch SSRF 端到端——turn 内 mock 下发 `web_fetch(http://127.0.0.1:<mock 端口>)` → SSRF 守卫拦截回环地址，`tool_call.completed` isError 且 `TOOL_SSRF_BLOCKED` 注明原因，模型收到错误后 turn 继续收束（正向抓取路径由单测覆盖，冒烟不断言正向网络）；用例 B ask_user_question headless fail-safe——无交互通道 → `TOOL_UNAVAILABLE` 收敛 + 两工具经 tool.tools.list builtin 可见（web_fetch metadata network/needsApproval） |
 | `pnpm smoke:stdio` | [scripts/smoke-stdio.mts](../scripts/smoke-stdio.mts) | **stdio 绑定 + headless（T2.8）**：子进程 spawn `raincode serve`（无 Provider），断言 A 握手门禁（ping 前 session.list → VERSION_MISMATCH）；B system.ping（protocolVersion/capabilities）；C 畸形行带 id → PARSE_ERROR response 且不断开；D 畸形行无 id → 丢弃 + stderr 告警、连接继续；E session.create → session.resume 幂等快照（lastSeq/phase/model/contextUsage/messages/pendingApprovals 字段齐全）；F stdin end → 进程优雅退出 code 0（帧可人工 cat 重放的等价路径，ADR-08） |
+| `node scripts/verify-agent-bundle.mjs` | [scripts/verify-agent-bundle.mjs](../scripts/verify-agent-bundle.mjs) | **桌面端打包产物（T2.9）**：esbuild bundle 的 agent 入口（apps/desktop/dist-electron/agent/entry.cjs，需先 `pnpm --filter @raincode/desktop build:agent`）以 node 直跑，stdin 注入 system.ping → 断言 pong response（验证 bundle + 随包 migrations env 注入通路；electron-builder 完整 dist 打包属人工验收环节） |
 
 **运行全部**：
 
