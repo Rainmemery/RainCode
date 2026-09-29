@@ -12,7 +12,7 @@
  *   MEMORY_WRITE_CONFLICT 放弃，02 §7.4）+ 原子提交（同目录临时文件 + rename）；
  * - 文件是唯一真源，被用户手工改动时以文件为准（02 §7.4）。
  */
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { MEMORY_ERROR_CODES } from "@raincode/shared";
 import type { MemorySection } from "@raincode/shared";
@@ -187,7 +187,21 @@ async function commitSectionEdit(
   await mkdir(dirname(path), { recursive: true });
   const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
   await writeFile(tmp, serialize(edit(base)), "utf8");
-  await rename(tmp, path); // 同目录 rename 原子提交（02 §7.4）
+  try {
+    await rename(tmp, path); // 同目录 rename 原子提交（02 §7.4）
+  } catch (reason: unknown) {
+    // Windows：外部并发修改落在 S2 复检之后时，rename 可能因目标被短暂持有报 EPERM/EBUSY——
+    // 复检 mtime 归因为并发修改（与 S1/S2 同一口径），而非冒泡为 INTERNAL；临时文件顺手清理。
+    void unlink(tmp).catch(() => undefined);
+    const afterRename = await snapshot(path);
+    if (afterRename.exists && afterRename.mtimeMs !== before.mtimeMs) {
+      throw new MemoryError(
+        MEMORY_ERROR_CODES.WRITE_CONFLICT,
+        `MEMORY.md changed concurrently, write abandoned: ${path}`,
+      );
+    }
+    throw reason;
+  }
 }
 
 /** memory.write（06 §2.6）：定位 `## <section>` 章节体并整体替换；白名单校验由 service 层负责。 */

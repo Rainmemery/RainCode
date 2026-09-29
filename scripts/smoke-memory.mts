@@ -21,7 +21,7 @@
  * 全程仅本机回环与临时目录：无外呼、无真实密钥（mock provider apiKey 为占位符，绝不打印）。
  */
 import assert from "node:assert/strict";
-import { writeFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -188,26 +188,28 @@ async function caseWrite(scenario: Scenario): Promise<void> {
     (err: unknown) => err instanceof MemoryError && err.code === "MEMORY_SECTION_FORBIDDEN",
   );
 
-  // mtime 冲突（02 §7.4）：同一 RPC write 在途期间，按事件循环迭代重复「setImmediate 让步 +
-  // writeFileSync 阻塞直改」模拟并发窗口——handler 的「记 mtime(S1) → 提交前复检(S2)」两步 stat
-  // 跨越至少一次阻塞写收尾，S1/S2 观测到不同 mtime → MEMORY_WRITE_CONFLICT。
-  // 注：外部修改若在读前完成则被读-改-写正确吸收（文件是唯一真源），故按轮重放直至命中。
+  // mtime 冲突（02 §7.4）：handler 的「记 mtime(S1) → 提交前复检(S2)」两步 stat 之间若观测到
+  // 外部修改即 MEMORY_WRITE_CONFLICT。真实窗口 <1ms，外部写以「在途期间 setImmediate 逐轮持续直写」
+  // 尽量覆盖 handler 的 await 间隙（每轮直至 promise 收敛，10 轮重放直至命中）；残余时序敏感性见
+  // PROGRESS §4——确定性方案（prod 注入 stat 钩子）随 T3.3 记忆波次落地。ESM 静态导入绑定原函数，
+  // 进程内事后 patch fs.promises.stat 不可行（实测不传播），故不改走 spy 路线。
   const memPath = join(workspace, ".raincode", "MEMORY.md");
   let conflicted = false;
-  for (let round = 0; round < 5 && !conflicted; round += 1) {
+  for (let round = 0; round < 10 && !conflicted; round += 1) {
     const base = await readFile(memPath, "utf8");
     const pending = client
       .call("memory.write", { workspaceRoot: workspace, section: "工作约定", content: `并发探测 ${String(round)}` })
       .catch((reason: unknown) => reason);
-    for (let i = 0; i < 12 && !conflicted; i += 1) {
-      await new Promise((resolve) => setImmediate(resolve)); // 让 handler 推进约一步（readFile/S1 stat）
-      writeFileSync(memPath, `${base}\n<!-- 外部并发修改 ${String(round)}.${String(i)} -->\n`, "utf8");
-    }
+    const writer = setInterval(() => {
+      appendFileSync(memPath, `<!-- 外部并发修改 ${String(round)}.${String(Date.now())} -->\n`, "utf8");
+    }, 0);
     const outcome = await pending;
+    clearInterval(writer);
     if (outcome instanceof RpcCallError) {
       assert.equal(outcome.code, "MEMORY_WRITE_CONFLICT", `并发窗口应报写冲突，实得 ${outcome.code}`);
       conflicted = true;
     }
+    await new Promise((resolve) => setTimeout(resolve, 20)); // 轮间让步，隔离下一轮首读
   }
   assert.ok(conflicted, "并发修改窗口内应触发 MEMORY_WRITE_CONFLICT（02 §7.4）");
   console.log("case B: write（工作约定落盘 / 用户章节越界拦截 / mtime 冲突放弃）OK");

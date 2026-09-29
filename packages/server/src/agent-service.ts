@@ -280,7 +280,8 @@ export class AgentService {
     const meta = await this.options.storage.createSession({
       workspaceHash: workspace.hash,
       workspaceRoot: params.workspaceRoot,
-      title: params.title,
+      // 未传 title（桌面端新建会话）→ 落库缺省名：空标题会使会话列表渲染出无文字行（场景 5 走查发现）
+      title: params.title ?? "新会话",
       mode: params.mode,
     });
     this.permission?.setDefaultWorkspace(workspace.hash); // project 权限规则判定域（02 §6.2 第 4 级）
@@ -394,8 +395,8 @@ export class AgentService {
   private async resume(params: SessionResumeParams): Promise<unknown> {
     const existing = this.sessions.get(params.sessionId);
     if (existing) {
-      // 幂等：会话已 Active 直接返回当前快照（06 §2.1；多端收敛单写者）
-      return { sessionId: params.sessionId, snapshot: await this.snapshotOf(params.sessionId, existing) };
+      // 幂等：会话已 Active 直接返回当前快照（06 §2.1）；history=loop 内存历史（renderer 刷新冷重建同语义）
+      return { sessionId: params.sessionId, snapshot: await this.snapshotOf(params.sessionId, existing, existing.loop.getHistory()) };
     }
     const meta = await this.options.storage.sessions.get(params.sessionId);
     if (!meta) {
@@ -431,8 +432,8 @@ export class AgentService {
       workspaceHash: meta.workspaceId, mode: meta.mode, workspaceRoot, pending: null,
     };
     this.sessions.set(meta.id, entry);
-    // 断线重连补推（06 §2.1/§3.4）：messages=checkpoint 后尾部增量（NFR-5），快照与 loop 装配同源 replay
-    return { sessionId: meta.id, snapshot: await this.snapshotOf(meta.id, entry, replay.messages) };
+    // 断线重连补推（06 §2.1/§3.4）：messages=尾部增量（NFR-5）；history=全量（v1.3 冷重建，桌面端首次打开/renderer 刷新）
+    return { sessionId: meta.id, snapshot: await this.snapshotOf(meta.id, entry, replay.messages, replay.history) };
   }
 
   // system 域（06 §2.8）
@@ -492,8 +493,8 @@ export class AgentService {
     throw new RpcCallError("SESSION_NOT_FOUND", `session not found or not resumed: ${sessionId}`);
   }
 
-  /** T2.8 补推（06 §3.2/02 §6.4）：messages=checkpoint 后尾部增量（内存态会话为空）；pendingApprovals=未决审批。 */
-  private async snapshotOf(sessionId: string, entry: SessionEntry, tailMessages: MessageRecord[] = []): Promise<SessionSnapshotPayload> {
-    return buildSessionSnapshot({ storage: this.options.storage, sessionId, lastSeq: entry.loop.lastEventSeq, phase: entry.loop.phase, model: this.providerModel, activeProviderId: this.providerId, maxContextTokens: this.maxContextTokens, messages: tailMessages, pendingApprovals: this.permission?.pendingGrantsOf(sessionId) ?? [] });
+  /** T2.8 补推（06 §3.2/02 §6.4）：messages=尾部增量 / pendingApprovals=未决审批；history=可选全量（v1.3 冷重建）。 */
+  private async snapshotOf(sessionId: string, entry: SessionEntry, tailMessages: MessageRecord[] = [], history?: MessageRecord[]): Promise<SessionSnapshotPayload> {
+    return buildSessionSnapshot({ storage: this.options.storage, sessionId, lastSeq: entry.loop.lastEventSeq, phase: entry.loop.phase, model: this.providerModel, activeProviderId: this.providerId, maxContextTokens: this.maxContextTokens, messages: tailMessages, pendingApprovals: this.permission?.pendingGrantsOf(sessionId) ?? [], ...(history !== undefined && { history }) });
   }
 }

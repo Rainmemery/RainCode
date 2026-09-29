@@ -166,8 +166,17 @@ export class AgentHost {
     if (this.stopping || this.restarting) return;
     this.consecutiveCrashes = info.hadTraffic ? 0 : this.consecutiveCrashes + 1;
     if (this.consecutiveCrashes >= MAX_CONSECUTIVE_CRASHES) {
+      // 放弃守护时附 stderr 尾部：路径/模块类配置错误（如入口缺失 MODULE_NOT_FOUND）可直接自解释
+      const stderrTail = this.diagnostics
+        .join("")
+        .split("\n")
+        .filter((line) => line.trim().length > 0)
+        .slice(-8)
+        .join("\n");
       this.options.onDiagnostic?.(
-        `agent child crashed ${String(this.consecutiveCrashes)}x consecutively, giving up`,
+        `agent child crashed ${String(this.consecutiveCrashes)}x consecutively, giving up${
+          stderrTail.length > 0 ? ` — stderr tail:\n${stderrTail}` : ""
+        }`,
       );
       return;
     }

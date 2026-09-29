@@ -8,9 +8,16 @@ import { AgentHost } from "./agent-host.js";
 
 type AgentMode = "dev" | "packaged";
 
-function repoRoot(): string {
-  // dist-electron/main/main.js → 仓库根（dev）；打包形态不使用该路径
+function desktopRoot(): string {
+  // dist-electron/main/main.cjs → apps/desktop（dev 与打包同构：renderer dist 与 agent entry 都挂在包根）
   return join(__dirname, "..", "..");
+}
+
+function repoRoot(): string {
+  // dev 形态 agent 脚本定位基准：apps/desktop 上溯两级 = 仓库根（apps/cli/src/index.ts 所在）。
+  // 教训（场景 5 GUI 走查发现）：此前 repoRoot() 与 desktopRoot() 混用同一算术，agent 子进程
+  // 以 apps/desktop 为 cwd 找 apps/cli/... 不存在 → 崩溃循环 5 次放弃，窗口仅显示「已断开」。
+  return join(desktopRoot(), "..", "..");
 }
 
 function agentSpawnPlan(): { mode: AgentMode; command: string; args: string[]; env: NodeJS.ProcessEnv; cwd: string } {
@@ -28,7 +35,7 @@ function agentSpawnPlan(): { mode: AgentMode; command: string; args: string[]; e
         RAINCODE_MIGRATIONS_DIR: join(__dirname, "..", "agent", "migrations"),
         RAINCODE_APP_VERSION: app.getVersion(),
       },
-      cwd: join(__dirname, "..", ".."),
+      cwd: desktopRoot(),
     };
   }
   // dev 形态：与 CLI 完全同一入口（raincode serve），tsx 直跑
@@ -62,7 +69,7 @@ function createWindow(): BrowserWindow {
   if (devUrl !== undefined && devUrl.length > 0) {
     void win.loadURL(devUrl);
   } else {
-    void win.loadFile(join(__dirname, "..", "..", "dist", "renderer", "index.html"));
+    void win.loadFile(join(desktopRoot(), "dist", "renderer", "index.html"));
   }
   return win;
 }

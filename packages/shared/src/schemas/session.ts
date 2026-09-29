@@ -85,7 +85,9 @@ export type TodoItem = z.infer<typeof todoItemSchema>;
 /**
  * 会话快照主体（06 §3.2 SessionSnapshotPayload）。
  * messages 只含末尾 checkpoint 之后的增量（NFR-5 ≤1s 的协议投影）；
- * pendingApprovals 复用 permission.requested 的 payload 主体，实现重连补推未决审批（02 §6.4）。
+ * history 为可选全量消息（冷重建专用：桌面端首次打开 / renderer 刷新时端层无本地历史可拼，
+ * 06 §7 只增不改演进，v1.3 登记）；pendingApprovals 复用 permission.requested 的 payload 主体，
+ * 实现重连补推未决审批（02 §6.4）。
  */
 export const sessionSnapshotPayloadSchema = z.object({
   lastSeq: z.number().int(),
@@ -95,6 +97,7 @@ export const sessionSnapshotPayloadSchema = z.object({
   activeProviderId: z.string(),
   contextUsage: contextUsageSchema,
   messages: z.array(messageRecordSchema),
+  history: z.array(messageRecordSchema).optional(),
   todoState: z.array(todoItemSchema).optional(),
   pendingApprovals: z.array(permissionRequestedPayloadSchema),
 });

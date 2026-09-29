@@ -96,6 +96,7 @@ export async function compactSession(entry: { loop: SessionTurnLoop }): Promise<
 }
 
 /** session.snapshot 投影（06 §3.2）：messages 仅含末尾 checkpoint 之后的尾部增量（NFR-5）；
+ * history 为可选全量消息（冷重建 / renderer 刷新，v1.3；缺省省略守住快照最小投影）；
  * 内存态新会话增量为空（端层被认为已跟进 lastSeq）；pendingApprovals 为会话未决审批补推（02 §6.4）。 */
 export async function buildSessionSnapshot(input: {
   storage: Storage;
@@ -106,6 +107,7 @@ export async function buildSessionSnapshot(input: {
   activeProviderId: string;
   maxContextTokens: number;
   messages?: MessageRecord[];
+  history?: MessageRecord[];
   pendingApprovals?: SessionSnapshotPayload["pendingApprovals"];
 }): Promise<SessionSnapshotPayload> {
   const { storage } = input;
@@ -120,6 +122,7 @@ export async function buildSessionSnapshot(input: {
       maxTokens: input.maxContextTokens,
     },
     messages: input.messages ?? [],
+    ...(input.history !== undefined && { history: input.history }),
     pendingApprovals: input.pendingApprovals ?? [],
   };
 }

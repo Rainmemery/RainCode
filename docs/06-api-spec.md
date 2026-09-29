@@ -153,7 +153,7 @@ export type RpcFrame =
 | --- | --- | --- | --- | --- |
 | `session.create` | `{ workspaceRoot, title?, providerId?, mode?: "normal"\|"plan"\|"auto-accept" }` | `{ sessionId, state: "Active", createdAt }` | `CONFIG_PROVIDER_NOT_FOUND` | 创建会话（02 C1/C2）：初始化会话目录与 JSONL 事件文件；workspaceRoot 必须为已存在目录 |
 | `session.list` | `{ filter?: { state?: "Active"\|"Archived", workspaceRoot?, keyword? }, page?: PageParams }` | `{ items: SessionSummary[], nextCursor? }` | — | SQLite 元数据分页查询；SessionSummary 含 id/title/state/createdAt/lastActiveAt/model/contextUsage |
-| `session.resume` | `{ sessionId }` | `{ sessionId, snapshot: SessionSnapshotPayload }` | `SESSION_NOT_FOUND` `SESSION_RESTORE_FAILED` | checkpoint + 增量重放（≤1s，NFR-5）；幂等——会话已 Active 时直接返回当前快照（多端收敛单写者，02 §1.4）；未决审批经 `snapshot.pendingApprovals` 补推（02 §6.4） |
+| `session.resume` | `{ sessionId }` | `{ sessionId, snapshot: SessionSnapshotPayload }` | `SESSION_NOT_FOUND` `SESSION_RESTORE_FAILED` | checkpoint + 增量重放（≤1s，NFR-5）；幂等——会话已 Active 时直接返回当前快照（多端收敛单写者，02 §1.4）；未决审批经 `snapshot.pendingApprovals` 补推（02 §6.4）；`snapshot.history` 全量消息供端层冷重建（v1.3） |
 | `session.send` | `{ sessionId, input: { text, attachments?: [{ path, mediaType? }] } }` | `{ turnId, admission: "started"\|"queued", queuePosition? }` | `SESSION_NOT_FOUND` `SESSION_ARCHIVED` `SESSION_QUEUE_REJECTED` | turn.new 指令；**立即返回受理结果，不等待 turn**（NFR-2 协议支撑）；运行中按队列策略接纳（02 §1.2.3），配置为拒绝策略时返回 `SESSION_QUEUE_REJECTED` |
 | `session.steer` | `{ sessionId, input: { text } }` | `{ result: "injected"\|"started"\|"queued", turnId? }` | `SESSION_NOT_FOUND` `SESSION_ARCHIVED` | turn.steer：运行中注入 steeringBuffer（不开新 turn）；空闲按 turn.new 处理（`started`）；02 §1.2.3 |
 | `session.cancel` | `{ sessionId, turnId?, reason? }` | `{ cancelled, at?: TurnPhase }` | `SESSION_NOT_FOUND` | 触发 T3/T8/T12 迁移；幂等——无运行中 turn 时返回 `cancelled: false` |
@@ -371,7 +371,7 @@ payload 惯例：所有事件 payload 继承 §3.1 的 `EventBase`；下表只�
 | `session.created` | `{ sessionId, title, workspaceRoot, mode, createdAt, kind?: "main"\|"subagent", parentSessionId? }` | 会话创建/分叉受理（05-database JSONL 头行同名事件的 rpc 投影；`kind`/`parentSessionId` 为 T2.6 可选演进字段——`session.fork` 的新会话回链源会话） | 端层会话列表刷新 |
 | `session.snapshot` | `SessionSnapshotPayload`（见下） | 恢复完成、客户端重连补推、seq 缺口补偿 | 端层状态全量重建 |
 
-`SessionSnapshotPayload`：`{ lastSeq, phase, turnId?, model, activeProviderId, contextUsage: { tokens, maxTokens }, messages: MessageRecord[], todoState?: TodoItem[], pendingApprovals: PermissionRequestedPayload[] }`。`messages` 只含末尾 checkpoint 之后的增量（NFR-5 ≤1s 的协议投影）；`pendingApprovals` 复用 `permission.requested` 的 payload 主体，实现重连补推未决审批（02 §6.4）。
+`SessionSnapshotPayload`：`{ lastSeq, phase, turnId?, model, activeProviderId, contextUsage: { tokens, maxTokens }, messages: MessageRecord[], history?: MessageRecord[], todoState?: TodoItem[], pendingApprovals: PermissionRequestedPayload[] }`。`messages` 只含末尾 checkpoint 之后的增量（NFR-5 ≤1s 的协议投影）；`history` 为可选全量消息（v1.3，冷重建专用：端层无本地历史时以 `history ?? messages` 重建视图；resume 双路径填充、事件投影可省略）；`pendingApprovals` 复用 `permission.requested` 的 payload 主体，实现重连补推未决审批（02 §6.4）。
 
 **B. 工具与权限（审批闭环）**
 
@@ -703,6 +703,7 @@ capability 命名约定：`<domain>.<feature>`（小写点分），登记于 `sy
 | 1.0 | 2026-09-28 | 初版：八域控制面 43 方法、数据面 17 事件、错误码分段、schema 分域组织、三绑定映射 |
 | 1.1 | 2026-09-29 | T2.6 内核增强：新增 `session.rename` / `session.fork` / `session.usage` / `config.providers.switch` 四方法（向后兼容，minor+1）；Provider 增可选单价字段 `inputPricePerMtok`/`outputPricePerMtok`（AC-10 估算口径）；`session.created` 事件增可选 `kind`/`parentSessionId`；tool 域新增错误码 `TOOL_INPUT_RETRY_EXCEEDED`（AC-12 受限重试上限 3） |
 | 1.2 | 2026-09-29 | T2.7 P1 工具（minor+1）：`permission.respond` 增可选请求字段 `answerText`（ask_user_question 通道应答文本；需探测级，登记 capability `permission.respond.answer`）+ `permission.resolved` 事件增可选 `answerText`；tool 域新增错误码 `TOOL_SSRF_BLOCKED`（web_fetch SSRF 黑名单拒绝，02 §2.4）；内置工具清单新增 `web_fetch` / `ask_user_question`（02 §2.3 P1，经 tool.tools.list 可见） |
+| 1.3 | 2026-09-29 | 桌面端走查修复（minor+1，只增不改）：`SessionSnapshotPayload` 增可选 `history`（全量消息数组）——冷重建专用（桌面端首次打开 / renderer 刷新时端层无本地历史可拼，`messages` 尾部增量口径对已收束会话为空会导致恢复视图空白）；`session.resume` 幂等路径（Active 会话）与冷恢复路径均填充该字段，`session.snapshot` 事件投影可省略。协议规模不变（45 方法 / 18 事件） |
 
 ---
 

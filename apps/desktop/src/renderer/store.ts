@@ -19,6 +19,8 @@ interface SnapshotPayload {
   lastSeq: number;
   phase: string;
   messages?: unknown[];
+  /** v1.3 冷重建字段：全量消息（桌面端首次打开 / renderer 刷新时端层无本地历史可拼）。 */
+  history?: unknown[];
   pendingApprovals?: Array<Record<string, unknown>>;
 }
 
@@ -59,20 +61,52 @@ export const useDesktop = create<DesktopStore>((set, get) => {
   }
 
   async function call<T>(method: string, params?: unknown): Promise<T> {
-    return rpc().call<T>(method, params);
+    // params 缺省补 {}：无参方法的 strict schema（如 system.ping）拒绝 undefined，
+    // 帧序列化会丢掉 params 键（场景 5 走查发现的 INVALID_PARAMS 根因）
+    return rpc().call<T>(method, params ?? {});
   }
 
-  /** resume → snapshot 重建视图（端层状态全量重建，06 §3.4；seq 缺口补偿同一入口）。 */
+  /** resume → snapshot 重建视图（端层状态全量重建，06 §3.4；seq 缺口补偿同一入口）。
+   * 冷重建取 history（全量，v1.3）；messages 是 checkpoint 后尾部增量口径（NFR-5），
+   * 仅作旧服务端兼容回退——对已收束会话它为空，直接用会导致恢复后视图空白（场景 5 走查发现）。 */
   async function restoreSession(sessionId: string): Promise<SessionView> {
     const result = await call<{ snapshot: SnapshotPayload }>("session.resume", { sessionId });
     const snapshot = result.snapshot;
+    const rebuild = snapshot.history !== undefined && snapshot.history.length > 0 ? snapshot.history : snapshot.messages ?? [];
     const items: SessionView["items"] = [];
-    for (const raw of snapshot.messages ?? []) {
-      const record = raw as { role?: string; content?: string };
+    // 历史重建：文本消息直映；工具调用重建为工具卡（结果归并进对应卡，03 §6.4 五状态口径）
+    const toolCards = new Map<string, Extract<SessionView["items"][number], { kind: "tool" }>>();
+    for (const raw of rebuild) {
+      const record = raw as {
+        role?: string;
+        content?: unknown;
+        toolCallId?: string;
+        isError?: boolean;
+      };
       if (record.role === "user" && typeof record.content === "string") {
         items.push({ kind: "message", id: `m-${items.length}`, role: "user", text: record.content, streaming: false });
       } else if (record.role === "assistant" && typeof record.content === "string" && record.content.length > 0) {
         items.push({ kind: "message", id: `m-${items.length}`, role: "assistant", text: record.content, streaming: false });
+      } else if (record.role === "assistant" && Array.isArray(record.content)) {
+        for (const block of record.content as Array<Record<string, unknown>>) {
+          if (block.type === "tool_call" && typeof block.toolCallId === "string") {
+            const card: Extract<SessionView["items"][number], { kind: "tool" }> = {
+              kind: "tool",
+              toolCallId: block.toolCallId,
+              toolName: typeof block.name === "string" ? block.name : "unknown",
+              state: "ok",
+              ...(block.arguments !== undefined && { argsPreview: JSON.stringify(block.arguments) }),
+            };
+            toolCards.set(block.toolCallId, card);
+            items.push(card);
+          }
+        }
+      } else if (record.role === "tool" && typeof record.toolCallId === "string") {
+        const card = toolCards.get(record.toolCallId);
+        if (card !== undefined) {
+          card.state = record.isError === true ? "error" : "ok";
+          if (typeof record.content === "string") card.contentPreview = record.content.slice(0, 2000);
+        }
       }
     }
     const approvals = (snapshot.pendingApprovals ?? []).map((raw) => {
@@ -114,7 +148,7 @@ export const useDesktop = create<DesktopStore>((set, get) => {
           setState({ connection: "agent-down", streaming: false, approvals: [] });
         });
         const meta = await window.raincode.meta();
-        await call("system.ping");
+        await call("system.ping", {});
         setState({ connection: "ready", runMode: meta.mode });
         const list = await call<{ items: SessionListRow[] }>("session.list", {});
         setState({
@@ -122,6 +156,7 @@ export const useDesktop = create<DesktopStore>((set, get) => {
         });
         const providers = await call<{ providers: Array<{ id: string; name: string; baseURL: string; model: string; maxContextTokens: number; apiKeyConfigured: boolean }>; activeProviderId?: string }>(
           "config.providers.list",
+          {},
         );
         setState({ providers: providers.providers, activeProviderId: providers.activeProviderId ?? null });
         if (list.items.length > 0) {
@@ -221,7 +256,7 @@ export const useDesktop = create<DesktopStore>((set, get) => {
 
     async addProvider(input): Promise<void> {
       await call("config.providers.add", { provider: input });
-      const list = await call<{ providers: DesktopState["providers"]; activeProviderId?: string }>("config.providers.list");
+      const list = await call<{ providers: DesktopState["providers"]; activeProviderId?: string }>("config.providers.list", {});
       setState({ providers: list.providers, activeProviderId: list.activeProviderId ?? null });
     },
 
