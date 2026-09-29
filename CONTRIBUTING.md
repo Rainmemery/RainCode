@@ -25,7 +25,7 @@ pnpm smoke:p0                                            # 功能冒烟
    pnpm smoke:p0        # 涉及功能链路时
    pnpm bench:all       # 涉及性能路径时，与上一里程碑基准对比不劣化 ±10%
    ```
-4. **架构约束**：跨包依赖只允许 `architecture/policy.yaml` 白名单中的 `requires`；跨包导入只能从对方 `index.ts`；单文件 ≤ 500 行；禁止循环依赖。越权改动请先在 Issue 中讨论并同步更新 policy。
+4. **架构约束**：跨包依赖只允许 `architecture/policy.yaml` 白名单中的 `requires`；跨包导入只能从对方登记的 `publicEntrypoints`（包名入口 `index.ts` 或显式登记的子路径入口，如 `@raincode/rpc/client`）；单文件 ≤ 500 行；禁止循环依赖。越权改动请先在 Issue 中讨论并同步更新 policy。
 
 ## 3. 文档更新协议（强制）
 
