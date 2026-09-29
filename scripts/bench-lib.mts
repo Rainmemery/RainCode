@@ -381,10 +381,10 @@ async function crashOnce(index: number): Promise<void> {
   });
   const exited = new Promise<number | null>((resolvePromise) => child.on("exit", (code) => resolvePromise(code)));
   try {
-    // 等待工具开始执行（CLI 渲染 ▸ bash 行），随后在执行窗口内强杀
+    // 等待工具开始执行（CLI 渲染 ▸ $ bash 行：▸ 运行中标记 + $ bash 工具 glyph），随后在执行窗口内强杀
     const deadline = Date.now() + 60000;
-    while (!stdout.includes("▸ bash")) {
-      if (Date.now() > deadline) throw new Error(`timeout waiting ▸ bash; stderr=${stderr.slice(0, 300)}`);
+    while (!stdout.includes("▸ $ bash")) {
+      if (Date.now() > deadline) throw new Error(`timeout waiting ▸ $ bash; stderr=${stderr.slice(0, 300)}`);
       await delay(20);
     }
     await delay(800); // bash 慢命令执行中（ping 约 7s，远未结束）→ JSONL 处于静默窗口

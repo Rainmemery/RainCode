@@ -3,7 +3,7 @@
  * 首条输入自动创建会话；/resume 切换活动会话后续输入续接该会话历史（session.resume 幂等）。
  * 审批：permission.requested 交互四级决策（[1]仅本次 [2]本会话始终 [3]项目始终 [4]拒绝），
  * 选项[2]写 session 规则、[3]写 project 规则、[4]respond deny（02 §6.2 审批闭环）。
- * TUI 演进点：本波按 04 ADR-02 不引入 Ink，流式打印即最小渲染形态。
+ * TUI 演进点：本波按 04 ADR-02 不引入 Ink，readline REPL + ANSI 富文本渲染层（ui/theme）为中间形态。
  */
 import { createInterface } from "node:readline/promises";
 import { resolve } from "node:path";
@@ -20,6 +20,7 @@ import type {
 import { parseCliArgs, startServiceNode, teardown } from "../context.js";
 import { sendAndStream } from "../stream.js";
 import type { ApprovalChoice } from "../stream.js";
+import { out } from "../ui/theme.js";
 
 const MODES: readonly CollaborationMode[] = ["normal", "plan", "auto-accept"];
 
@@ -35,26 +36,32 @@ export async function chatCommand(argv: string[]): Promise<number> {
   const promptApproval = async (): Promise<ApprovalChoice> => {
     for (;;) {
       // 复用主 rl：审批发生在 sendAndStream 期间，主 question 已 resolve，不存在并发挂起。
-      const answer = (await rl.question("choice> ")).trim();
+      const answer = (await rl.question(out.warn("choice> "))).trim();
       if (answer === "1") return "allow";
       if (answer === "2") return "allow-session";
       if (answer === "3") return "allow-project";
       if (answer === "4") return "deny";
-      process.stdout.write("无效选项；请输入 1/2/3/4\n");
+      process.stdout.write(out.warn("无效选项；请输入 1/2/3/4\n"));
     }
   };
 
   try {
     await context.client.call("system.ping", {});
+    // banner：产品名 accent+bold（03 §tokens --accent），命令说明 dim；readline prompt 含 ANSI
+    // 转义安全（readline 以 stripVTControlCharacters 计宽，行内回显不受影响）。
     process.stdout.write(
-      `RainCode chat · workspace ${workspaceRoot}\n` +
-        "命令: /exit /sessions /resume <id> /mode <normal|plan|auto-accept> /archive [--force] /compact /providers\n" +
-        "其余输入直接发送\n",
+      `${out.bold(out.accent("RainCode"))} ${out.dim(`chat · workspace ${workspaceRoot}`)}\n` +
+        out.dim(
+          "命令: /exit /sessions /resume <id> /mode <normal|plan|auto-accept> /archive [--force] /compact /providers\n",
+        ) +
+        out.dim("其余输入直接发送\n"),
     );
 
     for (;;) {
       // 显式注解：打断「question 模板引用 currentSessionId ↔ 循环内回填 currentSessionId」的推断环
-      const line: string = await rl.question(currentSessionId === null ? "you> " : `you·${currentSessionId.slice(-6)}> `);
+      const line: string = await rl.question(
+        currentSessionId === null ? out.accent("you> ") : out.accent(`you·${currentSessionId.slice(-6)}> `),
+      );
       const trimmed: string = line.trim();
       if (trimmed.length === 0) continue;
 
@@ -196,8 +203,8 @@ async function printSessions(client: RpcClient): Promise<void> {
 
 function printRpcError(reason: unknown): void {
   if (reason instanceof RpcCallError) {
-    process.stdout.write(`[error:${reason.code}] ${reason.message}\n`);
+    process.stdout.write(out.danger(`[error:${reason.code}] ${reason.message}\n`));
     return;
   }
-  process.stdout.write(`[error] ${reason instanceof Error ? reason.message : String(reason)}\n`);
+  process.stdout.write(out.danger(`[error] ${reason instanceof Error ? reason.message : String(reason)}\n`));
 }

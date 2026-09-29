@@ -1,10 +1,15 @@
 /**
  * CLI 事件消费（06-api-spec §3 数据面）：订阅先于 send（事件与 response 共用通道，
- * 06 §1.2「串行不阻塞」），text delta → stdout，reasoning delta → stderr（stdout 保持答案正文纯净）。
- * 工具过程人类可读输出：▸ 调用行（参数摘要）+ ✓/✗ 收束行（结果摘要，多行截断）。
- * 审批闭环（06 §3.2 B 组）：permission.requested → respond（auto-session / deny / interactive）
- * → permission.resolved 单行结果。供 run / chat 两个命令复用；Ink TUI 化时迁移为渲染组件。
+ * 06 §1.2「串行不阻塞」），text delta → markdown 流式渲染后 stdout，reasoning delta → stderr
+ * dim+斜体（stdout 保持答案正文纯净）。工具过程 ANSI 富文本（ADR-02 中间形态渲染层）：
+ * ▸ glyph 调用行（参数摘要）+ ✓/✗ 收束行（结果摘要，多行截断）；三态着色（MiMo print 模式
+ * 调研结论）：运行中正常色 / 完成 dim / 待审批 warn；被拒或取消的收束行用删除线表达
+ * 「已作废」而非红色报警（判别字段 tool_call.completed.error.code = TOOL_PERMISSION_DENIED /
+ * TOOL_CANCELLED）。审批闭环（06 §3.2 B 组）：permission.requested → respond
+ * （auto-session / deny / interactive）→ permission.resolved 单行结果。
+ * 供 run / chat 两个命令复用；Ink TUI 化时迁移为渲染组件。
  */
+import { TOOL_ERROR_CODES } from "@raincode/shared";
 import type { RpcClient } from "@raincode/rpc";
 import type {
   DoneEventPayload,
@@ -15,6 +20,9 @@ import type {
   ToolCallCompletedEventPayload,
   ToolCallStartedEventPayload,
 } from "@raincode/shared";
+import { formatDuration } from "./ui/format.js";
+import { StreamMarkdownRenderer } from "./ui/markdown.js";
+import { err, glyphFor, out, toolStyleKeyFor } from "./ui/theme.js";
 
 export interface StreamOutcome {
   done: DoneEventPayload;
@@ -42,6 +50,7 @@ export async function sendAndStream(
   options: { approval?: ApprovalMode } = {},
 ): Promise<StreamOutcome> {
   const approval: ApprovalMode = options.approval ?? { kind: "deny" };
+  const md = new StreamMarkdownRenderer(process.stdout, out);
   let resolveOutcome!: (done: DoneEventPayload) => void;
   const donePromise = new Promise<DoneEventPayload>((resolvePromise) => {
     resolveOutcome = resolvePromise;
@@ -51,47 +60,66 @@ export async function sendAndStream(
   const offDelta = client.onEvent("message.delta", (payload) => {
     const event = payload as MessageDeltaEventPayload;
     if (event.delta.type === "text") {
-      process.stdout.write(event.delta.text);
+      md.feed(event.delta.text);
     } else if (event.delta.type === "reasoning") {
-      process.stderr.write(event.delta.text);
+      // 思考块：stderr 通道 dim+斜体（stdout 纯净原则不动）；逐 delta 包裹，SGR 跨换行持续
+      process.stderr.write(err.italic(err.dim(event.delta.text)));
     }
     // delta.type === "tool_call"：流式占位片段已由 tool_call.started 表达，不重复打印
   });
   const offToolStarted = client.onEvent("tool_call.started", (payload) => {
     const event = payload as ToolCallStartedEventPayload;
-    process.stdout.write(`\n▸ ${event.toolName} ${singleLine(JSON.stringify(event.input))}\n`);
+    md.end(); // 消息正文 → 工具行边界：冲刷 markdown 半行缓冲并复位围栏
+    const style = out[toolStyleKeyFor(event.toolName)];
+    process.stdout.write(
+      `\n${style(`▸ ${glyphFor(event.toolName)} ${event.toolName}`)} ${out.dim(singleLine(JSON.stringify(event.input)))}\n`,
+    );
   });
   const offToolCompleted = client.onEvent("tool_call.completed", (payload) => {
     const event = payload as ToolCallCompletedEventPayload;
-    const seconds = `${(event.durationMs / 1000).toFixed(1)}s`;
-    if (event.isError) {
-      const reason = event.error !== undefined ? `${event.error.code} ${event.error.message}` : "failed";
-      process.stdout.write(`  ✗ ${reason} · ${seconds}\n`);
-    } else {
+    const duration = out.dim(` · ${formatDuration(event.durationMs)}`);
+    if (!event.isError) {
       const preview = event.contentPreview ?? "";
-      process.stdout.write(`  ✓ ${preview.length > 0 ? `${singleLine(preview)} · ` : ""}${seconds}\n`);
+      const body = preview.length > 0 ? ` ${out.dim(singleLine(preview))}` : "";
+      process.stdout.write(`  ${out.ok("✓")}${body}${duration}\n`);
+      return;
+    }
+    const reason = event.error !== undefined ? `${event.error.code} ${event.error.message}` : "failed";
+    // 拒绝/取消 → 删除线表达「已作废」（非红色报警）；其余执行层错误 → danger
+    const isVoid =
+      event.error?.code === TOOL_ERROR_CODES.PERMISSION_DENIED ||
+      event.error?.code === TOOL_ERROR_CODES.CANCELLED;
+    if (isVoid) {
+      process.stdout.write(`  ${out.strike(out.dim(`✗ ${reason}${duration}`))}\n`);
+    } else {
+      process.stdout.write(`  ${out.danger(`✗ ${reason}`)}${duration}\n`);
     }
   });
   const offRequested = client.onEvent("permission.requested", (payload) => {
+    md.end(); // 审批单插在流式正文中间：先冲刷半行
     void handleApprovalRequest(client, payload as PermissionRequestedPayload, approval);
   });
   const offResolved = client.onEvent("permission.resolved", (payload) => {
     const event = payload as PermissionResolvedEventPayload;
-    const mark = event.decision === "allow" ? "✓" : "✗";
-    const seconds = `${(event.respondLatencyMs / 1000).toFixed(1)}s`;
-    process.stdout.write(`  ${mark} 审批${event.decision === "allow" ? "通过" : "拒绝"}（${event.by}）· ${seconds}\n`);
+    const allowed = event.decision === "allow";
+    const mark = allowed ? out.ok("✓") : out.danger("✗");
+    const text = out.dim(`审批${allowed ? "通过" : "拒绝"}（${event.by}）· ${formatDuration(event.respondLatencyMs)}`);
+    process.stdout.write(`  ${mark} ${text}\n`);
   });
   const offError = client.onEvent("error", (payload) => {
     const event = payload as ErrorEventPayload;
-    process.stderr.write(`\n[${event.code}] ${event.message}\n`);
+    md.end(); // 错误行走 stderr：先冲刷 stdout 半行，避免终端上拼接在未收口正文后
+    process.stderr.write(`\n${err.danger(`[${event.code}] ${event.message}`)}\n`);
   });
 
   try {
     await client.call("session.send", { sessionId, input: { text } });
     const done = await donePromise;
+    md.end();
     process.stdout.write("\n");
     if (done.outcome === "failed") {
-      process.stderr.write(`turn failed${done.at !== undefined ? ` at ${done.at}` : ""}\n`);
+      const at = done.at !== undefined ? ` at ${done.at}` : "";
+      process.stderr.write(`${err.danger("turn failed")}${err.dim(at)}\n`);
     }
     return { done };
   } finally {
@@ -123,18 +151,19 @@ async function handleApprovalRequest(
       return;
     }
     if (mode.kind === "deny") {
+      // 非交互拒绝：⚠ warn 标记 + dim 说明（fail-safe 语义不变）
       process.stderr.write(
-        `\n[permission] 请求执行 ${payload.toolName}（${payload.reason}）\n` +
-          "[permission] 非交互模式已拒绝；使用 --yes 自动允许，或使用 chat 命令交互审批\n",
+        `\n${err.warn("⚠ 权限审批")} ${payload.toolName}（${payload.reason}）\n` +
+          `${err.dim("[permission] 非交互模式已拒绝；使用 --yes 自动允许，或使用 chat 命令交互审批")}\n`,
       );
       await client.call("permission.respond", { grantId: payload.grantId, decision: "deny" });
       return;
     }
     // interactive：展示审批单（工具、归一化输入、风险摘要），回调取得四级决策
     process.stdout.write(
-      `\n⚠ 权限审批 ${payload.toolName} ${singleLine(JSON.stringify(payload.normalizedInput))}\n` +
-        `  风险：${payload.metadata.riskLevel} · scope=${payload.metadata.sideEffectScope} · ${payload.reason}\n` +
-        "  [1] 仅本次 [2] 本会话始终 [3] 项目始终 [4] 拒绝\n",
+      `\n${out.warn(`⚠ 权限审批 ${payload.toolName}`)} ${out.dim(singleLine(JSON.stringify(payload.normalizedInput)))}\n` +
+        `  ${out.dim(`风险：${payload.metadata.riskLevel} · scope=${payload.metadata.sideEffectScope} · ${payload.reason}`)}\n` +
+        `${out.warn("  [1] 仅本次 [2] 本会话始终 [3] 项目始终 [4] 拒绝")}\n`,
     );
     const choice = await mode.prompt(payload);
     const respond =

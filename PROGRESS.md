@@ -14,11 +14,11 @@
 | 项目 | 值 |
 | --- | --- |
 | 当前里程碑 | **M2 进行中**（P1：压缩 / MCP / 子代理 / 记忆 + 桌面端 Alpha） |
-| 已完成任务 | T2.1 auto-compact ✅ · T2.2 mcp 包 ✅ · T2.3 子代理 ✅ · T2.4 memory 包 ✅ |
-| 最新提交 | 见 `git log -1`（T2.4 memory 包提交） |
+| 已完成任务 | T2.1 auto-compact ✅ · T2.2 mcp 包 ✅ · T2.3 子代理 ✅ · T2.4 memory 包 ✅ · CLI 展示升级 ✅ · 产品更名 RainCode ✅ |
+| 最新提交 | 见 `git log -1` |
 | 工作区状态 | clean |
-| 门禁状态 | typecheck ✅ / oxlint ✅（0 错误，6 条既有 warning）/ architecture:check ✅ / smoke:p0（含 compact+mcp+subagent+memory 回归）✅ |
-| 快照日期 | 2026-09-28 |
+| 门禁状态 | typecheck ✅ / oxlint ✅（0 错误，6 条既有 warning）/ architecture:check ✅ / smoke:p0（含 compact+mcp+subagent+memory 回归）✅ / smoke:remote ✅ |
+| 快照日期 | 2026-09-29 |
 
 ---
 
@@ -38,7 +38,9 @@
 > 格式：`[日期] 任务 — 结果`（含关键产出物与提交号）。**新条目插在本节最上方。**
 
 ### M2 · P1（能力补全 + 桌面端 Alpha）
-- [2026-09-28] T2.4 memory 包 — 三层记忆落地：L1 项目 MEMORY.md（`<workspace>/.novacode/MEMORY.md`，模板初始化/章节读-改-写 + mtime 冲突检测 + 原子重命名提交；02 §7.1 的 `.nova` 为笔误已统一 `.novacode`）；L2 会话记忆（003_memory.sql：memory_entries + memory_fts trigram external-content 虚表 + settings 键值表；抽取幂等键 `memory.extracted.<sessionId>`；归一化去重 touch + 同 kind 互含矛盾 supersede）；FTS5 trigram 检索（phrase 转义防语法注入）+ <3 字符 LIKE 兜底 + confidence≥0.6 默认召回集；promote 单向晋升（只改文件不改条目行）；MEMORY.md 全文注入 systemPrompt（server 装配点拼接，ADR-06）；会话结束（archive）+ compact（onBeforeReplace 钩子先于历史替换，失败仅 diag 不阻塞）双触发抽取；LLM 抽取经 MemoryExtractPort 端口注入（30s 超时/宽容 JSON 解析/失败跳过）；memory 域 5 协议方法（read/write/search/entries.list/promote）；验收冒烟 `smoke:memory`（A 模板与注入 / B write 越界拦截+mtime 冲突 / C archive 抽取+幂等 / D search 四路 / E promote / F compact 钩子）并纳入 smoke:p0 回归。
+- [2026-09-29] CLI 展示升级 — 参考 MiMo-Code（opencode 系）print 模式调研结论，新增 `apps/cli/src/ui/` 渲染层（ADR-02 中间形态：readline REPL + ANSI 富文本，不引入 TUI 框架）：theme.ts（03 §3.1 tokens 同源 truecolor + 工具 glyph 表 ✱/←/$/◇/◈/⚙ + 非 TTY 全退化）；markdown.ts（StreamMarkdownRenderer 行缓冲状态机：标题/围栏代码块/列表/行内码/粗斜体/引用，嵌套安全 SGR 关闭序列）；format.ts（formatDuration 三档）；stream.ts 工具行三态着色（运行中 cyan/完成 dim/失败 danger/**被拒或取消=删除线「已作废」语义**）+ reasoning dim 斜体（stderr 通道不变）；chat banner/prompt 着色；run 回合头。验证：临时脚本断言 TTY/非 TTY 双模式 + 逐字符分包一致性；smoke:remote 真实 Provider 回合管道输出零 ANSI/零密钥泄露。
+- [2026-09-29] 产品更名 NovaCode → RainCode（ADR-11）— 全仓 132 文件同步（包名 @raincode/*、bin raincode、env RAINCODE_HOME/RAINCODE_PROVIDER_*、数据目录 .raincode、文档与 UI mockup 文案）；PROGRESS §3/§4 历史日志与 docs/benchmarks/ 历史基准保留旧名作为事实记录；桌面端等后续形态遵循新名。
+- [2026-09-28] T2.4 memory 包 — 三层记忆落地：L1 项目 MEMORY.md（`<workspace>/.raincode/MEMORY.md`，模板初始化/章节读-改-写 + mtime 冲突检测 + 原子重命名提交；02 §7.1 的 `.nova` 为笔误已统一）；L2 会话记忆（003_memory.sql：memory_entries + memory_fts trigram external-content 虚表 + settings 键值表；抽取幂等键 `memory.extracted.<sessionId>`；归一化去重 touch + 同 kind 互含矛盾 supersede）；FTS5 trigram 检索（phrase 转义防语法注入）+ <3 字符 LIKE 兜底 + confidence≥0.6 默认召回集；promote 单向晋升（只改文件不改条目行）；MEMORY.md 全文注入 systemPrompt（server 装配点拼接，ADR-06）；会话结束（archive）+ compact（onBeforeReplace 钩子先于历史替换，失败仅 diag 不阻塞）双触发抽取；LLM 抽取经 MemoryExtractPort 端口注入（30s 超时/宽容 JSON 解析/失败跳过）；memory 域 5 协议方法（read/write/search/entries.list/promote）；验收冒烟 `smoke:memory`（A 模板与注入 / B write 越界拦截+mtime 冲突 / C archive 抽取+幂等 / D search 四路 / E promote / F compact 钩子）并纳入 smoke:p0 回归。
 - [2026-09-28] T2.3 子代理 — profile 解析（markdown + 手写 frontmatter，`[a-z0-9-]` 名校验 + 路径逃逸防护，workspace/global 双源）；SubagentManager 状态机 S1~S6（并发槽默认 4 超限 FIFO 排队 / 级联取消 / TURN_MAX_ROUNDS_EXCEEDED → Stopped 超轮次截断保留已产出内容）；事件镜像（tool_call.started → progress{tool} 等 02 §4.2 映射 + 500ms 惰性窗口合并去重，终态永不合并）；ToolRegistry 白名单投影（闭包委托只读视图，子会话不含 `agent` 工具层级固定 2）；`agent` 工具（阻塞等待子会话终态、结果回传即完成通知注入主循环、ctx.signal abort 级联 stop）；shared 协议 subagent 域 4 方法 + 3 事件；server 装配 SubagentRuntime（SubagentLoopHost 注入，model 覆盖经 llmForModel 按名匹配 Provider，modeOf 继承主会话）；验收冒烟 `smoke:subagent`（A 完成链路 / B 事件镜像 / C 双源 profiles / D 校验错误族 / E stop 幂等 / F 并发排队 queuePosition）并纳入 smoke:p0 回归。附：CLI chat 双 readline 双回显 bug 紧急修复（独立提交 d4090ac）。
 - [2026-09-28] T2.2 mcp 包 — MCP 三 transport 接入（stdio 子进程 / Streamable HTTP / SSE，协议交互复用官方 SDK `@modelcontextprotocol/sdk@1.29.0`）；连接状态机 M1~M8（指数退避 1/2/4/8/16s，耗尽 5 次 → Failed）；失败隔离（单 server 故障仅影响自身命名空间）；`mcp__<serverKey>__<toolName>` 命名空间工具（原始 inputSchema 直通 + 从严 metadata needsApproval=true）；mcp.json 双层配置（global + project，冲突拒绝）与 add/remove 持久化；mcp 域 6 方法 + `mcp.server_status_changed` 全局事件；验收冒烟 `smoke:mcp`（手写 JSON-RPC fixture server 真实互操作：连接/命名空间/控制面直调/turn 内模型调用/进程崩溃重连/HTTP add-remove）并纳入 smoke:p0 回归。教训：Connected 事件与 listTools 完成存在竞态 → refreshTools 重试兜底。
 - [2026-09-28] T2.1 auto-compact — CompactionService（阈值 80% 触发 / 异步不阻塞 / in-flight 去重锁 / 失败阈值上调 90% + 连续 3 次停机）；提交协议 = `compaction.applied` 事件行（summary + summarizedCount）+ epoch+1 checkpoint，重放语义落地 storage（resume 后历史与内存态一致）；协议新增 `session.compact` 方法与 `compact.started/completed` 事件（22+1 方法 / 14 事件）；CLI `/compact`；NFR-6 专项冒烟 `smoke:compact`（A auto 触发+不阻塞+resume 连续性 / B 失败保留原历史+阈值上调 / C 手动+幂等+INVALID_PARAMS）并纳入 smoke:p0 回归。

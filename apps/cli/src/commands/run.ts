@@ -9,6 +9,7 @@ import type { SessionCreateResult } from "@raincode/shared";
 import { resolveProviderConfig } from "@raincode/server";
 import { missingProviderError, parseCliArgs, startServiceNode, teardown } from "../context.js";
 import { sendAndStream } from "../stream.js";
+import { err } from "../ui/theme.js";
 
 export async function runCommand(argv: string[]): Promise<number> {
   const parsed = parseCliArgs(argv);
@@ -39,6 +40,8 @@ export async function runCommand(argv: string[]): Promise<number> {
     process.stderr.write(
       `session ${created.sessionId} · model ${provider.model} · provider source: ${provider.source}\n`,
     );
+    // 回合头（MiMo print 模式调研结论）：dim 一行 > agent · {model}；model 取自 provider 配置
+    process.stderr.write(`${err.dim(`> agent · ${provider.model}`)}\n`);
     const { done } = await sendAndStream(context.client, created.sessionId, prompt, {
       approval: parsed.yes === true ? { kind: "auto-session" } : { kind: "deny" },
     });
