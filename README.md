@@ -36,6 +36,7 @@ RainCode 的功能定位与 Claude Code / Codex 对齐：整合**代码生成、
 - pnpm 11（`packageManager` 已锁定，Corepack 可直接启用）
 - Windows 优先（开发 / 测试均在 Windows 上进行），理论兼容 macOS/Linux
 - 桌面端额外依赖 Electron 33（`pnpm install` 自动拉取；国内网络建议设置 `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/`）
+- better-sqlite3 预编译二进制经 prebuild-install 下载，GitHub release 直连不可达时回退 node-gyp（需 VS C++ 工具链）；国内网络建议同时设置 `npm_config_better_sqlite3_binary_host_mirror=https://registry.npmmirror.com/-/binary/better-sqlite3`（prebuild-install 只认下划线形式的 `npm_config_*` 环境变量，`.npmrc` 的短横线键不会被转换）
 
 ## 快速开始
 

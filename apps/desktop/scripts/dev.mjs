@@ -13,7 +13,7 @@ const vite = spawn("npx", ["vite", "--port", String(vitePort), "--strictPort"], 
   stdio: "inherit",
 });
 
-async function waitForVite(timeoutMs = 30_000): Promise<void> {
+async function waitForVite(timeoutMs = 30_000) {
   const started = Date.now();
   for (;;) {
     try {
