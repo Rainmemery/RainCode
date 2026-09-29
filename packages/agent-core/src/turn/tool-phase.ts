@@ -17,6 +17,7 @@ import {
   buildToolCallStartedEvent,
 } from "@raincode/shared";
 import type { CollaborationMode, ToolErrorCode, ToolMetadata, ToolResult } from "@raincode/shared";
+import { guardPath, normalizeForGuard } from "@raincode/tools";
 import type { BackgroundTaskRegistry, ToolCallRequest, ToolProgressEvent } from "@raincode/tools";
 import type { PermissionEventSink, PermissionPort, PermissionVerdict, ToolPhaseDeps } from "../ports.js";
 
@@ -95,6 +96,35 @@ interface ScheduleEntry {
   metadata: ToolMetadata;
   /** 非空 = 调度期已被拒/非法（不进执行批次）。 */
   blocked?: ToolResult;
+  /** 越界预检命中（02 §5.4）：非空时进权限判定携带 pathEscape，获批后精确放行该绝对路径。 */
+  pathEscape?: { absolutePath: string };
+}
+
+/** 显式路径工具集合（02 §5.4 预检对象；bash 不做命令内路径解析，cwd 已有校验）。 */
+const PATH_FIELD_TOOLS = new Set(["read", "grep", "glob", "write", "edit"]);
+
+/**
+ * 越界路径预检（02 §5.4「命令读写 workspace 外路径 → 权限层 ask」）：
+ * 对显式路径工具提取 input.path（grep/glob 缺省 "."，缺省不会越界故仅校验显式提供值），
+ * 复用 tools 的 guardPath 判定；越界时返回绝对路径供权限强制 ask 与获批后精确放行。
+ */
+function detectPathEscape(
+  toolName: string,
+  input: unknown,
+  workspaceRoot: string,
+): { absolutePath: string } | undefined {
+  if (!PATH_FIELD_TOOLS.has(toolName)) {
+    return undefined;
+  }
+  if (typeof input !== "object" || input === null) {
+    return undefined;
+  }
+  const raw = (input as { path?: unknown }).path;
+  if (typeof raw !== "string" || raw.length === 0) {
+    return undefined;
+  }
+  const verdict = guardPath(workspaceRoot, raw);
+  return verdict.ok ? undefined : { absolutePath: verdict.absolutePath };
 }
 
 export class ToolPhaseRunner {
@@ -160,11 +190,15 @@ export class ToolPhaseRunner {
 
     // 3) 权限判定（仅 zod 合法的调用；02 §2.4：入参非法不进权限）
     //    三态收敛：allow/deny 直接落定；ask → awaitApproval 挂起等待审批闭环（02 §6.2）。
+    //    越界预检（02 §5.4）：命中 pathEscape 的调用由 permission 强制 ask，
+    //    获批后在执行批次按审批通过的绝对路径精确注入放行钩子。
     const sink = this.permissionSink();
+    const approvedEscapes: string[] = [];
     for (const entry of entries) {
       if (entry.blocked !== undefined) {
         continue;
       }
+      entry.pathEscape = detectPathEscape(entry.toolName, entry.input, ctx.workspaceRoot);
       let verdict: PermissionVerdict;
       try {
         verdict = await deps.permission.evaluate({
@@ -177,6 +211,7 @@ export class ToolPhaseRunner {
           toolCallId: entry.call.toolCallId,
           workspaceRoot: ctx.workspaceRoot,
           workspaceId: ctx.workspaceId,
+          ...(entry.pathEscape !== undefined && { pathEscape: entry.pathEscape }),
           events: sink,
         });
       } catch (reason: unknown) {
@@ -205,6 +240,9 @@ export class ToolPhaseRunner {
             verdict.reason !== undefined ? `: ${verdict.reason}` : ""
           }`,
         });
+      } else if (entry.pathEscape !== undefined) {
+        // 越界 ask 获批：仅精确放行审批单中的绝对路径（02 §5.4「审批通过后放行并记录审计」）
+        approvedEscapes.push(entry.pathEscape.absolutePath);
       }
     }
 
@@ -243,7 +281,7 @@ export class ToolPhaseRunner {
       return aggregated;
     }
 
-    // 3) ToolExecution（T9）：只读并行 ≤4、写串行（02 §2.2）
+    // 3) ToolExecution（T9）：只读并行（≤maxConcurrency，缺省 4）、写串行（02 §2.2）
     this.options.onTransition("schedule.ready");
     const progressThrottleMs = this.options.progressThrottleMs ?? 500;
     const requests: ToolCallRequest[] = executable.map((entry) => ({
@@ -251,21 +289,30 @@ export class ToolPhaseRunner {
       toolName: entry.toolName,
       args: entry.input,
     }));
+    // 越界放行钩子（02 §5.4）：仅当本批存在获批越界时注入，且精确匹配审批通过的绝对路径；
+    // 其余情况不注入（undefined）→ 处理器 guardPath 越界照旧 throw（fail-safe）。
+    const batchCtx = {
+      signal: ctx.signal,
+      workspaceRoot: ctx.workspaceRoot,
+      cwd: ctx.cwd,
+      sessionKey: ctx.sessionKey,
+      background: ctx.background,
+      ...(approvedEscapes.length > 0 && {
+        pathPolicy: {
+          allowEscaped: (target: string): boolean =>
+            approvedEscapes.some((abs) => normalizeForGuard(target) === normalizeForGuard(abs)),
+        },
+      }),
+      onToolProgress: (event: ToolProgressEvent & { toolCallId: string }) => {
+        this.publishThrottledProgress(event, progressThrottleMs);
+      },
+      onSettled: (result: ToolResult) => {
+        this.emitCompleted(result);
+      },
+    };
 
     try {
-      const batchResults = await deps.executor.runBatch(requests, {
-        signal: ctx.signal,
-        workspaceRoot: ctx.workspaceRoot,
-        cwd: ctx.cwd,
-        sessionKey: ctx.sessionKey,
-        background: ctx.background,
-        onToolProgress: (event: ToolProgressEvent & { toolCallId: string }) => {
-          this.publishThrottledProgress(event, progressThrottleMs);
-        },
-        onSettled: (result) => {
-          this.emitCompleted(result);
-        },
-      });
+      const batchResults = await deps.executor.runBatch(requests, batchCtx);
       for (const result of batchResults) {
         settledResults.set(result.toolCallId, result);
       }

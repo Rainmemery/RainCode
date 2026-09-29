@@ -57,6 +57,17 @@ export class PermissionService {
 
   /** 五级判定链（02 §6.2 evaluate）。 */
   async evaluate(req: PermissionRequest): Promise<PermissionVerdict> {
+    // 02 §5.4「命令读写 workspace 外路径 | P0 标记为需审批（权限层 ask）；审批通过后放行并记录审计」：
+    // 越界预检命中（tool-phase 注入 pathEscape）→ 跳过 L1 只读快速通道等一切静默放行路径，
+    // 直接强制逐次审批（ask 经 broker 闭环；respond/timeout 终判由 onSettled 统一落审计）。
+    if (req.pathEscape !== undefined) {
+      return this.askViaBroker(req, {
+        decision: "ask",
+        matchedBy: "default",
+        reason: `访问 workspace 外路径 ${req.pathEscape.absolutePath}，需逐次审批（02 §5.4）`,
+      }, []);
+    }
+
     const analysis =
       req.toolName === "bash" ? this.bash.parse(extractBashCommand(req.input) ?? "") : null;
 

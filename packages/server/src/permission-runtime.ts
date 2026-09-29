@@ -227,6 +227,7 @@ function toServiceRequest(request: ToolPermissionRequest): Parameters<Permission
     ...(request.toolCallId !== undefined && { toolCallId: request.toolCallId }),
     workspaceRoot: request.workspaceRoot,
     workspaceId: request.workspaceId,
+    ...(request.pathEscape !== undefined && { pathEscape: request.pathEscape }),
     ...(request.events !== undefined && { events: request.events }),
   };
 }

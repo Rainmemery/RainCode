@@ -8,6 +8,7 @@
   },
   "scripts": {
     "typecheck": "pnpm -r run typecheck",
+    "test": "node --import tsx --test \"packages/*/test/**/*.test.ts\" \"apps/*/test/**/*.test.ts\"",
     "lint": "oxlint packages apps scripts",
     "architecture:check": "node scripts/architecture-check.mjs",
     "bench:start": "tsx scripts/bench.mts start",

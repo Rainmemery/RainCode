@@ -47,7 +47,7 @@ export { BackgroundTaskRegistry } from "./sandbox/background.js";
 export type { BackgroundTask, KillOutcome, KillOutcomeReason } from "./sandbox/background.js";
 
 // 路径守卫与投影工具
-export { guardPath } from "./path-guard.js";
+export { guardPath, normalizeForGuard } from "./path-guard.js";
 export type { PathGuardVerdict, PathPolicyHook } from "./path-guard.js";
 export { zodToJsonSchema } from "./json-schema.js";
 export { OutputRingBuffer, truncateToByteBudget } from "./truncate.js";

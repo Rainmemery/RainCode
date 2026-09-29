@@ -3,8 +3,9 @@
  *
  * - 相对路径以 workspaceRoot 为基准解析；绝对路径规范化后做前缀包含校验
  *   （win32 大小写不敏感，02 §5.3「规范化比对（大小写不敏感）」）；
- * - 越界路径默认拒绝（TOOL_PATH_ESCAPED）；`PathPolicyHook.allowEscaped` 是留给权限层的
- *   放行钩子（02 §5.4「审批通过后放行并记录审计」——本波仅留接口，未接权限链）。
+ * - 越界路径默认拒绝（TOOL_PATH_ESCAPED）；`PathPolicyHook.allowEscaped` 是权限层的
+ *   放行钩子（02 §5.4「审批通过后放行并记录审计」——tool-phase 在越界 ask 获批后
+ *   按审批通过的绝对路径精确注入）。
  */
 import { resolve, sep } from "node:path";
 
@@ -20,7 +21,12 @@ export type PathGuardVerdict =
   | { ok: true; absolutePath: string }
   | { ok: false; absolutePath: string; reason: "escaped" };
 
-function normalizeForCompare(path: string): string {
+/**
+ * 守卫口径的路径规范化（win32 大小写不敏感；分隔符统一为 /，去尾分隔符）。
+ * 导出供 agent-core tool-phase 构造 `allowEscaped` 钩子时复用同一比对口径
+ * （审批通过的绝对路径 ↔ 实际执行路径必须逐字节同口径）。
+ */
+export function normalizeForGuard(path: string): string {
   const normalized = resolve(path);
   const withSlashes = normalized.split(sep).join("/").replace(/\/+$/, "");
   return process.platform === "win32" ? withSlashes.toLowerCase() : withSlashes;
@@ -35,9 +41,9 @@ export function guardPath(
   target: string,
   hook?: PathPolicyHook,
 ): PathGuardVerdict {
-  const rootNormalized = normalizeForCompare(workspaceRoot);
+  const rootNormalized = normalizeForGuard(workspaceRoot);
   const absolutePath = resolve(workspaceRoot, target);
-  const targetNormalized = normalizeForCompare(absolutePath);
+  const targetNormalized = normalizeForGuard(absolutePath);
   const inside =
     targetNormalized === rootNormalized || targetNormalized.startsWith(`${rootNormalized}/`);
   if (inside) {
@@ -45,7 +51,7 @@ export function guardPath(
   }
   const allowEscaped = hook?.allowEscaped;
   if (allowEscaped !== undefined && allowEscaped(absolutePath) === true) {
-    return { ok: true, absolutePath }; // 权限层显式放行（钩子留接口，本波默认无人放行）
+    return { ok: true, absolutePath }; // 权限层显式放行（越界 ask 获批后的精确放行，02 §5.4）
   }
   return { ok: false, absolutePath, reason: "escaped" };
 }

@@ -33,6 +33,12 @@ export interface PermissionRequest {
   toolCallId?: string;
   workspaceRoot: string;
   workspaceId: string;
+  /**
+   * 越界路径预检（02 §5.4「命令读写 workspace 外路径 → P0 标记为需审批；审批通过后放行并记录审计」）：
+   * agent-core tool-phase 对显式路径工具预检注入；存在时跳过 L1 只读快速通道等静默放行，
+   * 强制经 broker 逐次审批（audit/approvals 闭环照常）。
+   */
+  pathEscape?: { absolutePath: string };
   /** 审批事件出口（ask 态经此持久化 permission.requested/resolved）。 */
   events?: PermissionEventSink;
 }

@@ -6,7 +6,18 @@
 /** 头部/尾部占比（02 §2.4：头 70% / 尾 30%）。 */
 const HEAD_RATIO = 0.7;
 
-const TRUNCATION_MARKER = "\n…[输出超出预算，中间内容已截断（保留头 70% / 尾 30%），建议缩小读取范围]…\n";
+/**
+ * 截断提示行（02 §2.4「输出超出 maxOutputBytes」处理的对齐增强）：
+ * 在既有标记文案上补充总字节数 / omitted 字节数与分页建议（模型可读，指引自纠）。
+ * totalBytes / omittedBytes 为 UTF-8 字节口径，与预算同口径。
+ */
+function makeTruncationMarker(totalBytes: number, omittedBytes: number): string {
+  return (
+    `\n…[output truncated: kept head 70% + tail 30% of ${totalBytes} bytes total; ` +
+    `${omittedBytes} bytes omitted — narrow the query, reduce maxBytes, ` +
+    `or use tool-specific paging (e.g. read offset/limit, tool.background.output)]…\n`
+  );
+}
 
 /** 从缓冲尾部向前回退到 UTF-8 字符起始字节（防截断出残缺码元）。 */
 function safeCutIndex(buf: Buffer, index: number): number {
@@ -22,8 +33,9 @@ function decode(buf: Buffer): string {
 }
 
 /**
- * 按 UTF-8 字节预算裁剪文本：超预算时保留头 70% / 尾 30% 并插入截断标记。
- * 返回 truncated=false 时 text 与输入一致。
+ * 按 UTF-8 字节预算裁剪文本：超预算时保留头 70% / 尾 30% 并插入截断提示行
+ * （含总字节数 / omitted 字节数与分页建议，02 §2.4）。
+ * 返回 truncated=false 时 text 与输入一致；结果总字节数 ≤ maxBytes。
  */
 export function truncateToByteBudget(text: string, maxBytes: number): {
   text: string;
@@ -36,14 +48,19 @@ export function truncateToByteBudget(text: string, maxBytes: number): {
   if (buf.length <= maxBytes) {
     return { text, truncated: false };
   }
-  const markerBytes = Buffer.byteLength(TRUNCATION_MARKER, "utf8");
+  const totalBytes = buf.length;
+  // 提示行字节数先按 omitted 上界（= totalBytes，数字位数最宽）估计，保证最终文本不超预算
+  const markerBytes = Buffer.byteLength(makeTruncationMarker(totalBytes, totalBytes), "utf8");
   const budget = Math.max(maxBytes - markerBytes, 0);
   const headBytes = Math.floor(budget * HEAD_RATIO);
   const tailBytes = Math.max(budget - headBytes, 0);
-  const head = decode(buf.subarray(0, safeCutIndex(buf, headBytes)));
+  const headCut = safeCutIndex(buf, headBytes);
   const tailStart = safeCutIndex(buf, buf.length - tailBytes);
+  const omittedBytes = Math.max(tailStart - headCut, 0);
+  const head = decode(buf.subarray(0, headCut));
   const tail = decode(buf.subarray(tailStart, buf.length));
-  return { text: `${head}${TRUNCATION_MARKER}${tail}`, truncated: true };
+  const marker = makeTruncationMarker(totalBytes, omittedBytes);
+  return { text: `${head}${marker}${tail}`, truncated: true };
 }
 
 /**
@@ -91,13 +108,14 @@ export class OutputRingBuffer {
     return this.total;
   }
 
-  /** 当前缓冲内容（头窗 + 省略标记 + 尾窗）。 */
+  /** 当前缓冲内容（头窗 + 截断提示行 + 尾窗；提示行含总/omitted 字节数）。 */
   text(): string {
     if (!this.truncated) {
       return decode(Buffer.concat([this.head, this.tail]));
     }
     const head = decode(this.head.subarray(0, safeCutIndex(this.head, this.head.length)));
     const tail = decode(this.tail.subarray(safeCutIndex(this.tail, Math.max(this.tail.length - this.tailCap, 0))));
-    return `${head}${TRUNCATION_MARKER}${tail}`;
+    const omittedBytes = Math.max(this.total - this.head.length - this.tail.length, 0);
+    return `${head}${makeTruncationMarker(this.total, omittedBytes)}${tail}`;
   }
 }

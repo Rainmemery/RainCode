@@ -43,6 +43,8 @@ export interface ToolExecutorOptions {
   registry: ToolRegistry;
   defaultTimeoutMs?: number;
   defaultMaxOutputBytes?: number;
+  /** 只读工具并发上限（02 §2.2；缺省 4，最小 1 防御）。 */
+  maxConcurrency?: number;
 }
 
 export interface ToolRunContext extends ToolExecutionContext {
@@ -82,15 +84,17 @@ export class ToolExecutor {
   private readonly registry: ToolRegistry;
   private readonly defaultTimeoutMs: number;
   private readonly defaultMaxOutputBytes: number;
-  private readonly limit = new Semaphore(MAX_CONCURRENCY);
+  private readonly limit: Semaphore;
 
   constructor(options: ToolExecutorOptions) {
     this.registry = options.registry;
     this.defaultTimeoutMs = options.defaultTimeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.defaultMaxOutputBytes = options.defaultMaxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
+    // 并发上限从模块常量改为实例配置（缺省仍 4；Math.max(1, n) 防御非法值）
+    this.limit = new Semaphore(Math.max(1, options.maxConcurrency ?? MAX_CONCURRENCY));
   }
 
-  /** 批执行：只读并行（≤4）、写工具按调用顺序串行；全部收敛后按入参顺序返回。 */
+  /** 批执行：只读并行（≤maxConcurrency，缺省 4）、写工具按调用顺序串行；全部收敛后按入参顺序返回。 */
   async runBatch(calls: ToolCallRequest[], ctx: ToolRunContext): Promise<ToolResult[]> {
     let writeChain: Promise<unknown> = Promise.resolve();
     const results = await Promise.all(

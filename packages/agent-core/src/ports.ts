@@ -96,6 +96,12 @@ export interface ToolPermissionRequest {
   workspaceRoot: string;
   /** workspaceHash（project 规则判定域，05 §3.6）。 */
   workspaceId: string;
+  /**
+   * 越界路径预检结果（02 §5.4「命令读写 workspace 外路径 → 权限层 ask；审批通过后放行」）：
+   * tool-phase 对显式路径工具（read/grep/glob/write/edit）预检注入；permission 侧据此
+   * 跳过一切静默放行路径强制逐次审批。
+   */
+  pathEscape?: { absolutePath: string };
   /** ask 态审批事件的持久化出口。 */
   events?: PermissionEventSink;
 }
