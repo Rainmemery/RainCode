@@ -4,11 +4,30 @@
  */
 import type { LlmFunctionTool } from "@raincode/llm";
 import { ulid } from "@raincode/storage";
-import type { ContentBlock, MessageRecord, TokenUsage } from "@raincode/shared";
+import { TOOL_ERROR_CODES } from "@raincode/shared";
+import type { ContentBlock, MessageRecord, TokenUsage, ToolResult } from "@raincode/shared";
 import type { ToolRegistry } from "@raincode/tools";
 
 export function errorMessage(reason: unknown): string {
   return reason instanceof Error ? reason.message : String(reason);
+}
+
+// ---------------------------------------------------------------------------
+// AC-12 受限重试支撑（06 §4.3 段 7 TOOL_INPUT_RETRY_EXCEEDED）：工具参数校验失败路径本身
+// 已通（模型可自纠），但缺重试上限——本模块只做统计，计数与收束决策在 turn-loop（上限 3）。
+// ---------------------------------------------------------------------------
+
+/** 一轮工具阶段结果中的非法入参统计：失败计数 + 最近失败的 issues 摘要（≤200 字，收束 message 用）。 */
+export function invalidInputStats(results: ToolResult[]): { invalidCount: number; invalidSummary: string } {
+  const invalid = results.filter((result) => result.error?.code === TOOL_ERROR_CODES.INVALID_INPUT);
+  if (invalid.length === 0) {
+    return { invalidCount: 0, invalidSummary: "" };
+  }
+  const message = invalid[invalid.length - 1]?.error?.message ?? "";
+  return {
+    invalidCount: invalid.length,
+    invalidSummary: message.length > 200 ? `${message.slice(0, 200)}…` : message,
+  };
 }
 
 /** 多轮 usage 累计（done/outcome 携带 turn 级总量）。 */

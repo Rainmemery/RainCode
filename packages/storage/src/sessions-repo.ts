@@ -161,6 +161,15 @@ export class SessionsRepo {
     return row ? mapRow(row) : null;
   }
 
+  /** usage 原子累计（05 §1.2 投影列）：SQL 侧自增——相邻 turn 快速收束时并发读改写会丢失更新（T2.6/AC-10）。 */
+  async accumulateUsage(id: string, inputDelta: number, outputDelta: number): Promise<void> {
+    this.db
+      .prepare(
+        "UPDATE sessions SET input_tokens = input_tokens + ?, output_tokens = output_tokens + ? WHERE id = ?",
+      )
+      .run(inputDelta, outputDelta, id);
+  }
+
   async updateMeta(id: string, patch: SessionMetaPatch): Promise<void> {
     const assignments: Array<[string, string | number | null | undefined]> = [
       ["title", patch.title],

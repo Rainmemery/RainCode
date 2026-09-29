@@ -6,7 +6,8 @@ import { ruleBehaviorSchema } from "./common.js";
  * - Provider 四要素：baseURL / apiKeyRef / model / maxContextTokens（AC-4）；
  * - config.json 文档 schema（04 §5.2 结构示意的 P0 子集）：读路径 strip、写路径 strict（未知字段拒绝，
  *   明文 apiKey 字段因此在写 config.json 时天然被拒，04 §5.1/§5.3）；
- * - 方法 schema：config.get / config.set / config.providers.list / add / remove（07 §2.1 P0 清单）。
+ * - 方法 schema：config.get / config.set / config.providers.list / add / remove / switch
+ *   （07 §2.1 P0 清单 + T2.6 switch 补齐，06 §2.3）。
  */
 
 /** Provider 输入形态（04 §5.2：apiKey 只存引用 apiKeyRef，null 表示本地 Provider 无凭据）。 */
@@ -17,6 +18,9 @@ export const providerInputSchema = z.object({
   model: z.string().min(1),
   maxContextTokens: z.number().int().positive(),
   apiKeyRef: z.string().nullable().optional(),
+  // AC-10 费用估算单价（USD/百万 token；optional 兼容旧 config.json——旧文档无此字段照常读写，06 §7.1）
+  inputPricePerMtok: z.number().positive().optional(),
+  outputPricePerMtok: z.number().positive().optional(),
 });
 export type ProviderInput = z.infer<typeof providerInputSchema>;
 
@@ -29,6 +33,9 @@ export const providerInfoSchema = z.object({
   maxContextTokens: z.number(),
   apiKeyRef: z.string().nullable().optional(),
   apiKeyConfigured: z.boolean(),
+  // AC-10 费用估算单价（USD/百万 token；session.usage costEstimateUsd 的取数口径）
+  inputPricePerMtok: z.number().positive().optional(),
+  outputPricePerMtok: z.number().positive().optional(),
 });
 export type ProviderInfo = z.infer<typeof providerInfoSchema>;
 
@@ -92,7 +99,8 @@ export const configSetResultSchema = z.object({
 export type ConfigSetResult = z.infer<typeof configSetResultSchema>;
 
 // ---------------------------------------------------------------------------
-// config.providers.list / add / remove（06 §2.3；switch 属 P1 不在本波）
+// config.providers.list / add / remove / switch（06 §2.3；switch 已实现于 T2.6——运行时切换
+// 活跃 Provider，只影响后续请求的客户端绑定，已建会话的 llm 绑定与历史不动，06 §2.3）
 // ---------------------------------------------------------------------------
 
 export const configProvidersListParamsSchema = z.strictObject({});
@@ -123,3 +131,14 @@ export const configProvidersRemoveResultSchema = z.object({
   removed: z.boolean(),
 });
 export type ConfigProvidersRemoveResult = z.infer<typeof configProvidersRemoveResultSchema>;
+
+/** 运行时切换活跃 Provider（06 §2.3 config.providers.switch，T2.6/AC-11）。 */
+export const configProvidersSwitchParamsSchema = z.strictObject({
+  providerId: z.string().min(1),
+});
+export type ConfigProvidersSwitchParams = z.infer<typeof configProvidersSwitchParamsSchema>;
+
+export const configProvidersSwitchResultSchema = z.object({
+  activeProviderId: z.string(),
+});
+export type ConfigProvidersSwitchResult = z.infer<typeof configProvidersSwitchResultSchema>;

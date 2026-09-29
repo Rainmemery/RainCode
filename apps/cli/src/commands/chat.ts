@@ -1,6 +1,9 @@
 /**
- * raincode chat：readline 交互 REPL（最小命令集 /exit /sessions /resume <id> /mode /archive /providers）。
+ * raincode chat：readline 交互 REPL（最小命令集 /exit /sessions /resume <id> /rename /fork /usage
+ * /mode /archive /compact /providers）。
  * 首条输入自动创建会话；/resume 切换活动会话后续输入续接该会话历史（session.resume 幂等）。
+ * T2.6（06 §2.1 AC-9/AC-10）：/rename 重命名、/fork 分叉新会话并切换活动会话（同 /resume 模式）、
+ * /usage 会话累计用量与费用估算（costEstimateUsd 缺省 = 活跃 Provider 未配置单价）。
  * 审批：permission.requested 交互四级决策（[1]仅本次 [2]本会话始终 [3]项目始终 [4]拒绝），
  * 选项[2]写 session 规则、[3]写 project 规则、[4]respond deny（02 §6.2 审批闭环）。
  * TUI 演进点：本波按 04 ADR-02 不引入 Ink，readline REPL + ANSI 富文本渲染层（ui/theme）为中间形态。
@@ -13,6 +16,9 @@ import type {
   CollaborationMode,
   ConfigProvidersListResult,
   SessionCompactResult,
+  SessionForkResult,
+  SessionRenameResult,
+  SessionUsageResult,
   SessionCreateResult,
   SessionListResult,
   SessionResumeResult,
@@ -52,7 +58,7 @@ export async function chatCommand(argv: string[]): Promise<number> {
     process.stdout.write(
       `${out.bold(out.accent("RainCode"))} ${out.dim(`chat · workspace ${workspaceRoot}`)}\n` +
         out.dim(
-          "命令: /exit /sessions /resume <id> /mode <normal|plan|auto-accept> /archive [--force] /compact /providers\n",
+          "命令: /exit /sessions /resume <id> /rename <title> /fork [title] /usage /mode <normal|plan|auto-accept> /archive [--force] /compact /providers\n",
         ) +
         out.dim("其余输入直接发送\n"),
     );
@@ -84,6 +90,76 @@ export async function chatCommand(argv: string[]): Promise<number> {
           process.stdout.write(
             `resumed ${result.sessionId} · phase ${result.snapshot.phase} · lastSeq ${result.snapshot.lastSeq}\n`,
           );
+        } catch (reason: unknown) {
+          printRpcError(reason);
+        }
+        continue;
+      }
+      if (trimmed.startsWith("/rename")) {
+        // T2.6 session.rename（AC-9）：title 取参数其余部分；schema 层 trim（1~200），空参 → usage 提示
+        const title = trimmed.slice("/rename".length).trim();
+        if (currentSessionId === null) {
+          process.stdout.write("no active session\n");
+          continue;
+        }
+        if (title.length === 0) {
+          process.stdout.write("usage: /rename <title>\n");
+          continue;
+        }
+        try {
+          const result = await context.client.call<SessionRenameResult>("session.rename", {
+            sessionId: currentSessionId,
+            title,
+          });
+          process.stdout.write(`renamed → ${out.accent(result.title)}\n`);
+        } catch (reason: unknown) {
+          printRpcError(reason);
+        }
+        continue;
+      }
+      if (trimmed.startsWith("/fork")) {
+        // T2.6 session.fork（AC-9）：复制全量历史分叉新会话；成功后切换活动会话（同 /resume 模式）
+        if (currentSessionId === null) {
+          process.stdout.write("no active session\n");
+          continue;
+        }
+        const title = trimmed.slice("/fork".length).trim();
+        // 显式快照注解：打断「call 入参读 currentSessionId ↔ 循环内回填 currentSessionId = result」的推断环
+        const sourceId: string = currentSessionId;
+        try {
+          const result = await context.client.call<SessionForkResult>("session.fork", {
+            sessionId: sourceId,
+            ...(title.length > 0 && { title }), // 无参 → server 缺省 `fork: <源title>`
+          });
+          currentSessionId = result.sessionId;
+          const parentShort = result.parentSessionId.slice(-6);
+          const newShort = result.sessionId.slice(-6);
+          process.stdout.write(
+            `forked ${out.dim(parentShort)} → ${out.accent(newShort)} · ${out.dim(`${String(result.messageCount)} msgs`)}\n`,
+          );
+        } catch (reason: unknown) {
+          printRpcError(reason);
+        }
+        continue;
+      }
+      if (trimmed === "/usage") {
+        // T2.6 session.usage（AC-10）：累计用量读数 + 活跃 Provider 单价费用估算（有单价才给 cost）
+        if (currentSessionId === null) {
+          process.stdout.write("no active session\n");
+          continue;
+        }
+        try {
+          const result = await context.client.call<SessionUsageResult>("session.usage", {
+            sessionId: currentSessionId,
+          });
+          process.stdout.write(
+            `input ${String(result.inputTokens)} tokens · output ${String(result.outputTokens)} tokens · turns ${String(result.turnsCount)}\n`,
+          );
+          const cost =
+            result.costEstimateUsd !== undefined
+              ? `cost ≈ ${out.ok(`$${result.costEstimateUsd.toFixed(6)}`)}`
+              : out.dim("cost: n/a（provider 未配置单价）");
+          process.stdout.write(`${cost}\n`);
         } catch (reason: unknown) {
           printRpcError(reason);
         }
@@ -151,7 +227,12 @@ export async function chatCommand(argv: string[]): Promise<number> {
           for (const p of result.providers) {
             const active = p.id === result.activeProviderId ? "*" : " ";
             const key = p.apiKeyConfigured ? "key:configured" : "key:missing";
-            process.stdout.write(`${active} ${p.id}  ${p.name}  ${p.model}  ${key}\n`);
+            // AC-10 单价（06 §2.3）：双价齐备才展示（与 session.usage cost 估算口径一致），` $in/out`
+            const price =
+              p.inputPricePerMtok !== undefined && p.outputPricePerMtok !== undefined
+                ? `  ${out.dim(`$${String(p.inputPricePerMtok)}/${String(p.outputPricePerMtok)}`)}`
+                : "";
+            process.stdout.write(`${active} ${p.id}  ${p.name}  ${p.model}  ${key}${price}\n`);
           }
         } catch (reason: unknown) {
           printRpcError(reason);
@@ -160,7 +241,7 @@ export async function chatCommand(argv: string[]): Promise<number> {
       }
       if (trimmed.startsWith("/")) {
         process.stdout.write(
-          "unknown command; available: /exit /sessions /resume <id> /mode <mode> /archive [--force] /compact /providers\n",
+          "unknown command; available: /exit /sessions /resume <id> /rename <title> /fork [title] /usage /mode <mode> /archive [--force] /compact /providers\n",
         );
         continue;
       }

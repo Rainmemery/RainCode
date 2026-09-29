@@ -1,9 +1,10 @@
 /**
- * SessionTurnLoop：单会话 Turn 循环（02-module-design §1 / 04-architecture §1.3）。
+ * SessionTurnLoop：单会话 Turn 循环（02-module-design §1.2 / 04-architecture §1.3）。
  * 单写者：一个循环实例同时只执行一个 turn；运行中 submit 经 CommandInbox 排队。
  * 多轮主流程（T1–T15，02 §1.2.1）：输入落库 → 组装上下文 → 流式 → ToolSchedule（zod+权限判定，
  * ask 态经 ApprovalBroker 挂起收敛）→ T9 ToolExecution → 结果落库 → T13 回传直至纯文本收束；
- * maxRoundsPerTurn（默认 32）保护；delta/progress 为 UI 瞬态不落盘（05 §4.2）；取消 T3/T5+T8/T12。
+ * maxRoundsPerTurn（默认 32）保护；非法入参受限重试上限 3（AC-12，06 §4.3 段 7）；delta/progress 为
+ * UI 瞬态不落盘（05 §4.2）；取消 T3/T5+T8/T12。
  */
 import { LlmAbortedError, LlmError, type LlmStreamEvent } from "@raincode/llm";
 import { ulid, type CheckpointState } from "@raincode/storage";
@@ -18,7 +19,7 @@ import { DeltaBatcher } from "./delta-batcher.js";
 import { LoopEvents } from "./loop-events.js";
 import { transitionPhase } from "./phase.js";
 import type { TurnPhase, TurnTrigger } from "./phase.js";
-import { buildAssistantRecord, errorMessage, mergeUsage, toLlmFunctionTools } from "./round-helpers.js";
+import { buildAssistantRecord, errorMessage, invalidInputStats, mergeUsage, toLlmFunctionTools } from "./round-helpers.js";
 import { TurnSettler } from "./settle.js";
 import { ToolPhaseRunner } from "./tool-phase.js";
 import type { PlannedToolCall } from "./tool-phase.js";
@@ -26,6 +27,9 @@ export type { TurnAdmission, TurnInput, TurnOutcome } from "../ports.js";
 
 const DEFAULT_DELTA_FLUSH_MS = 50; // message.delta 批量节流窗口（06 §3.4：≤50ms）
 const DEFAULT_MAX_ROUNDS = 32; // turn 内模型↔工具往返轮次上限（02 §1.2.1）
+// AC-12 受限重试上限：单 turn 内工具参数校验失败（TOOL_INVALID_INPUT）次数，达上限强制收束
+// （06 §4.3 段 7 TOOL_INPUT_RETRY_EXCEEDED；maxRoundsPerTurn 语义不变，仅收紧自纠循环）
+const INVALID_INPUT_RETRY_LIMIT = 3;
 
 interface InboxEntry {
   turnId: string;
@@ -66,8 +70,10 @@ export interface SessionTurnLoopOptions {
 /** 模型 tool_call 完成形态（@raincode/llm tool_calls.completed 事件的 calls 元素）。 */
 type CompletedToolCall = { toolCallId: string; toolName: string; argumentsJSON: string };
 
-/** 单轮收敛：settled = turn 终态；continue = 工具结果已聚合，进入下一轮。 */
-type RoundOutcome = { kind: "settled"; result: TurnOutcome } | { kind: "continue"; usage?: TokenUsage };
+/** 单轮收敛：settled = turn 终态；continue = 工具结果已聚合，进入下一轮（invalidCount/Summary 供 AC-12 累计）。 */
+type RoundOutcome =
+  | { kind: "settled"; result: TurnOutcome }
+  | { kind: "continue"; usage?: TokenUsage; invalidCount: number; invalidSummary: string };
 
 export class SessionTurnLoop {
   private _phase: TurnPhase = "Idle";
@@ -95,21 +101,14 @@ export class SessionTurnLoop {
     this.history = [...(options.initialHistory ?? [])];
     this.compactionEpoch = options.initialEpoch ?? 0;
     this.events = new LoopEvents(
-      {
-        sessionId: options.sessionId,
-        storage: options.storage,
-        publish: options.publish,
-        ...(options.onDiagnostic !== undefined && { onDiagnostic: options.onDiagnostic }),
-      },
+      { sessionId: options.sessionId, storage: options.storage, publish: options.publish,
+        ...(options.onDiagnostic !== undefined && { onDiagnostic: options.onDiagnostic }) },
       options.initialEventSeq ?? 0,
     );
     this.settler = new TurnSettler(
-      {
-        phase: () => this._phase,
+      { phase: () => this._phase,
         toPhase: (from, trigger, turnId) => this.toPhase(from, trigger, turnId),
-        assistantText: () => this.assistantText,
-        persistPartialText: () => this.persistPartialText(),
-      },
+        assistantText: () => this.assistantText, persistPartialText: () => this.persistPartialText() },
       this.events,
     );
     this.compaction =
@@ -239,9 +238,7 @@ export class SessionTurnLoop {
         ? { attachments: entry.input.attachments }
         : {}),
     };
-    await this.serialWrite(() =>
-      this.options.storage.appendMessage(this.options.sessionId, userRecord),
-    );
+    await this.serialWrite(() => this.options.storage.appendMessage(this.options.sessionId, userRecord));
     this.history.push(userRecord);
 
     if (this.cancelRequested) {
@@ -252,6 +249,7 @@ export class SessionTurnLoop {
     }
 
     let usageTotal: TokenUsage | undefined;
+    let invalidInputCount = 0; // AC-12：非法入参失败跨轮累计（turn 生命周期内；上限 INVALID_INPUT_RETRY_LIMIT）
     const maxRounds = this.options.maxRoundsPerTurn ?? DEFAULT_MAX_ROUNDS;
     this.compaction?.maybeTrigger(estimateContextTokens(this.history, this.lastPromptTokens)); // 组装上下文前
     for (let round = 1; round <= maxRounds; round += 1) {
@@ -260,6 +258,15 @@ export class SessionTurnLoop {
         return outcome.result;
       }
       usageTotal = mergeUsage(usageTotal, outcome.usage);
+      invalidInputCount += outcome.invalidCount;
+      if (invalidInputCount >= INVALID_INPUT_RETRY_LIMIT) {
+        // AC-12 收束：受限重试超限 → failed（对齐 TURN_MAX_ROUNDS_EXCEEDED 的异常收敛形态）
+        return this.settler.abnormal(
+          entry.turnId,
+          "TOOL_INPUT_RETRY_EXCEEDED",
+          `工具参数校验失败次数超过受限重试上限（${String(INVALID_INPUT_RETRY_LIMIT)}），强制收束；最近失败: ${outcome.invalidSummary}`,
+        );
+      }
       if (round === maxRounds) {
         break; // 轮次耗尽：超限异常收敛（02 §1.2.1 补充约束）
       }
@@ -346,9 +353,7 @@ export class SessionTurnLoop {
     // 落库 assistant 行（含 tool_call 块；02 §1.2.1 T6 前置）
     const calls = state.calls;
     const record = buildAssistantRecord(this.assistantText, calls);
-    await this.serialWrite(() =>
-      this.options.storage.appendMessage(this.options.sessionId, record),
-    );
+    await this.serialWrite(() => this.options.storage.appendMessage(this.options.sessionId, record));
     this.history.push(record);
 
     if (calls === null || calls.length === 0) {
@@ -357,11 +362,7 @@ export class SessionTurnLoop {
       this.events.emitMessageCompleted(entry.turnId, round, this.assistantText, undefined, roundUsage);
       this.toPhase("Streaming", "message.completed.stop", entry.turnId);
       await this.writeTurnCheckpoint(totalUsage);
-      this.events.emitDone(entry.turnId, {
-        outcome: "completed",
-        ...(totalUsage !== undefined && { usage: totalUsage }),
-        rounds: round,
-      });
+      this.events.emitDone(entry.turnId, { outcome: "completed", ...(totalUsage !== undefined && { usage: totalUsage }), rounds: round });
       this.toPhase("TurnComplete", "settle.done", entry.turnId); // T15
       return {
         kind: "settled",
@@ -430,9 +431,10 @@ export class SessionTurnLoop {
       return { kind: "settled", result: { status: "cancelled", at: "AggregatingResults" } };
     }
 
-    // T13：AggregatingResults --followup.required--> ModelRequest（下一轮）
+    // T13：AggregatingResults --followup.required--> ModelRequest（下一轮）；AC-12 非法入参统计随轮上交
+    const invalidStats = invalidInputStats(phaseResult.results);
     this.toPhase("AggregatingResults", "followup.required", entry.turnId);
-    return { kind: "continue", usage: roundUsage };
+    return { kind: "continue", usage: roundUsage, ...invalidStats };
   }
 
   // auto-compact：手动入口（06 §2.1 session.compact）+ CompactionHost 实现（compact/service.ts）
@@ -467,9 +469,7 @@ export class SessionTurnLoop {
       messageCount: this.history.length,
       ...(usage !== undefined && { usage }),
     };
-    const result = await this.serialWrite(() =>
-      this.options.storage.writeCheckpoint(this.options.sessionId, state),
-    );
+    const result = await this.serialWrite(() => this.options.storage.writeCheckpoint(this.options.sessionId, state));
     if (result.accepted) {
       this.compactionEpoch = result.epoch; // 压缩代次与文件内流保持同步（epoch 单调合并基准）
     } else {

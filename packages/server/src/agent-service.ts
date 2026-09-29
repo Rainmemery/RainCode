@@ -11,7 +11,6 @@ import {
   buildSessionCreatedEvent,
 } from "@raincode/shared";
 import type {
-  CollaborationMode,
   SessionArchiveParams,
   SessionCompactParams,
   SessionCreateParams,
@@ -30,10 +29,11 @@ import type { SessionResume } from "@raincode/storage";
 import { createBuiltinTools, ToolExecutor } from "@raincode/tools";
 import type { BackgroundTaskRegistry, ToolRegistry } from "@raincode/tools";
 import { alwaysAllowApprover, alwaysDenyApprover, createMetadataPermissionPort } from "@raincode/agent-core";
-import type { CompactionOptions, LlmPort, PermissionPort, SessionEventPublisher, SessionTurnLoop, ToolPhaseDeps, TurnOutcome } from "@raincode/agent-core";
+import type { CompactionOptions, LlmPort, PermissionPort, SessionEventPublisher, ToolPhaseDeps, TurnOutcome } from "@raincode/agent-core";
 import { ConfigDomain } from "./config-domain.js";
 import { ConfigStore } from "./config-store.js";
 import { ToolDomain } from "./tool-domain.js";
+import { SessionDomain } from "./session-domain.js";
 import { appVersion } from "./app-version.js";
 import { buildLlmClient } from "./llm-factory.js";
 import {
@@ -47,6 +47,7 @@ import {
   recordUsage,
   seedEventSeq,
 } from "./session-support.js";
+import type { SessionEntry } from "./session-support.js";
 import { PermissionRuntime } from "./permission-runtime.js";
 import type { PermissionPolicy, PermissionRuntimeOptions } from "./permission-runtime.js";
 import { McpRuntime } from "./mcp-runtime.js";
@@ -94,17 +95,6 @@ export interface AgentServiceOptions {
   memory?: { workspaceRoot?: string };
   /** system.shutdown 的存储关闭回调（node 注入；缺省跳过——传输关闭由持有方承担）。 */
   onShutdown?: () => Promise<void>;
-}
-
-interface SessionEntry {
-  loop: SessionTurnLoop;
-  llm: LlmPort | null;
-  providerId: string;
-  workspaceHash: string;
-  mode: CollaborationMode;
-  workspaceRoot: string;
-  /** 最近一次 submit 的 turn 终态句柄（archive / shutdown 的等待点）。 */
-  pending: Promise<TurnOutcome> | null;
 }
 
 export class AgentService {
@@ -253,6 +243,13 @@ export class AgentService {
       "session.archive": register("session.archive", (params) => this.archive(params as SessionArchiveParams)),
       "session.setMode": register("session.setMode", (params) => this.setMode(params as SessionSetModeParams)),
       "session.compact": register("session.compact", (params) => this.compact(params as SessionCompactParams)),
+      // session 域 T2.6 新增三方法（AC-9/AC-10；实现见 session-domain.ts，装配单点 createSessionLoop 复用）
+      ...new SessionDomain({
+        storage: this.options.storage, sessions: this.sessions, config: this.config,
+        llmFor: (providerId) => this.llmFor(providerId), publisher: () => this.publisher(),
+        systemPrompt: this.options.systemPrompt, tools: this.toolDeps, memory: this.memory,
+        compaction: this.compaction,
+      }).methods(register),
       ...this.config.methods(register),
       ...this.toolDomain.methods(register),
       // MCP 域未装配时不暴露（METHOD_SCHEMAS 已登记，缺 handler 调用期报 method not found）
@@ -457,19 +454,22 @@ export class AgentService {
   }
 
   private llmFor(providerId: string | undefined): LlmPort | null {
-    if (providerId === undefined || providerId === this.providerId) {
+    // AC-11（06 §2.3）：缺省绑定 = config.activeProviderId（switch 后新会话走新活跃项），
+    // 无 active 或 active 即主 Provider 时回退主客户端（CLI 直传 provider 场景兼容）。
+    const requested = providerId === undefined ? this.config.providersList().activeProviderId : providerId;
+    if (requested === undefined || requested === null || requested === this.providerId) {
       return this.llm;
     }
-    const cached = this.llmByProvider.get(providerId);
+    const cached = this.llmByProvider.get(requested);
     if (cached !== undefined) {
       return cached;
     }
-    const runtime = this.config.providerRuntime(providerId); // 未知 id → CONFIG_PROVIDER_NOT_FOUND
+    const runtime = this.config.providerRuntime(requested); // 未知 id → CONFIG_PROVIDER_NOT_FOUND
     if (runtime === null) {
-      throw new RpcCallError("CONFIG_PROVIDER_NOT_FOUND", `provider not found: ${providerId}`);
+      throw new RpcCallError("CONFIG_PROVIDER_NOT_FOUND", `provider not found: ${requested}`);
     }
     const client = buildLlmClient(runtime);
-    this.llmByProvider.set(providerId, client);
+    this.llmByProvider.set(requested, client);
     return client;
   }
 

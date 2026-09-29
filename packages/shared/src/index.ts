@@ -46,6 +46,12 @@ import {
   sessionCreatedEventPayloadSchema,
   sessionCompactParamsSchema,
   sessionCompactResultSchema,
+  sessionRenameParamsSchema,
+  sessionRenameResultSchema,
+  sessionForkParamsSchema,
+  sessionForkResultSchema,
+  sessionUsageParamsSchema,
+  sessionUsageResultSchema,
   compactStartedEventPayloadSchema,
   compactCompletedEventPayloadSchema,
   buildCompactStartedEvent,
@@ -60,6 +66,8 @@ import {
   configProvidersListResultSchema,
   configProvidersRemoveParamsSchema,
   configProvidersRemoveResultSchema,
+  configProvidersSwitchParamsSchema,
+  configProvidersSwitchResultSchema,
   configSetParamsSchema,
   configSetResultSchema,
 } from "./schemas/config.js";
@@ -153,9 +161,9 @@ export interface MethodSchemas {
 /**
  * 方法 schema 注册表（06 §5 index.ts）：方法未登记 schema 即无法在 server 暴露（04 ADR-07 强制机制）。
  * 当前覆盖（07 §2.1 M1 P0 22 方法全集 + P1 permission.rules.* 3 方法 + T2.3 subagent 4 方法
- * + T2.4 memory 域 5 方法）：
- * system.ping/version/shutdown；session.create/send/steer/cancel/list/resume/archive/setMode；
- * config.get/set/providers.list/add/remove；tool.tools.list + 后台任务三方法；permission 5 方法；
+ * + T2.4 memory 域 5 方法 + T2.6 session.rename/fork/usage 与 config.providers.switch 4 方法）：
+ * system.ping/version/shutdown；session.create/send/steer/cancel/list/resume/archive/setMode/rename/fork/usage；
+ * config.get/set/providers.list/add/remove/switch；tool.tools.list + 后台任务三方法；permission 5 方法；
  * subagent.spawn/stop/list/profiles.list；memory.read/write/search/entries.list/promote。
  */
 export const METHOD_SCHEMAS: Readonly<Record<string, MethodSchemas>> = {
@@ -171,8 +179,15 @@ export const METHOD_SCHEMAS: Readonly<Record<string, MethodSchemas>> = {
   "session.archive": { request: sessionArchiveParamsSchema, response: sessionArchiveResultSchema },
   "session.setMode": { request: sessionSetModeParamsSchema, response: sessionSetModeResultSchema },
   "session.compact": { request: sessionCompactParamsSchema, response: sessionCompactResultSchema },
+  "session.rename": { request: sessionRenameParamsSchema, response: sessionRenameResultSchema },
+  "session.fork": { request: sessionForkParamsSchema, response: sessionForkResultSchema },
+  "session.usage": { request: sessionUsageParamsSchema, response: sessionUsageResultSchema },
   "config.get": { request: configGetParamsSchema, response: configGetResultSchema },
   "config.set": { request: configSetParamsSchema, response: configSetResultSchema },
+  "config.providers.switch": {
+    request: configProvidersSwitchParamsSchema,
+    response: configProvidersSwitchResultSchema,
+  },
   "config.providers.list": {
     request: configProvidersListParamsSchema,
     response: configProvidersListResultSchema,

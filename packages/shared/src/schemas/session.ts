@@ -1,4 +1,4 @@
-﻿import { z } from "zod";
+import { z } from "zod";
 import {
   attachmentSchema,
   collaborationModeSchema,
@@ -256,6 +256,62 @@ export const sessionCompactResultSchema = z.object({
 export type SessionCompactResult = z.infer<typeof sessionCompactResultSchema>;
 
 // ---------------------------------------------------------------------------
+// session.rename（06 §2.1：会话重命名，AC-9；title trim 后 1~200 字符——schema 层 trim 先行，
+// handler 收到的即已 trim 的值）
+// ---------------------------------------------------------------------------
+
+export const sessionRenameParamsSchema = z.strictObject({
+  sessionId: z.string(),
+  title: z.string().trim().min(1).max(200),
+});
+export type SessionRenameParams = z.infer<typeof sessionRenameParamsSchema>;
+
+export const sessionRenameResultSchema = z.object({
+  sessionId: z.string(),
+  title: z.string(),
+});
+export type SessionRenameResult = z.infer<typeof sessionRenameResultSchema>;
+
+// ---------------------------------------------------------------------------
+// session.fork（06 §2.1：从既有会话分叉新会话，AC-9——复制全量历史消息落盘、
+// parent_session_id 回链源会话；fork 后新会话独立演进）
+// ---------------------------------------------------------------------------
+
+export const sessionForkParamsSchema = z.strictObject({
+  sessionId: z.string(),
+  title: z.string().trim().min(1).max(200).optional(),
+});
+export type SessionForkParams = z.infer<typeof sessionForkParamsSchema>;
+
+export const sessionForkResultSchema = z.object({
+  sessionId: z.string(),
+  parentSessionId: z.string(),
+  title: z.string(),
+  messageCount: z.number().int().nonnegative(),
+});
+export type SessionForkResult = z.infer<typeof sessionForkResultSchema>;
+
+// ---------------------------------------------------------------------------
+// session.usage（06 §2.1：会话累计用量与费用估算，AC-10）；costEstimateUsd 仅当活跃 Provider
+// 配置单价时返回（input×inputPrice/1M + output×outputPrice/1M，非精确计费）——undefined
+// 字段在响应中条件展开剔除（出参宽松 strip，旧端忽略即可）
+// ---------------------------------------------------------------------------
+
+export const sessionUsageParamsSchema = z.strictObject({
+  sessionId: z.string(),
+});
+export type SessionUsageParams = z.infer<typeof sessionUsageParamsSchema>;
+
+export const sessionUsageResultSchema = z.object({
+  sessionId: z.string(),
+  inputTokens: z.number(),
+  outputTokens: z.number(),
+  turnsCount: z.number(),
+  costEstimateUsd: z.number().optional(),
+});
+export type SessionUsageResult = z.infer<typeof sessionUsageResultSchema>;
+
+// ---------------------------------------------------------------------------
 // compact.started / compact.completed 事件（06 §3.5 C 组：压缩生命周期）
 // ---------------------------------------------------------------------------
 
@@ -303,6 +359,9 @@ export const sessionCreatedEventPayloadSchema = eventBaseSchema.extend({
   workspaceRoot: z.string(),
   mode: collaborationModeSchema,
   createdAt: z.number(),
+  // T2.6 可选演进（06 §7.1 新增可选事件字段兼容）：会话种类与 fork 回链源会话（06 §3.2 A 组）
+  kind: z.enum(["main", "subagent"]).optional(),
+  parentSessionId: z.string().optional(),
 });
 export type SessionCreatedEventPayload = z.infer<typeof sessionCreatedEventPayloadSchema>;
 

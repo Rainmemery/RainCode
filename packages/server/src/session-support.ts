@@ -1,7 +1,7 @@
 /**
  * 会话域支撑函数（从 agent-service 拆出，单文件 ≤500 行治理）：
  * SessionTurnLoop 构造（create/resume 共用）、session.snapshot 投影、session.list 查询、
- * usage 回写与 rpc seq 续起点。全部为无状态纯函数，依赖经参数注入（04 §2.4 铁律 4）。
+ * usage 回写与 rpc seq 续起点、活跃会话表条目类型。全部为无状态纯函数，依赖经参数注入（04 §2.4 铁律 4）。
  */
 import { RpcCallError, type RpcServiceBinding } from "@raincode/rpc";
 import type {
@@ -16,7 +16,19 @@ import type { BackgroundTaskRegistry } from "@raincode/tools";
 import type { SessionResume, Storage } from "@raincode/storage";
 import { computeWorkspaceHash } from "@raincode/storage";
 import { SessionTurnLoop } from "@raincode/agent-core";
-import type { CompactionOptions, LlmPort, SessionEventPublisher, ToolPhaseDeps } from "@raincode/agent-core";
+import type { CompactionOptions, LlmPort, SessionEventPublisher, ToolPhaseDeps, TurnOutcome } from "@raincode/agent-core";
+
+/** AgentService 活跃会话表条目（agent-service.sessions 与 session-domain 共用同一形态）。 */
+export interface SessionEntry {
+  loop: SessionTurnLoop;
+  llm: LlmPort | null;
+  providerId: string;
+  workspaceHash: string;
+  mode: CollaborationMode;
+  workspaceRoot: string;
+  /** 最近一次 submit 的 turn 终态句柄（archive / shutdown / fork 的等待点）。 */
+  pending: Promise<TurnOutcome> | null;
+}
 
 /** SessionTurnLoop 构造依赖（agent-service 组装后注入；create/resume 两个入口共用）。 */
 export interface SessionLoopDeps {
@@ -153,7 +165,7 @@ export async function listSessions(input: {
   };
 }
 
-/** turn 结果的旁路消费：usage 累计进 sessions 投影列（session.list contextUsage 数据源）。 */
+/** turn 结果的旁路消费：usage 累计进 sessions 投影列（session.list contextUsage / session.usage 数据源）。 */
 export async function recordUsage(
   storage: Storage,
   sessionId: string,
@@ -161,10 +173,8 @@ export async function recordUsage(
 ): Promise<void> {
   const meta = await storage.sessions.get(sessionId);
   if (!meta) return;
-  await storage.sessions.updateMeta(sessionId, {
-    inputTokens: meta.inputTokens + usage.inputTokens,
-    outputTokens: meta.outputTokens + usage.outputTokens,
-  });
+  // 原子累计（SQL 侧自增）：相邻 turn 快速收束时，两个读改写并发会相互覆盖丢失更新（T2.6/AC-10 修复）
+  await storage.sessions.accumulateUsage(sessionId, usage.inputTokens, usage.outputTokens);
 }
 
 /** resume 场景 rpc seq 续起点：持久事件行（含 JSONL 头行 seq=1）与 checkpoint 的最大行号。 */

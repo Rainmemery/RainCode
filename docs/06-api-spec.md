@@ -160,6 +160,9 @@ export type RpcFrame =
 | `session.compact` | `{ sessionId }` | `{ compactionId, epoch, alreadyRunning }` | `SESSION_NOT_FOUND` | 手动压缩，异步执行（NFR-6）；in-flight 幂等复用既有 ticket（02 §1.3）；完成/失败经 `compact.completed` |
 | `session.archive` | `{ sessionId, force?: boolean }` | `{ archived }` | `SESSION_NOT_FOUND` `SESSION_BACKGROUND_TASKS` | flush + 标记只读（02 C4）；存在运行中后台任务且 `force` 非 true 时拒绝，`details` 附 taskIds（02 §5.4） |
 | `session.setMode` | `{ sessionId, mode: "normal"\|"plan"\|"auto-accept" }` | `{ mode }` | `SESSION_NOT_FOUND` | 切协作模式，影响权限判定链层级 2（02 §6.2）；对运行中 turn 的后续判定立即生效；对应 ControlAction.setMode |
+| `session.rename` | `{ sessionId, title }` | `{ sessionId, title }` | `SESSION_NOT_FOUND` | 会话重命名（AC-9）；title trim 后 1~200 字符；落库后 `session.list` 自然反映 |
+| `session.fork` | `{ sessionId, title? }` | `{ sessionId, parentSessionId, title, messageCount }` | `SESSION_NOT_FOUND` | 从既有会话分叉新会话（AC-9）：复制全量历史消息（落盘）、parent_session_id 回链；源会话运行中 turn 先取消收束；fork 后新会话独立演进，新 RPC 方法（协议补齐 AC-9 契约，实现于 T2.6） |
+| `session.usage` | `{ sessionId }` | `{ sessionId, inputTokens, outputTokens, turnsCount, costEstimateUsd? }` | `SESSION_NOT_FOUND` | 会话累计用量与费用估算（AC-10）；costEstimateUsd 仅当 provider 配置单价时返回（input×inputPrice/1M + output×outputPrice/1M，按当前活跃 provider 单价估算，非精确计费） |
 
 ### 2.2 permission 域（审批与规则，对应 02 §6）
 
@@ -181,8 +184,8 @@ export type RpcFrame =
 | --- | --- | --- | --- | --- |
 | `config.get` | `{ path?: string }` | `{ config, configVersion }` | `CONFIG_PATH_UNKNOWN` | 返回三级合并后的生效配置（04 §5.1 就近覆盖）；凭据只含 `apiKeyRef` 引用，永不含明文 key |
 | `config.set` | `{ path, value }` | `{ config, configVersion }` | `CONFIG_INVALID` `CONFIG_PATH_UNKNOWN` | 合并后整体过 strict schema（未知字段拒绝，04 §5.1）再写回对应层级文件 |
-| `config.providers.list` | `{}` | `{ providers: ProviderInfo[], activeProviderId }` | — | ProviderInfo：`{ id, name, baseURL, model, maxContextTokens, apiKeyRef?, apiKeyConfigured }`（Provider 四要素，AC-4） |
-| `config.providers.add` | `{ provider: { id?, name, baseURL, model, maxContextTokens, apiKeyRef? } }` | `{ provider: ProviderInfo }` | `CONFIG_PROVIDER_INVALID` | upsert 语义：id 已存在则整体替换；内置 preset（OpenAI/DeepSeek/Kimi/GLM/Ollama）以 id 引用（04 §5.2） |
+| `config.providers.list` | `{}` | `{ providers: ProviderInfo[], activeProviderId }` | — | ProviderInfo：`{ id, name, baseURL, model, maxContextTokens, apiKeyRef?, apiKeyConfigured, inputPricePerMtok?, outputPricePerMtok? }`（Provider 四要素，AC-4） |
+| `config.providers.add` | `{ provider: { id?, name, baseURL, model, maxContextTokens, apiKeyRef?, inputPricePerMtok?, outputPricePerMtok? } }` | `{ provider: ProviderInfo }` | `CONFIG_PROVIDER_INVALID` | upsert 语义：id 已存在则整体替换；内置 preset（OpenAI/DeepSeek/Kimi/GLM/Ollama）以 id 引用（04 §5.2）；`inputPricePerMtok`/`outputPricePerMtok` 为 USD/百万 token 的可选单价，用于 `session.usage` 的 AC-10 费用估算 |
 | `config.providers.remove` | `{ id }` | `{ removed }` | `CONFIG_PROVIDER_NOT_FOUND` `CONFIG_PROVIDER_ACTIVE` | 删除当前活跃 Provider 须先 `switch` 到其他 Provider |
 | `config.providers.switch` | `{ providerId }` | `{ activeProviderId }` | `CONFIG_PROVIDER_NOT_FOUND` | 运行时切换（AC-11）；当前会话可继续，只影响后续请求的客户端绑定，会话历史不动（04 §5.2） |
 
@@ -364,7 +367,8 @@ payload 惯例：所有事件 payload 继承 §3.1 的 `EventBase`；下表只�
 | `message.completed` | `{ turnId, round, message: { role: "assistant", content, toolCalls?: [{ toolCallId, toolName, args }], stopReason: "stop"\|"tool_calls", usage? } }` | 单轮模型响应完成（T6/T7） | 内核（驱动 ToolSchedule）；UI 终稿渲染 |
 | `turn.phase_changed` | `{ turnId, from: TurnPhase \| null, to: TurnPhase }` | 状态机每次合法迁移（02 §1.2.1 T1–T15） | 状态灯、运行中 spinner、审批暂停提示 |
 | `done` | `{ turnId, outcome: "completed"\|"cancelled"\|"failed", at?: TurnPhase, usage?, rounds? }` | TurnComplete settle 完成（T15 前）——turn 事件突发的终止标记 | 输入框解锁、状态栏收束、队列下一条提示 |
-| `error` | `{ scope: "turn"\|"session"\|"system", code, message, recoverable, turnId? }` | turn_failed（T5）、会话级异常、传输层异常上抛 | 错误呈现（03 UI 错误规范） |
+| `error` | `{ scope: "turn"\|"session"\|"system", code, message, recoverable, turnId? }` | turn_failed（T5）、会话级异常、传输层异常上抛；`TOOL_INPUT_RETRY_EXCEEDED`（AC-12 受限重试超限强制收束）也经此事件外露 | 错误呈现（03 UI 错误规范） |
+| `session.created` | `{ sessionId, title, workspaceRoot, mode, createdAt, kind?: "main"\|"subagent", parentSessionId? }` | 会话创建/分叉受理（05-database JSONL 头行同名事件的 rpc 投影；`kind`/`parentSessionId` 为 T2.6 可选演进字段——`session.fork` 的新会话回链源会话） | 端层会话列表刷新 |
 | `session.snapshot` | `SessionSnapshotPayload`（见下） | 恢复完成、客户端重连补推、seq 缺口补偿 | 端层状态全量重建 |
 
 `SessionSnapshotPayload`：`{ lastSeq, phase, turnId?, model, activeProviderId, contextUsage: { tokens, maxTokens }, messages: MessageRecord[], todoState?: TodoItem[], pendingApprovals: PermissionRequestedPayload[] }`。`messages` 只含末尾 checkpoint 之后的增量（NFR-5 ≤1s 的协议投影）；`pendingApprovals` 复用 `permission.requested` 的 payload 主体，实现重连补推未决审批（02 §6.4）。
@@ -504,6 +508,7 @@ flush 边界保证：`message.completed`、`tool_call.*`、`permission.*`、`tur
 | 7 tool | `TOOL_UNKNOWN` | 工具名不存在（02 §2.4 `unknown_tool` 的直接调用投影） |
 | 7 tool | `TOOL_UNAVAILABLE` | MCP 工具所在 server 不可用（`mcp_unavailable` 投影） |
 | 7 tool | `TOOL_PERMISSION_ASK` | 判定为 ask 且 `waitApproval=false`（或客户端不可达走 deny 兜底，02 §2.4） |
+| 7 tool | `TOOL_INPUT_RETRY_EXCEEDED` | 单 turn 内工具参数校验失败次数超限（受限重试上限 3），强制收束 |
 | 8 system | — | system 域无专属业务码；停机中再收请求返回 `CANCELLED` |
 
 > 区分原则：**turn 内工具执行失败是数据不是协议错误**——模型路径与 `tool.call` 直接调用一律以 `ToolResult{isError, error}` 返回（`invalid_input` / `timeout` / `ambiguous_match` / `permission_denied` 等，见 02 §2.3/§2.4）；协议错误只表达「调用本身未能被受理或执行」。
@@ -694,6 +699,7 @@ capability 命名约定：`<domain>.<feature>`（小写点分），登记于 `sy
 | 协议版本 | 日期 | 变更 |
 | --- | --- | --- |
 | 1.0 | 2026-09-28 | 初版：八域控制面 43 方法、数据面 17 事件、错误码分段、schema 分域组织、三绑定映射 |
+| 1.1 | 2026-09-29 | T2.6 内核增强：新增 `session.rename` / `session.fork` / `session.usage` / `config.providers.switch` 四方法（向后兼容，minor+1）；Provider 增可选单价字段 `inputPricePerMtok`/`outputPricePerMtok`（AC-10 估算口径）；`session.created` 事件增可选 `kind`/`parentSessionId`；tool 域新增错误码 `TOOL_INPUT_RETRY_EXCEEDED`（AC-12 受限重试上限 3） |
 
 ---
 

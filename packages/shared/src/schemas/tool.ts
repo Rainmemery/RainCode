@@ -78,6 +78,8 @@ export const TOOL_ERROR_CODES = {
   EXEC_FAILED: "TOOL_EXEC_FAILED",
   /** 未分类工具内部错误。 */
   INTERNAL: "TOOL_INTERNAL",
+  /** 单 turn 内工具参数校验失败次数超限（受限重试上限 3，AC-12；turn-loop 强制收束，06 §4.3 段 7）。 */
+  INPUT_RETRY_EXCEEDED: "TOOL_INPUT_RETRY_EXCEEDED",
 } as const;
 export type ToolErrorCode = (typeof TOOL_ERROR_CODES)[keyof typeof TOOL_ERROR_CODES];
 

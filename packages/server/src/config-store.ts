@@ -118,19 +118,22 @@ export class ConfigStore {
       model: input.model,
       maxContextTokens: input.maxContextTokens,
       apiKeyRef,
+      // AC-10 费用估算单价（optional：旧 config.json 无此字段照常读写，06 §7.1）
+      ...(input.inputPricePerMtok !== undefined && { inputPricePerMtok: input.inputPricePerMtok }),
+      ...(input.outputPricePerMtok !== undefined && { outputPricePerMtok: input.outputPricePerMtok }),
     };
     const providers = (doc.providers ?? []).filter((p) => p.id !== id);
     providers.push(entry);
     this.write({
       ...doc,
       providers,
-      // 首个 Provider 引导为活跃（04 §5.2 activeProviderId；显式 switch 属 P1）
+      // 首个 Provider 引导为活跃（04 §5.2 activeProviderId；显式切换经 config.providers.switch）
       activeProviderId: doc.activeProviderId ?? id,
     });
     return this.toInfo(entry);
   }
 
-  /** 删除 Provider：活跃 Provider 须先 switch（P1 前=经 config.set activeProviderId），否则 CONFIG_PROVIDER_ACTIVE。 */
+  /** 删除 Provider：活跃 Provider 须先 config.providers.switch 切换，否则 CONFIG_PROVIDER_ACTIVE。 */
   removeProvider(id: string): void {
     const doc = this.read();
     const index = (doc.providers ?? []).findIndex((p) => p.id === id);
@@ -143,6 +146,20 @@ export class ConfigStore {
     const providers = (doc.providers ?? []).filter((p) => p.id !== id);
     this.write({ ...doc, providers });
     // 密钥文件条目保留（防误删唯一凭据副本；无引用即不可达，无害）
+  }
+
+  /**
+   * 切换活跃 Provider（06 §2.3 config.providers.switch，T2.6/AC-11）：
+   * id 不存在 → CONFIG_PROVIDER_NOT_FOUND；只影响后续请求的客户端绑定——
+   * 已建会话持有 llm 实例不受影响，会话历史不动（04 §5.2）。
+   */
+  setActiveProvider(id: string): string {
+    const doc = this.read();
+    if (!(doc.providers ?? []).some((provider) => provider.id === id)) {
+      throw new ConfigStoreError("CONFIG_PROVIDER_NOT_FOUND", `provider not found: ${id}`);
+    }
+    this.write({ ...doc, activeProviderId: id }); // 与 config.set 同一 strict 写路径，持久化口径一致
+    return id;
   }
 
   // ---------------------------------------------------------------------------
@@ -213,6 +230,8 @@ export class ConfigStore {
       maxContextTokens: entry.maxContextTokens,
       apiKeyRef: entry.apiKeyRef ?? null,
       apiKeyConfigured: this.isConfigured(entry.apiKeyRef),
+      ...(entry.inputPricePerMtok !== undefined && { inputPricePerMtok: entry.inputPricePerMtok }),
+      ...(entry.outputPricePerMtok !== undefined && { outputPricePerMtok: entry.outputPricePerMtok }),
     };
   }
 

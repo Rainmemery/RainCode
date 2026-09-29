@@ -1,9 +1,10 @@
 /**
- * ConfigDomain：config 域 5 方法（06-api-spec §2.3）+ Provider 运行时解析。
+ * ConfigDomain：config 域 6 方法（06-api-spec §2.3，T2.6 补齐 providers.switch）+ Provider 运行时解析。
  *
  * - get/set：三级合并的 P0 子集 = 全局层（~/.raincode/config.json，04 §5.1）；
  *   get 按 path 定点读（缺省整文档），set 按路径定点改后整体过 strict schema 再落盘；
- * - providers.list/add/remove：Provider 四要素增删查（add 的明文 key 由 ConfigStore 隔离到密钥文件）；
+ * - providers.list/add/remove/switch：Provider 四要素增删查与活跃切换（switch 只影响后续请求的
+ *   客户端绑定——已建会话持有 llm 实例不受影响；add 的明文 key 由 ConfigStore 隔离到密钥文件）；
  * - providerRuntime：session.create 的 providerId → 运行时 Provider 配置（明文 key 内存解析），
  *   未配置任何 Provider 时返回 null（调用方按 CONFIG_PROVIDER_NOT_FOUND 拒绝写入类操作）；
  * - 错误映射：ConfigStoreError → RpcCallError（06 §4.3 段 3 CONFIG_*）。
@@ -18,6 +19,8 @@ import type {
   ConfigProvidersListResult,
   ConfigProvidersRemoveParams,
   ConfigProvidersRemoveResult,
+  ConfigProvidersSwitchParams,
+  ConfigProvidersSwitchResult,
   ConfigSetParams,
   ConfigSetResult,
 } from "@raincode/shared";
@@ -37,6 +40,8 @@ export class ConfigDomain {
         this.providersAdd(params as ConfigProvidersAddParams)),
       "config.providers.remove": register("config.providers.remove", async (params) =>
         this.providersRemove(params as ConfigProvidersRemoveParams)),
+      "config.providers.switch": register("config.providers.switch", async (params) =>
+        this.providersSwitch(params as ConfigProvidersSwitchParams)),
     };
   }
 
@@ -79,6 +84,15 @@ export class ConfigDomain {
     try {
       this.store.removeProvider(params.id);
       return { removed: true };
+    } catch (reason: unknown) {
+      throw toRpcError(reason);
+    }
+  }
+
+  /** 运行时切换活跃 Provider（06 §2.3，T2.6/AC-11）：不存在 → CONFIG_PROVIDER_NOT_FOUND。 */
+  providersSwitch(params: ConfigProvidersSwitchParams): ConfigProvidersSwitchResult {
+    try {
+      return { activeProviderId: this.store.setActiveProvider(params.providerId) };
     } catch (reason: unknown) {
       throw toRpcError(reason);
     }

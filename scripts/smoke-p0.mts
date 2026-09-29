@@ -11,7 +11,7 @@
  * e) session.archive → 默认 list 不再显示（filter=Archived 可查、state=Archived）→ resume 报
  *    SESSION_NOT_FOUND → send 报 SESSION_ARCHIVED；events.jsonl 不删除；
  * f) 回归：spawn smoke-e2e / smoke-tools / smoke-permission / smoke-compact / smoke-mcp / smoke-subagent /
- *    smoke-memory 子进程，全部退出码 0。
+ *    smoke-memory / smoke-migrations / smoke-kernel 子进程，全部退出码 0。
  *
  * 全程仅本机回环与临时目录：无外呼、无真实密钥；明文 key 断言不落入任何响应/落盘/日志。
  */
@@ -285,7 +285,7 @@ async function main(): Promise<void> {
   // ---- f) 既有 smoke 回归（子进程，隔离 env）------------------------------
   const cleanEnv: NodeJS.ProcessEnv = { ...process.env };
   delete cleanEnv["RAINCODE_HOME"];
-  for (const script of ["smoke-e2e.mts", "smoke-tools.mts", "smoke-permission.mts", "smoke-compact.mts", "smoke-mcp.mts", "smoke-subagent.mts", "smoke-memory.mts", "smoke-migrations.mts"]) {
+  for (const script of ["smoke-e2e.mts", "smoke-tools.mts", "smoke-permission.mts", "smoke-compact.mts", "smoke-mcp.mts", "smoke-subagent.mts", "smoke-memory.mts", "smoke-migrations.mts", "smoke-kernel.mts"]) {
     const result = spawnSync(process.execPath, ["--import", "tsx", join(REPO_ROOT, "scripts", script)], {
       cwd: REPO_ROOT,
       env: cleanEnv,

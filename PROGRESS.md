@@ -38,6 +38,7 @@
 > 格式：`[日期] 任务 — 结果`（含关键产出物与提交号）。**新条目插在本节最上方。**
 
 ### M2 · P1（能力补全 + 桌面端 Alpha）
+- [2026-09-29] T2.6 内核增强（AC-9~12）— AC-9 会话管理：`session.rename`（title trim 1~200）+ `session.fork`（全量历史逐条落盘复制 + parent_session_id 回链 + checkpoint 恢复点 + seq 口径对齐 resume，源会话运行中先 cancel 收束）+ `session.usage`（累计 tokens/turns + costEstimateUsd 按 active provider 单价估算，单价齐备才算）；AC-10：ProviderConfig 加 `inputPricePerMtok/outputPricePerMtok`（strict schema 三处同步扩展，旧 config.json 兼容读取）；AC-11：`config.providers.switch` 实现（ConfigStore.setActiveProvider 持久化）+ **llmFor(undefined) 缺省绑定改为 config.activeProviderId 解析**（switch 后新会话走新活跃项，已建会话不动；无 active 回退主客户端兼容 CLI 直传）；AC-12：受限重试——turn 内工具参数校验失败（TOOL_INVALID_INPUT）计数 ≥3 → settler fail（TOOL_INPUT_RETRY_EXCEEDED），此前仅 maxRoundsPerTurn 兜底；顺手修复 recordUsage 读-改-写丢更新（SessionsRepo.accumulateUsage SQL 原子自增）。协议：06-api-spec §2.1 三方法 + §2.3 单价 + §4.3 错误码 + §7.5 变更记录；CLI 新增 /rename /fork /usage + /providers 单价列；新增 `smoke:kernel`（A rename / B fork 上下文连续性 / C usage 估算与省略语义 / D switch 双 mock 三态 / E 受限重试恰 3 轮收束）入 smoke:p0 回归。
 - [2026-09-29] T2.5 permission 持久化与危险命令（验收补齐）— 核心能力（三层 scope CRUD：session 内存/project/global SQLite + 层级内 deny>ask>allow 收敛 + 同行为取最新 + 高危根命令通配 allow 强制降级 ask + 五级判定链）M1 Wave 5 已实现并具备协议 5 方法；本轮按 07 T2.5 验收补齐测试：smoke:permission 新增 e 组规则优先级合并矩阵用例（e1 project deny 覆盖 global allow 首个命中层级生效 / e2 global deny 收敛+removeRule 即时生效 / e3 清空回归 default ask / e4 project 规则 workspace 隔离 ws2 免疫 ws1 / e5 global 跨 workspace 放行对照）并消除与 p0-lib 重复的 mock server 实现；新增 `smoke:migrations` 迁移回放冒烟（空库全量迁移 / 重开幂等数据保留 / 001+002 存量库升级重放 003：表恢复+002 数据保留）并纳入 smoke:p0 回归。教训：持久层规则唯一键（scope+workspace+tool+pattern）下同键 allow/deny 互斥，后写者需先删旧规则（测试编排踩坑）。
 - [2026-09-29] CLI 展示升级 — 参考 MiMo-Code（opencode 系）print 模式调研结论，新增 `apps/cli/src/ui/` 渲染层（ADR-02 中间形态：readline REPL + ANSI 富文本，不引入 TUI 框架）：theme.ts（03 §3.1 tokens 同源 truecolor + 工具 glyph 表 ✱/←/$/◇/◈/⚙ + 非 TTY 全退化）；markdown.ts（StreamMarkdownRenderer 行缓冲状态机：标题/围栏代码块/列表/行内码/粗斜体/引用，嵌套安全 SGR 关闭序列）；format.ts（formatDuration 三档）；stream.ts 工具行三态着色（运行中 cyan/完成 dim/失败 danger/**被拒或取消=删除线「已作废」语义**）+ reasoning dim 斜体（stderr 通道不变）；chat banner/prompt 着色；run 回合头。验证：临时脚本断言 TTY/非 TTY 双模式 + 逐字符分包一致性；smoke:remote 真实 Provider 回合管道输出零 ANSI/零密钥泄露。
 - [2026-09-29] 产品更名 NovaCode → RainCode（ADR-11）— 全仓 132 文件同步（包名 @raincode/*、bin raincode、env RAINCODE_HOME/RAINCODE_PROVIDER_*、数据目录 .raincode、文档与 UI mockup 文案）；PROGRESS §3/§4 历史日志与 docs/benchmarks/ 历史基准保留旧名作为事实记录；桌面端等后续形态遵循新名。
@@ -79,7 +80,10 @@
 
 > 取任务时**必须**回读 `docs/07-dev-plan.md` 对应任务行获取完整验收标准。
 
-1. **T2.6~T2.10** — 内核增强（AC-9~12）、工具增强与 P1 工具、rpc stdio + headless、桌面端 Alpha（Electron 三泳道 + stdio RPC 绑定）、M2 验收与基准留存（含 NFR-6 计时测量）。
+1. **T2.7 工具增强与 P1 工具** — 输出预算裁剪分页、只读并行调度、路径越界检测、web_fetch / ask_user_question（07 T2.7：含 SSRF 黑名单、越界升级 ask 单测）。
+2. **T2.8 rpc stdio + server headless** — StdioTransport、headless 入口、session.snapshot 补推（未决审批 / seq 缺口补偿）；桌面端硬前置。
+3. **T2.9 桌面端 Alpha** — Electron 三泳道骨架、会话流/工具卡/审批弹窗/Provider 设置/工作区选择、electron-builder Windows 打包。
+4. **T2.10 M2 验收与基准留存** — NFR-4 / NFR-6 测量留存、MCP / 子代理 / 记忆验收样例、§3.4 验收清单全绿。
 
 ---
 
