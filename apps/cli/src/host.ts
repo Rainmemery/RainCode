@@ -32,6 +32,7 @@ export async function createStdioHostContext(argv: string[] = []): Promise<Stdio
         }
       : null,
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
+    skills: {}, // skills 域启用（T3.4）：与 CLI in-process 同语义（06 §2.9）
   });
   return {
     node,

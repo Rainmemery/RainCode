@@ -50,6 +50,19 @@ export async function sendAndStream(
   text: string,
   options: { approval?: ApprovalMode } = {},
 ): Promise<StreamOutcome> {
+  return streamTurn(client, options, () => client.call("session.send", { sessionId, input: { text } }));
+}
+
+/**
+ * turn 流式消费（T3.4 提交点插拔化）：订阅先于 submit（事件与 response 共用通道，06 §1.2
+ * 「串行不阻塞」），done 事件收束。submit 由调用方给定（session.send / skills.invoke），
+ * 渲染管线完全一致（sendAndStream 为其特例）。
+ */
+export async function streamTurn(
+  client: RpcClient,
+  options: { approval?: ApprovalMode },
+  submit: () => Promise<unknown>,
+): Promise<StreamOutcome> {
   const approval: ApprovalMode = options.approval ?? { kind: "deny" };
   const md = new StreamMarkdownRenderer(process.stdout, out);
   let resolveOutcome!: (done: DoneEventPayload) => void;
@@ -114,7 +127,7 @@ export async function sendAndStream(
   });
 
   try {
-    await client.call("session.send", { sessionId, input: { text } });
+    await submit();
     const done = await donePromise;
     md.end();
     process.stdout.write("\n");

@@ -1,9 +1,11 @@
 /**
  * raincode chat：readline 交互 REPL（最小命令集 /exit /sessions /resume <id> /rename /fork /usage
- * /mode /archive /compact /providers）。
+ * /mode /archive /compact /providers /skills）。
  * 首条输入自动创建会话；/resume 切换活动会话后续输入续接该会话历史（session.resume 幂等）。
  * T2.6（06 §2.1 AC-9/AC-10）：/rename 重命名、/fork 分叉新会话并切换活动会话（同 /resume 模式）、
  * /usage 会话累计用量与费用估算（costEstimateUsd 缺省 = 活跃 Provider 未配置单价）。
+ * T3.4（06 §2.9）：/skills 技能面板（workspace/global 双源）；`/<技能名> [参数]` → skills.invoke
+ * （server 侧模板展开受理，流式渲染与普通输入同管线；SKILL_NOT_FOUND 回退未知命令提示）。
  * 审批：permission.requested 交互四级决策（[1]仅本次 [2]本会话始终 [3]项目始终 [4]拒绝），
  * 选项[2]写 session 规则、[3]写 project 规则、[4]respond deny（02 §6.2 审批闭环）。
  * TUI 演进点：本波按 04 ADR-02 不引入 Ink，readline REPL + ANSI 富文本渲染层（ui/theme）为中间形态。
@@ -22,9 +24,11 @@ import type {
   SessionCreateResult,
   SessionListResult,
   SessionResumeResult,
+  SkillsInvokeResult,
+  SkillsListResult,
 } from "@raincode/shared";
 import { parseCliArgs, startServiceNode, teardown } from "../context.js";
-import { sendAndStream } from "../stream.js";
+import { sendAndStream, streamTurn } from "../stream.js";
 import type { ApprovalChoice } from "../stream.js";
 import { out } from "../ui/theme.js";
 
@@ -58,8 +62,9 @@ export async function chatCommand(argv: string[]): Promise<number> {
     process.stdout.write(
       `${out.bold(out.accent("RainCode"))} ${out.dim(`chat · workspace ${workspaceRoot}`)}\n` +
         out.dim(
-          "命令: /exit /sessions /resume <id> /rename <title> /fork [title] /usage /mode <normal|plan|auto-accept> /archive [--force] /compact /providers\n",
+          "命令: /exit /sessions /resume <id> /rename <title> /fork [title] /usage /mode <normal|plan|auto-accept> /archive [--force] /compact /providers /skills\n",
         ) +
+        out.dim("技能: /<技能名> [参数]（/skills 查看可用技能；workspace/global 双源加载）\n") +
         out.dim("其余输入直接发送\n"),
     );
 
@@ -239,10 +244,59 @@ export async function chatCommand(argv: string[]): Promise<number> {
         }
         continue;
       }
+      if (trimmed === "/skills") {
+        // T3.4 技能面板：有活动会话时含 workspace 层；否则仅 global 层（server 侧按会话解析目录）
+        try {
+          const result = await context.client.call<SkillsListResult>(
+            "skills.list",
+            currentSessionId === null ? {} : { sessionId: currentSessionId },
+          );
+          if (result.items.length === 0) {
+            process.stdout.write(
+              "(no skills; 放置 <workspace>/.raincode/skills/<name>.md 或全局技能目录 <dataRoot>/skills/<name>.md)\n",
+            );
+          }
+          for (const s of result.items) {
+            const hint = s.argumentHint !== undefined ? ` ${out.dim(s.argumentHint)}` : "";
+            process.stdout.write(`/${s.name}${hint}  ${out.dim(`[${s.source}]`)} ${s.description}\n`);
+          }
+        } catch (reason: unknown) {
+          printRpcError(reason);
+        }
+        continue;
+      }
       if (trimmed.startsWith("/")) {
-        process.stdout.write(
-          "unknown command; available: /exit /sessions /resume <id> /rename <title> /fork [title] /usage /mode <mode> /archive [--force] /compact /providers\n",
-        );
+        // T3.4 技能路由：内置命令未命中的斜杠输入 → 尝试技能（server 侧展开，受理后流式渲染同 send）
+        const slashBody: string = trimmed.slice(1);
+        const name: string = slashBody.split(/\s+/)[0] ?? "";
+        const args: string = slashBody.slice(name.length).trim();
+        if (currentSessionId === null) {
+          process.stdout.write("no active session（技能在会话内执行；先发送一条输入自动创建会话）\n");
+          continue;
+        }
+        const sessionId: string = currentSessionId;
+        process.stdout.write(out.dim(`[${name}] 技能展开受理\n`));
+        try {
+          await streamTurn(
+            context.client,
+            { approval: { kind: "interactive", prompt: promptApproval } },
+            () =>
+              context.client.call<SkillsInvokeResult>("skills.invoke", {
+                sessionId,
+                name,
+                ...(args.length > 0 && { arguments: args }),
+              }),
+          );
+        } catch (reason: unknown) {
+          if (reason instanceof RpcCallError && reason.code === "SKILL_NOT_FOUND") {
+            process.stdout.write(
+              `unknown command or skill: /${name}\n` +
+                `${out.dim("用 /skills 查看可用技能；内置命令见 /exit 顶部说明\n")}`,
+            );
+          } else {
+            printRpcError(reason);
+          }
+        }
         continue;
       }
 

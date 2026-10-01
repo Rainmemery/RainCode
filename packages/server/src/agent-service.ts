@@ -49,6 +49,7 @@ import { PermissionRuntime } from "./permission-runtime.js";
 import type { PermissionPolicy, PermissionRuntimeOptions } from "./permission-runtime.js";
 import { McpRuntime } from "./mcp-runtime.js";
 import { SubagentRuntime } from "./subagent-runtime.js";
+import { SkillRuntime } from "./skill-runtime.js";
 import { MemoryRuntime, memoryLoopEnhancements } from "./memory-runtime.js";
 
 /** Provider 运行时配置（apiKey 已由调用方解析为明文注入；绝不落日志）。 */
@@ -92,6 +93,8 @@ export interface AgentServiceOptions {
   subagent?: { workspaceRoot?: string };
   /** memory 域装配（02 §7；缺省 = 不启用 memory 域；workspaceRoot 为 promote 反查兜底域）。 */
   memory?: { workspaceRoot?: string };
+  /** skills 域装配（T3.4；缺省 = 不启用。workspace 层技能目录按会话 workspaceRoot 逐会话解析，无装配期参数）。 */
+  skills?: Record<string, never>;
   /** system.shutdown 的存储关闭回调（node 注入；缺省跳过——传输关闭由持有方承担）。 */
   onShutdown?: () => Promise<void>;
 }
@@ -114,6 +117,8 @@ export class AgentService {
   private readonly subagent: SubagentRuntime | null;
   /** memory 域（06 §2.6；缺省未装配）。 */
   private readonly memory: MemoryRuntime | null;
+  /** skills 域（06 §2.9；缺省未装配）。 */
+  private readonly skills: SkillRuntime | null;
   private binding: RpcServiceBinding | null = null;
   private shuttingDown = false;
 
@@ -187,6 +192,14 @@ export class AgentService {
       options.memory === undefined ? null
         : new MemoryRuntime({ storage: options.storage, llmFor: () => this.llm,
             ...(options.memory.workspaceRoot !== undefined && { workspaceRoot: options.memory.workspaceRoot }) });
+    // skills 域（T3.4 / 06 §2.9）：提交链注入（session.send / skills.invoke 共用）
+    this.skills =
+      options.skills === undefined ? null
+        : new SkillRuntime({
+            dataRoot: options.storage.dataRoot,
+            workspaceRootOf: (sessionId) => this.options.storage.workspaceRootOf(sessionId),
+            submitTurn: (sessionId, text) => this.submitTurn(sessionId, text),
+          });
   }
 
   /** 绑定传输并暴露方法表（一次服务可多次 attach 到不同 transport）。 */
@@ -257,6 +270,7 @@ export class AgentService {
       // 子代理域未装配时不暴露（同上；06 §2.5 subagent 域 4 方法）
       ...(this.subagent !== null ? this.subagent.methods(register) : {}),
       ...(this.memory !== null ? this.memory.methods(register) : {}), // memory 域未装配不暴露（同上）
+      ...(this.skills !== null ? this.skills.methods(register) : {}), // skills 域未装配不暴露（同上）
       // default-allow 策略未装配 permission 域（requirePermission 在调用期报 PC_GRANT_NOT_FOUND）
       ...(this.permission !== null ? this.permission.methods(register) : {}),
     };
@@ -306,19 +320,27 @@ export class AgentService {
   }
 
   private async send(params: SessionSendParams): Promise<unknown> {
-    const entry = await this.requireActive(params.sessionId);
+    return this.submitTurn(params.sessionId, params.input.text, params.input.attachments);
+  }
+
+  /**
+   * turn 提交链（session.send / skills.invoke 共用，06 §2.1/§2.9）：
+   * requireActive → provider 缺席拒绝 → 受理即返 + usage 旁路累计（session.list 的 contextUsage 数据源）。
+   */
+  private async submitTurn(sessionId: string, text: string, attachments?: SessionSendParams["input"]["attachments"]): Promise<unknown> {
+    const entry = await this.requireActive(sessionId);
     if (entry.llm === null) {
       throw new RpcCallError(
         "CONFIG_PROVIDER_NOT_FOUND",
         "no provider configured: set --base-url/--model, RAINCODE_PROVIDER_* env, config/providers.local.json, or config.providers.add",
       );
     }
-    const admission = entry.loop.submit({ text: params.input.text, attachments: params.input.attachments });
+    const admission = entry.loop.submit({ text, attachments });
     entry.pending = admission.done;
-    // turn 结果的旁路消费：usage 累计进 sessions 投影列（session.list 的 contextUsage 数据源）
+    // turn 结果的旁路消费：usage 累计进 sessions 投影列
     void admission.done.then((outcome: TurnOutcome) => {
       if (outcome.status === "completed" && outcome.usage !== undefined) {
-        void recordUsage(this.options.storage, params.sessionId, outcome.usage).catch(
+        void recordUsage(this.options.storage, sessionId, outcome.usage).catch(
           (err: unknown) => console.error("[raincode/server] failed to record usage", err),
         );
       }

@@ -39,6 +39,8 @@ export interface AgentServiceNodeOptions {
   subagent?: AgentServiceOptions["subagent"];
   /** memory 域装配（02 §7；缺省 = 不启用；workspaceRoot 为 promote 反查兜底域）。 */
   memory?: AgentServiceOptions["memory"];
+  /** skills 域装配（T3.4；缺省 = 不启用。workspace 层技能目录按会话 workspaceRoot 逐会话解析）。 */
+  skills?: AgentServiceOptions["skills"];
   /** 沙箱执行域配置（M3 T3.1；缺省读 `<dataRoot>/config.json` 的 sandbox 节，不可读按 local）。 */
   sandboxConfig?: SandboxConfig;
 }
@@ -100,6 +102,7 @@ export async function createAgentServiceNode(
     ...(options.mcp !== undefined && { mcp: options.mcp }),
     ...(options.subagent !== undefined && { subagent: options.subagent }),
     ...(options.memory !== undefined && { memory: options.memory }),
+    ...(options.skills !== undefined && { skills: options.skills }),
     onShutdown: closeStorage,
   });
   const binding = service.attach(transport);

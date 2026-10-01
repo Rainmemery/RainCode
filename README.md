@@ -19,7 +19,7 @@ RainCode 的功能定位与 Claude Code / Codex 对齐：整合**代码生成、
 | Agent 内核（turn 状态机 / 会话生命周期 / checkpoint 恢复 / epoch 守卫 / 受限重试） | ✅ M1 |
 | 工具调用（9 个内置工具 / 声明式权限元数据 / 只读并行 / 输出预算裁剪） | ✅ M1 |
 | 命令权限控制（五级判定链 / bash argv 求值 / grantId 审批闭环 / 三层规则 / 审计） | ✅ M1 |
-| 控制面协议（45 方法 / 18 事件 / 密钥引用制 / capability 协商） | ✅ M2 |
+| 控制面协议（47 方法 / 18 事件 / 密钥引用制 / capability 协商） | ✅ M2 |
 | 上下文压缩 compact（80% 阈值自动触发 / 异步不阻塞 / 记忆抽取钩子） | ✅ M2 |
 | MCP 接入（stdio / Streamable HTTP / SSE，`mcp__<server>__<tool>` 命名空间） | ✅ M2 |
 | 子代理管理（profile 双源解析 / 并发槽排队 / 级联取消 / 事件镜像合并） | ✅ M2 |
@@ -30,7 +30,8 @@ RainCode 的功能定位与 Claude Code / Codex 对齐：整合**代码生成、
 | 会话管理（rename / fork / usage 费用估算 / archive / mode） | ✅ M2 |
 | 容器沙箱（Docker / WSL 执行域 + 不可用回退，config.json `sandbox` 节） | ✅ M3 |
 | 远程执行（SSH 远程工作区，复用 Executor 抽象，本地审计保留） | ✅ M3 |
-| 技能 / 插件 / 编排增强 / MCP 服务器管理 / Web 界面 | ⬜ M3 |
+| 技能与斜杠命令（技能包双源加载 / `$ARGUMENTS` 模板展开 / 3 个官方示例技能） | ✅ M3 |
+| 插件 / 编排增强 / MCP 服务器管理 / Web 界面 | ⬜ M3 |
 
 ## 环境要求
 
@@ -87,8 +88,27 @@ pnpm --filter @raincode/cli raincode chat      # 交互 REPL（推荐日常使�
 | `/archive [--force]` | 归档会话（运行中后台任务未收束时需 `--force`） |
 | `/compact` | 手动触发上下文压缩（低于阈值报 INVALID_PARAMS；压缩期间对话不阻塞） |
 | `/providers` | 查看 config 域 Provider 列表与单价 |
+| `/skills` | 技能面板：列出可用技能（名称 / 参数提示 / 来源层 / 描述） |
 
 写操作等敏感工具会触发**交互式审批**，四级数字决策：`1` 仅本次允许 / `2` 本会话始终（写 session 规则）/ `3` 项目始终（写 project 规则）/ `4` 拒绝。
+
+### 技能与斜杠命令
+
+除上表内置命令外，chat REPL 中 `/<技能名> [参数]` 会路由到**技能**（可复用工作流的提示词模板）：server 侧展开模板（`$ARGUMENTS` 占位替换为参数；无占位符时参数追加到模板末尾）后按普通输入起 turn，流式渲染与审批闭环完全一致。内置命令名优先于技能名；未知名不是技能时报未知命令提示。
+
+在 `<workspace>/.raincode/skills/<name>.md`（项目级）或 `~/.raincode/skills/<name>.md`（全局，`RAINCODE_HOME` 数据目录）放置技能文件（markdown + frontmatter，正文 = 提示词模板，workspace 层同名优先）：
+
+```markdown
+---
+name: review
+description: 对指定文件或改动做一轮代码审查（风险分级 + 可执行修复建议）
+argumentHint: "<文件或目录或关注点>"
+---
+你是一名严格的资深代码审查员。请对 $ARGUMENTS 执行代码审查，产出结构化审查报告。
+...
+```
+
+仓库 `examples/skills/` 提供 3 个官方示例技能（`review` 代码审查 / `test-gen` 测试生成 / `docs` 文档生成），复制进上述任一技能目录即可使用；协议面为 `skills.list` / `skills.invoke`（06-api-spec §2.9）。
 
 ## 桌面端（Windows Alpha）
 
@@ -169,12 +189,14 @@ raincode chat --base-url https://your-endpoint/v1 --model your-model --api-key s
 ├── sessions/            # JSONL 会话事件流（按 workspace 分目录；checkpoint 恢复点内联）
 ├── config.json          # 运行时配置（Provider 多项 / activeProviderId；apiKey 只存 file: 引用）
 ├── mcp.json             # MCP 全局服务器配置
-└── agents/              # 全局子代理 profiles（<name>.md）
+├── agents/              # 全局子代理 profiles（<name>.md）
+└── skills/              # 全局技能（<name>.md；斜杠命令模板）
 
 <workspace>/.raincode/   # 项目级（随仓库，可入库共享给团队）
 ├── MEMORY.md            # 项目记忆（模板初始化；Agent 章节自动维护 / 用户章节手动）
 ├── mcp.json             # 项目级 MCP 配置（与全局冲突键拒绝）
-└── agents/<name>.md     # 项目级子代理 profiles
+├── agents/<name>.md     # 项目级子代理 profiles
+└── skills/<name>.md     # 项目级技能（同名 workspace 层优先）
 ```
 
 ## MCP 配置
@@ -329,7 +351,7 @@ RainCode/
 │   ├── agent-core/   # turn 状态机 + 会话生命周期 + 子代理 + 压缩（内核）
 │   ├── tools/        # 工具注册中心 + 9 内置工具 + 执行器（并发/超时/输出预算/SSRF/路径守卫）
 │   ├── permission/   # 五级判定链 + bash argv 求值 + 审批闭环 + 规则持久化 + 审计
-│   ├── server/       # Agent Service 唯一组装点（双端共享；45 方法/18 事件装配）
+│   ├── server/       # Agent Service 唯一组装点（双端共享；47 方法/18 事件装配）
 │   ├── mcp/          # MCP 三 transport 接入 + 连接状态机 + 命名空间工具适配
 │   └── memory/       # MEMORY.md 管理 + FTS5 记忆检索 + 会话记忆抽取
 ├── architecture/     # policy.yaml（架构治理策略，门禁依据）

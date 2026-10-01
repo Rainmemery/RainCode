@@ -124,7 +124,7 @@ export type RpcFrame =
 
 ### 2.0 命名约定与 04 示例名对照
 
-方法名格式 `<domain>[.<resource>].<action>`，全小写点分。本文把 04 §1.2 的方法族（`session.* / turn.* / approval.* / provider.* / mcp.* / memory.*`）细化为八个域；04 §1.3/§4.2 中出现的示例方法名对应关系如下，语义不变：
+方法名格式 `<domain>[.<resource>].<action>`，全小写点分。本文把 04 §1.2 的方法族（`session.* / turn.* / approval.* / provider.* / mcp.* / memory.*`）细化为九个域；04 §1.3/§4.2 中出现的示例方法名对应关系如下，语义不变：
 
 | 04 中的示例名 | 本规范定名 | 说明 |
 | --- | --- | --- |
@@ -249,7 +249,16 @@ system 域承载握手、版本发现与优雅停机，是唯一与业务无关�
 | `system.version` | `{}` | `{ protocolVersion, appVersion, configVersion, nodeVersion? }` | — | 详细版本信息，用于诊断与「关于」页 |
 | `system.shutdown` | `{ reason? }` | `{ shuttingDown: true }` | — | 优雅停机：取消运行中 turn（outcome=cancelled，reason=shutdown）→ flush 事件与 JSONL → 关闭存储与传输；各绑定语义差异见 §6.2 |
 
-### 2.9 与 02 模块接口的映射与不暴露决策
+### 2.9 skills 域（技能与斜杠命令，M3 T3.4）
+
+技能 = markdown + frontmatter 提示词模板（`<workspace>/.raincode/skills/<name>.md` 或 `<dataRoot>/skills/<name>.md`，workspace 层先命中生效；字段 `name`（可省，缺省文件名，[a-z0-9-]+）/ `description`（必填）/ `argumentHint`（可选）），正文为提示词模板。展开在 server 侧（`$ARGUMENTS` 占位替换；无占位符且有参 → 参数独立行追加模板末尾），CLI / 桌面端只做 `/name args` 转发，无第二展开点。本域无新事件——turn 事件流与 `session.send` 完全一致（端层复用同一渲染管线）；无新 capability（未装配时调用报 `METHOD_NOT_FOUND`，端层据此探测）。装配期无参数（workspace 技能目录按会话 workspaceRoot 逐会话解析）；CLI in-process 与 stdio 宿主（桌面 agent 子进程）默认装配。
+
+| 方法 | 请求 params | 返回 result | 业务错误码 | 说明 |
+| --- | --- | --- | --- | --- |
+| `skills.list` | `{ sessionId? }` | `{ items: SkillSummary[] }` | `SESSION_NOT_FOUND` | 技能清单（frontmatter 投影，不含模板正文）：每项含 `{ name, description, source: "workspace"\|"global", argumentHint? }`；提供 `sessionId` 时含该会话 workspace 层（同名 workspace 优先），缺省仅 global 层；**非法文件跳过不阻塞面板**（仅产诊断） |
+| `skills.invoke` | `{ sessionId, name, arguments? }` | `{ turnId, admission: "started"\|"queued", queuePosition? }` | `SESSION_NOT_FOUND` `SESSION_ARCHIVED` `SKILL_NOT_FOUND` `SKILL_INVALID` | 斜杠命令受理：按名解析 → 模板展开 → 复用 `session.send` 提交链（requireActive + provider 缺席拒绝 + 受理即返 + usage 旁路）；展开后文本即该 turn 的 user 消息（会话历史可见完整展开） |
+
+### 2.10 与 02 模块接口的映射与不暴露决策
 
 控制面对 02 七大模块对外接口的覆盖逐条核对如下：
 
@@ -272,7 +281,7 @@ system 域承载握手、版本发现与优雅停机，是唯一与业务无关�
 | `ProjectMemoryService.extractFromSession` | （compact 内部自动触发，无独立方法） | 结果经 `memory.entries.list` 查询 |
 | `BashRuleEvaluator`、`ProcessTreeTerminator`、`Executor`（P2 容器扩展点） | **不暴露** | 内核/沙箱内部接口，无端层语义 |
 
-### 2.10 典型交互时序
+### 2.11 典型交互时序
 
 一次「发送 → 审批 → 完成」的完整协议时序（数字为帧到达顺序）：
 
@@ -475,7 +484,7 @@ flush 边界保证：`message.completed`、`tool_call.*`、`permission.*`、`tur
 | `CANCELLED` | 服务端处理被取消（shutdown / 会话取消） | reason |
 | `INTERNAL` | 未分类服务端错误 | 诊断 id（日志关联） |
 
-### 4.3 业务码（段 1–8，按域分段）
+### 4.3 业务码（段 1–9，按域分段）
 
 | 段 | 码 | 含义 |
 | --- | --- | --- |
@@ -510,6 +519,8 @@ flush 边界保证：`message.completed`、`tool_call.*`、`permission.*`、`tur
 | 7 tool | `TOOL_PERMISSION_ASK` | 判定为 ask 且 `waitApproval=false`（或客户端不可达走 deny 兜底，02 §2.4） |
 | 7 tool | `TOOL_SSRF_BLOCKED` | web_fetch 目标命中内网/环回/保留段黑名单（含重定向跳板），直接拒绝并注明原因（02 §2.4 SSRF 防护） |
 | 7 tool | `TOOL_INPUT_RETRY_EXCEEDED` | 单 turn 内工具参数校验失败次数超限（受限重试上限 3），强制收束 |
+| 9 skills | `SKILL_NOT_FOUND` | 技能名无法解析（未命中 / 名字非法含路径逃逸形态 / 文件读取失败） |
+| 9 skills | `SKILL_INVALID` | 技能文件校验失败（缺 frontmatter / 缺 description / name 非法）；清单路径跳过、调用路径报错 |
 | 8 system | — | system 域无专属业务码；停机中再收请求返回 `CANCELLED` |
 
 > 区分原则：**turn 内工具执行失败是数据不是协议错误**——模型路径与 `tool.call` 直接调用一律以 `ToolResult{isError, error}` 返回（`invalid_input` / `timeout` / `ambiguous_match` / `permission_denied` 等，见 02 §2.3/§2.4）；协议错误只表达「调用本身未能被受理或执行」。
@@ -530,6 +541,7 @@ schema 真源在 `packages/shared`（zod 单一事实源，04 §4.3 / PRD §6.2�
 | `mcp.ts` | mcp 域方法 + McpServerConfig + mcp.server_status_changed payload | `mcpSchemas` | ~180 行 |
 | `subagent.ts` | subagent 域方法 + SubagentProfile + subagent.* 事件 payload | `subagentSchemas` | ~160 行 |
 | `memory.ts` | memory 域方法 + MemoryEntry/MemorySection | `memorySchemas` | ~140 行 |
+| `skill.ts` | skills 域方法（技能清单/斜杠命令受理）+ SkillSummary | `skillSchemas` | ~50 行 |
 | `tool.ts` | tool 域方法 + ToolMetadata/ToolResult/ToolDescriptor | `toolSchemas` | ~180 行 |
 | `system.ts` | system 域方法 + capabilities 列表 | `systemSchemas` | ~60 行 |
 | `index.ts` | `METHOD_SCHEMAS`（method → {request, response}）与 `EVENT_SCHEMAS`（name → payload）注册表；事件构造函数 re-export | `METHOD_SCHEMAS` `EVENT_SCHEMAS` | ~120 行 |
@@ -704,12 +716,13 @@ capability 命名约定：`<domain>.<feature>`（小写点分），登记于 `sy
 | 1.1 | 2026-09-29 | T2.6 内核增强：新增 `session.rename` / `session.fork` / `session.usage` / `config.providers.switch` 四方法（向后兼容，minor+1）；Provider 增可选单价字段 `inputPricePerMtok`/`outputPricePerMtok`（AC-10 估算口径）；`session.created` 事件增可选 `kind`/`parentSessionId`；tool 域新增错误码 `TOOL_INPUT_RETRY_EXCEEDED`（AC-12 受限重试上限 3） |
 | 1.2 | 2026-09-29 | T2.7 P1 工具（minor+1）：`permission.respond` 增可选请求字段 `answerText`（ask_user_question 通道应答文本；需探测级，登记 capability `permission.respond.answer`）+ `permission.resolved` 事件增可选 `answerText`；tool 域新增错误码 `TOOL_SSRF_BLOCKED`（web_fetch SSRF 黑名单拒绝，02 §2.4）；内置工具清单新增 `web_fetch` / `ask_user_question`（02 §2.3 P1，经 tool.tools.list 可见） |
 | 1.3 | 2026-09-29 | 桌面端走查修复（minor+1，只增不改）：`SessionSnapshotPayload` 增可选 `history`（全量消息数组）——冷重建专用（桌面端首次打开 / renderer 刷新时端层无本地历史可拼，`messages` 尾部增量口径对已收束会话为空会导致恢复视图空白）；`session.resume` 幂等路径（Active 会话）与冷恢复路径均填充该字段，`session.snapshot` 事件投影可省略。协议规模不变（45 方法 / 18 事件） |
+| 1.4 | 2026-09-29 | T3.4 技能与斜杠命令（minor+1）：新增 skills 域 2 方法 `skills.list` / `skills.invoke`（§2.9，装配期缺省不启用；CLI 与 stdio 宿主默认装配）——技能 = markdown+frontmatter 提示词模板双源加载（workspace 优先），展开在 server 侧（`$ARGUMENTS` 替换/无占位符追加），turn 事件流与 `session.send` 复用；错误码新增段 9：`SKILL_NOT_FOUND` / `SKILL_INVALID`。协议规模 47 方法 / 18 事件 |
 
 ---
 
 ## 8. 自检清单
 
-- [x] **控制面覆盖 02 模块接口全集**：§2.9 映射表逐条核对七大模块对外接口；`BashRuleEvaluator`/`ProcessTreeTerminator`/`Executor` 等内核内部接口的不暴露决策已注明。
+- [x] **控制面覆盖 02 模块接口全集**：§2.10 映射表逐条核对七大模块对外接口；`BashRuleEvaluator`/`ProcessTreeTerminator`/`Executor` 等内核内部接口的不暴露决策已注明。
 - [x] **数据面覆盖状态机与审批闭环关键节点**：TurnPhase 每次迁移（`turn.phase_changed`）、turn 终态（`done`/`error`）、审批闭环（`permission.requested` → `permission.respond` 单消费 → `permission.resolved`，含超时/离线兜底）、子代理镜像（02 §4.2 映射表同构）。
 - [x] **帧结构与 04 §4.1 一致**：RpcFrame 三种 kind 逐字段一致；唯一细化是 error 增加可选 `details`（兼容扩展，已在 §1.2 声明）。
 - [x] **绑定映射完整**：in-memory / stdio 逐维度对照（§6.2），方法/schema/错误码绑定无关；websocket 预留差异单列（§6.3）；renderer↔main 虚拟 stdio 已说明。

@@ -170,7 +170,7 @@ export class ToolPhaseRunner {
       return { call, toolName: call.toolName, input: parsed.data, metadata: tool.metadata };
     });
 
-    // 2) tool_call.started（全部调用，含待审批/被拒，06 §3.2；先于 permission.requested，06 §2.10）
+    // 2) tool_call.started（全部调用，含待审批/被拒，06 §3.2；先于 permission.requested，06 §2.11）
     entries.forEach((entry, index) => {
       this.options.emitPersisted("tool_call.started", (seq, ts) =>
         buildToolCallStartedEvent({

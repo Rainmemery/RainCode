@@ -29,6 +29,7 @@
     "smoke:migrations": "tsx scripts/smoke-migrations.mts",
     "smoke:p1tools": "tsx scripts/smoke-p1tools.mts",
     "smoke:kernel": "tsx scripts/smoke-kernel.mts",
+    "smoke:skills": "tsx scripts/smoke-skills.mts",
     "smoke:stdio": "tsx scripts/smoke-stdio.mts",
     "smoke:remote": "tsx scripts/smoke-remote.mts"
   },

@@ -13,11 +13,11 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 当前里程碑 | **M3 进行中**（T3.1 容器沙箱 ✅ · T3.2 远程执行 ✅；M2 验收完成，场景 5 GUI 走查已于 2026-09-29 以 CDP 自动化方式闭环，场景 6 真实 MCP 样例留人工） |
-| 已完成任务 | M1 全量 ✅ · M2 全量（T2.1~T2.10）✅ · CLI 展示升级 ✅ · 产品更名 RainCode ✅ · 场景 5 桌面 GUI 走查（自动化）✅ · NFR-4 口径修正复测 ✅ · T3.1 容器沙箱 ✅ · T3.2 远程执行 ✅ |
+| 当前里程碑 | **M3 进行中**（T3.1 容器沙箱 ✅ · T3.2 远程执行 ✅ · T3.4 技能与斜杠命令 ✅；M2 验收完成，场景 5 GUI 走查已于 2026-09-29 以 CDP 自动化方式闭环，场景 6 真实 MCP 样例留人工） |
+| 已完成任务 | M1 全量 ✅ · M2 全量（T2.1~T2.10）✅ · CLI 展示升级 ✅ · 产品更名 RainCode ✅ · 场景 5 桌面 GUI 走查（自动化）✅ · NFR-4 口径修正复测 ✅ · T3.1 容器沙箱 ✅ · T3.2 远程执行 ✅ · T3.4 技能与斜杠命令 ✅ |
 | 最新提交 | 见 `git log -1` |
 | 工作区状态 | clean |
-| 门禁状态 | typecheck ✅（13 项目）/ oxlint ✅ / architecture:check ✅ / 单测 128 ✅ / smoke:p0 全回归 ✅（smoke-memory case B 竞态用例增强后复验通过）/ NFR 基准留存 `docs/benchmarks/m2-2026-09-29.md`（NFR-1~7 全达标；NFR-4 口径修正复测中位数 414.5MB 达标见报告 §7） |
+| 门禁状态 | typecheck ✅（13 项目）/ oxlint ✅ / architecture:check ✅ / 单测 139 ✅ / smoke:p0 全回归 ✅（新增 smoke:skills 五用例入回归）/ NFR 基准留存 `docs/benchmarks/m2-2026-09-29.md`（NFR-1~7 全达标；NFR-4 口径修正复测中位数 414.5MB 达标见报告 §7） |
 | 快照日期 | 2026-09-29 |
 
 ---
@@ -29,7 +29,7 @@
 | Phase 1 设计 | — | 7 份产品/技术设计文档 | ✅ 完成（2026-09-28） |
 | M1 | P0 | 单进程 CLI 打通日常可用闭环 | ✅ 完成（2026-09-28） |
 | M2 | P1 | 能力补全 + 桌面端 Alpha | ✅ 完成（2026-09-29，场景 5 走查已自动化闭环） |
-| M3 | P2 | 七模块全量对齐 | 🔄 进行中（T3.1 完成） |
+| M3 | P2 | 七模块全量对齐 | 🔄 进行中（T3.1/T3.2/T3.4 完成） |
 
 ---
 
@@ -38,6 +38,8 @@
 > 格式：`[日期] 任务 — 结果`（含关键产出物与提交号）。**新条目插在本节最上方。**
 
 ### M3 · P2（七模块全量对齐）
+- [2026-09-29] T3.4 技能与斜杠命令（TL-6 / 06 §2.9 skills 域）— a) 技能包规范：markdown + frontmatter 单文件（`<ws>/.raincode/skills/<name>.md` workspace 层 / `<dataRoot>/skills/<name>.md` global 层双源，workspace 同名先命中生效，镜像 T2.3 profile 目录口径）；字段 name（可省缺省文件名，[a-z0-9-]+ 挡路径逃逸）/ description（必填）/ argumentHint（可选），正文 = 提示词模板；frontmatter 解析抽包内共用模块 `agent-core/src/frontmatter.ts`（profile.ts 零行为变更复用）；b) 展开语义：`$ARGUMENTS` 占位替换（多次出现）→ 无占位符且有参 → 参数独立行追加末尾 → 无参原样；**展开在 server 侧**（04 ADR-06 唯一组装点），CLI 与桌面端只做 `/name args` 转发无第二展开点；c) 协议 v1.4（minor+1）：skills 域 2 方法 `skills.list {sessionId?}`（sessionId 提供时含该会话 workspace 层，缺省仅 global；非法文件跳过不阻塞面板仅产诊断）/ `skills.invoke {sessionId, name, arguments?}`（受理即返与 session.send 同形，turn 事件流完全一致故无新事件、无新 capability——端层经 METHOD_NOT_FOUND 探测）；错误码段 9 `SKILL_NOT_FOUND`/`SKILL_INVALID`；06 §2 原映射/时序两节顺延 §2.10/§2.11（外部引用已同步）；d) server：`SkillRuntime`（风格对齐 SubagentRuntime；workspace 层目录按会话 workspaceRoot 逐会话解析——storage.workspaceRootOf——装配期无参数，与 memory 同形态）；agent-service 提取 `submitTurn` 提交链（session.send / skills.invoke 共用：requireActive + provider 缺席拒绝 + 受理即返 + usage 旁路）；CLI in-process（context.ts）与 stdio 宿主（host.ts，桌面 agent 子进程同形态）默认装配；e) CLI chat：`/skills` 技能面板（名称/参数提示/来源层/描述）+ 内置命令未命中的斜杠输入路由 skills.invoke（stream.ts 提取 `streamTurn` 订阅先于提交、submit 点插拔，sendAndStream 成为其特例；SKILL_NOT_FOUND 回退未知命令提示；内置命令名优先于技能名）；f) 3 个官方示例技能 `examples/skills/`（review 代码审查 / test-gen 测试生成 / README 指引复制进技能目录）；g) 测试：单测 +11 共 139（解析校验/双源优先/首命中不回落/路径逃逸/展开三语义）；`smoke:skills` 五用例（A 官方示例真身加载入列+坏文件跳过 / B 双源优先级 / C 示例技能端到端——mock 请求体末条 user 含 $ARGUMENTS 替换后文本即展开在 server 侧的真实证据 / D 自定义技能展开语义三连 / E 错误族）入 smoke:p0 回归。桌面端斜杠命令面板 UI 留 T3.9（UI-4 补齐）。
+
 - [2026-09-29] T3.2 远程执行（ES-5 / 复用 T3.1 Executor 抽象）— `SshExecutor`：命令经 `ssh` 投递远端主机，本地 cwd 前缀映射远端 `remoteWorkspaceRoot`（`toRemotePath`，guardPath 保证 cwd ∈ workspace 后前缀展开）；连接参数 `user@host` + `-p` 端口 + `-i` 密钥 + `-o BatchMode=yes`（密钥不通即失败收敛，不挂交互提示）+ `StrictHostKeyChecking=accept-new`；env 经远端 `env K=V` 前缀注入（ssh 不转发本地环境，AcceptEnv 依赖服务端配置不可靠）；**本地审计记录保留**——事件流/审批审计照旧落本地 RAINCODE_HOME（ES-5 口径），执行域无感；shared sandbox schema 扩展 `executor: "ssh"` + `ssh: {host,user,port,identityFile,remoteWorkspaceRoot}` 节（strict 写路径）；工厂 `resolveSandboxExecutor` 增 ssh 分支：探针=对配置主机 `ssh ... exit 0`（ConnectTimeout 6s，可注入替身）→ 未配置 ssh 节/不可达均回退 local + 告警（文案区分两种原因）；单测 +6 共 128（路径映射/连接参数/env 注入/工厂三态/bash 接线 sandbox 标记）；README 沙箱执行域节补 ssh 段与 ES-5 审计口径。07 §4.2 验收的端到端样例（远程仓库修改 → 远程测试 → 结果回传）需真实 SSH 主机，随 M3 全量对齐人工执行（本机无 SSH 服务端，探针/argv 级已自动化）。
 
 - [2026-09-29] T3.1 容器沙箱（SB-3 前置 / ES-3~4）— a) `packages/tools/src/sandbox/executor.ts`：`Executor` 执行域抽象（local/docker/wsl，命令投递面；后台任务生命周期仍由 BackgroundTaskRegistry 持有——02 §5.3 start/kill/list 拆分申报，registry 单例为所有权与审计事实源）；`DockerExecutor`（ES-3）：仅挂载 workspace（fs 隔离，主机其余路径容器内不可见）+ `--network none` 缺省断网（可配 bridge）+ workdir 相对映射（`D:\ws\docs` → `/workspace/docs`）+ env `-e` 注入 + exit 后 best-effort `docker rm -f` 清理（taskkill 硬杀不经信号代理，防容器孤儿）；`WslExecutor`（ES-4）：`wsl --cd` 自动翻译路径 + `-d` 发行版 + `env K=V` 前缀注入，发行版 fs 完整可见（环境隔离非安全边界口径申报）；`resolveSandboxExecutor` 工厂：CLI 探测（docker version / wsl --status，可注入替身）→ 不可用回退 local + stderr 告警（02 §5.4），kind 标记真实执行环境；b) 配置面：shared `sandboxConfigSchema`（executor/image/network/wslDistro）进 config.json 读 strip/写 strict 双 schema，`config.set` 可定点写；c) 接线：`createBashTool({executor})` 工厂化（bash 前台经 executor.run、后台经 registry 同域投递；结果 `data.sandbox` 字段 + 非 local 内容头行标注，local 输出与 P0 字节兼容）；`BackgroundTaskRegistry({executor})`；server 装配在 `createAgentServiceNode`（异步探测，构造器保持同步）——读 config.json sandbox 节（不可读按 local）→ 探测解析 → 回退告警走 stderr（stdout 只承载协议帧），调用方显式 `tools.executor` 优先于文件配置；d) agent-service.ts 469 行逼近治理上限：resume 主流程按方法族拆分下沉 `session-support.resumeSessionFlow`（06 §5 预留拆分口径，SessionEntry/快照组装同文件归位）；e) 单测 +17 共 122（工厂解析矩阵/docker argv 策略断言含「仅挂载 workspace」越界拦截语义/wsl 翻译/bash 接线与守卫不变/后台同域）。验收口径：本机无 Docker 且 WSL 无发行版（真实执行域运行时验证留人工项，随 M3 全量对齐执行）；不可用回退告警 + argv 级隔离策略已自动化覆盖。README 新增「沙箱执行域」节。
@@ -98,9 +100,10 @@
 
 1. ~~**T3.1 容器沙箱（SB-3/4）**~~ ✅（2026-09-29；Docker/WSL 真实运行时验证留人工——本机无 Docker、WSL 无发行版）
 2. ~~**T3.2 远程执行复用 Executor 抽象**~~ ✅（2026-09-29；SSH 端到端样例随 M3 全量对齐人工执行——本机无 SSH 服务端）
-3. **T3.3~T3.7** — 记忆自动抽取+管理界面 / 技能加载 / 插件化 / 编排增强 / 服务器管理（详见 07 §4.1）
-4. **T3.8 Web 界面** — WebSocketTransport + ws.auth + seq 缺口补偿
-5. **T3.9 桌面端补齐 + M3 全量对齐验收** — NFR-1~7 全量重测留存
+3. ~~**T3.4 技能与斜杠命令**~~ ✅（2026-09-29；示例技能端到端与自定义加载均为自动化验收，桌面端斜杠面板 UI 留 T3.9）
+4. **T3.3 / T3.5~T3.7** — 记忆自动抽取+管理界面 / 插件化（依赖 T3.4 ✅）/ 编排增强 / MCP 服务器管理（详见 07 §4.1）
+5. **T3.8 Web 界面** — WebSocketTransport + ws.auth + seq 缺口补偿
+6. **T3.9 桌面端补齐 + M3 全量对齐验收** — NFR-1~7 全量重测留存
 
 ---
 

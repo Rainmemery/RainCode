@@ -21,9 +21,9 @@ node:test 原生测试运行器 + tsx 加载器（根 package.json `pnpm test`�
 
 | 命令 | 覆盖范围 |
 | --- | --- |
-| `pnpm test` | tools：truncate（字节预算头 70/尾 30 + 截断提示）、path-guard（workspace 越界）、executor-concurrency（只读并行上限/写串行）、ssrf（黑名单网段/localhost/scheme/重定向跳板/DNS mock）、web-fetch（HTML→文本转换/JSON 原文/非 2xx/maxBytes 截断/重定向跟随与拦截）、ask-user（通道应答/TOOL_UNAVAILABLE/TOOL_PERMISSION_DENIED）、executor（**M3 T3.1/T3.2**：resolveSandboxExecutor 工厂——未配置 local 零探测/docker+wsl 不可用回退告警/可用生效；DockerExecutor argv 策略——仅挂载 workspace 的越界拦截语义 + --network 隔离 + workdir 映射 + env 注入 + 退出后 rm -f 清理；WslExecutor --cd 翻译/发行版/env 前缀；SshExecutor（T3.2）——远端路径前缀映射/user@host 端口密钥连接参数/BatchMode 禁交互/远端 env 前缀注入/工厂探针通过与未配置·不可达回退告警/bash 接线 sandbox 标记；bash 工具执行域接线——sandbox 标记/后台任务同域投递/路径守卫不变）；permission：path-escape（越界强制 ask + 审批闭环）、ask-user-broker（respond answerText ↔ askAndWait/resolved 事件透出）、broker-pending（pendingGrantsOf 会话过滤/脱敏/收敛消失/可选字段透传）；rpc：stdio（跨 chunk 分帧/JSONL 出站/畸形行 PARSE_ERROR 与丢弃不断开/delta 窗口合并与边界 flush/跨 turn 不合并/tool_call argsPartial 拼接/close flush/onInputEnd 半开语义）；desktop：agent-host（stdout 帧行转发/sendLine/优雅 stop intentional/崩溃自动重启）；server：compact-nonblocking（**NFR-6 专项**：摘要延迟窗口内 send 受理 <100ms + tools.list 探测 <100ms + compact.completed 收敛）；agent-core：tool-phase-path-escape（越界预检→放行钩子全链） |
+| `pnpm test` | tools：truncate（字节预算头 70/尾 30 + 截断提示）、path-guard（workspace 越界）、executor-concurrency（只读并行上限/写串行）、ssrf（黑名单网段/localhost/scheme/重定向跳板/DNS mock）、web-fetch（HTML→文本转换/JSON 原文/非 2xx/maxBytes 截断/重定向跟随与拦截）、ask-user（通道应答/TOOL_UNAVAILABLE/TOOL_PERMISSION_DENIED）、executor（**M3 T3.1/T3.2**：resolveSandboxExecutor 工厂——未配置 local 零探测/docker+wsl 不可用回退告警/可用生效；DockerExecutor argv 策略——仅挂载 workspace 的越界拦截语义 + --network 隔离 + workdir 映射 + env 注入 + 退出后 rm -f 清理；WslExecutor --cd 翻译/发行版/env 前缀；SshExecutor（T3.2）——远端路径前缀映射/user@host 端口密钥连接参数/BatchMode 禁交互/远端 env 前缀注入/工厂探针通过与未配置·不可达回退告警/bash 接线 sandbox 标记；bash 工具执行域接线——sandbox 标记/后台任务同域投递/路径守卫不变）；permission：path-escape（越界强制 ask + 审批闭环）、ask-user-broker（respond answerText ↔ askAndWait/resolved 事件透出）、broker-pending（pendingGrantsOf 会话过滤/脱敏/收敛消失/可选字段透传）；rpc：stdio（跨 chunk 分帧/JSONL 出站/畸形行 PARSE_ERROR 与丢弃不断开/delta 窗口合并与边界 flush/跨 turn 不合并/tool_call argsPartial 拼接/close flush/onInputEnd 半开语义）；desktop：agent-host（stdout 帧行转发/sendLine/优雅 stop intentional/崩溃自动重启）；server：compact-nonblocking（**NFR-6 专项**：摘要延迟窗口内 send 受理 <100ms + tools.list 探测 <100ms + compact.completed 收敛）；agent-core：tool-phase-path-escape（越界预检→放行钩子全链）、skill（**M3 T3.4**：parseSkillMarkdown——frontmatter 字段/name 回退文件名/缺 description 或 name 非法即 INVALID；resolveSkillFile——workspace 先命中生效/global 兜底/全未命中 NOT_FOUND/首命中坏文件 INVALID 不回落/非法名路径逃逸不触碰 fs；expandSkillTemplate——`$ARGUMENTS` 多次替换/无占位符参数追加末尾/无参原样） |
 
-**预期输出**：`# pass N`（当前 128）且 `# fail 0`，退出码 0。提交前与门禁一起全绿。
+**预期输出**：`# pass N`（当前 139）且 `# fail 0`，退出码 0。提交前与门禁一起全绿。
 
 ## 3. 冒烟测试
 
@@ -44,11 +44,12 @@ node:test 原生测试运行器 + tsx 加载器（根 package.json `pnpm test`�
 | `pnpm smoke:stdio` | [scripts/smoke-stdio.mts](../scripts/smoke-stdio.mts) | **stdio 绑定 + headless（T2.8）**：子进程 spawn `raincode serve`（无 Provider），断言 A 握手门禁（ping 前 session.list → VERSION_MISMATCH）；B system.ping（protocolVersion/capabilities）；C 畸形行带 id → PARSE_ERROR response 且不断开；D 畸形行无 id → 丢弃 + stderr 告警、连接继续；E session.create → session.resume 幂等快照（lastSeq/phase/model/contextUsage/messages/pendingApprovals 字段齐全）；F stdin end → 进程优雅退出 code 0（帧可人工 cat 重放的等价路径，ADR-08） |
 | `node scripts/verify-agent-bundle.mjs` | [scripts/verify-agent-bundle.mjs](../scripts/verify-agent-bundle.mjs) | **桌面端打包产物（T2.9）**：esbuild bundle 的 agent 入口（apps/desktop/dist-electron/agent/entry.cjs，需先 `pnpm --filter @raincode/desktop build:agent`）以 node 直跑，stdin 注入 system.ping → 断言 pong response（验证 bundle + 随包 migrations env 注入通路；electron-builder 完整 dist 打包属人工验收环节） |
 | `node scripts/llm-fixture-http.mjs <port>` | [scripts/llm-fixture-http.mjs](../scripts/llm-fixture-http.mjs) | **OpenAI 兼容流式 fixture server（GUI 走查 / 端到端联调用，node 直跑）**：SSE 流式 `chat/completions`（role 帧 → content 或 tool_calls delta 分帧 → finish → usage → `[DONE]`）；按请求 messages 自动分流——尾条 role=tool 输出含工具结果尾部的收束文本，否则下发 bash `echo raincode-gui-fixture` tool_call；用户消息 `run: <command>` 行可脚本化 bash 命令（触发真实审批链路）；`GET /health` 就绪探测。桌面端 GUI 走查以临时 `RAINCODE_HOME` + `RAINCODE_PROVIDER_CONFIG` 指向本 fixture（M2 场景 5 自动化，见 PROGRESS §3） |
+| `pnpm smoke:skills` | [scripts/smoke-skills.mts](../scripts/smoke-skills.mts) | **技能与斜杠命令（M3 T3.4）**：global 层装入 `examples/skills/` 官方示例真身 + workspace 层自定义技能 → 用例 A skills.list（无 sessionId）三示例在列、坏文件跳过不阻塞面板；用例 B 双源优先级（带 sessionId 同名技能 workspace 胜出）；用例 C 示例技能端到端（skills.invoke(review) → mock 请求体末条 user 含 `$ARGUMENTS` 替换后文本、占位符不残留）；用例 D 自定义技能展开语义（无占位符参数追加末尾 / workspace 模板胜出 / 无参调用占位替换空串）；用例 E 错误族（SKILL_NOT_FOUND 未知名与路径逃逸 / SKILL_INVALID 坏文件 / SESSION_NOT_FOUND / strict INVALID_PARAMS） |
 
 **运行全部**：
 
 ```bash
-pnpm smoke:p0   # 内部已并复 smoke:e2e / smoke:tools / smoke:permission / smoke:compact / smoke:mcp / smoke:subagent / smoke:memory / smoke:migrations / smoke:kernel / smoke:p1tools
+pnpm smoke:p0   # 内部已并复 smoke:e2e / smoke:tools / smoke:permission / smoke:compact / smoke:mcp / smoke:subagent / smoke:memory / smoke:migrations / smoke:kernel / smoke:p1tools / smoke:skills
 ```
 
 **预期输出**：各脚本末尾打印 `SMOKE OK`，退出码 0。
