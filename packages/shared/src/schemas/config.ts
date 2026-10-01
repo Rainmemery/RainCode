@@ -49,6 +49,20 @@ export const providerAddInputSchema = providerInputSchema.extend({
 });
 export type ProviderAddInput = z.infer<typeof providerAddInputSchema>;
 
+/**
+ * 沙箱执行域配置（M3 T3.1 / 02 §5.3 Executor 扩展点）。
+ * executor 期望执行环境：local（缺省）/ docker（容器级 fs+网络隔离）/ wsl（Linux 环境隔离）；
+ * 不可用时工厂回退 local 并告警（02 §5.4），kind 标记保证 UI 展示真实执行环境。
+ * docker：仅挂载 workspace（fs 隔离），network 缺省 none（容器无外网）；wsl：环境隔离非安全边界。
+ */
+export const sandboxConfigSchema = z.object({
+  executor: z.enum(["local", "docker", "wsl"]),
+  image: z.string().optional(),
+  network: z.enum(["none", "bridge"]).optional(),
+  wslDistro: z.string().optional(),
+});
+export type SandboxConfig = z.infer<typeof sandboxConfigSchema>;
+
 /** config.json 读路径文档（strip：未知字段忽略，出参宽松演进，06 §5）。 */
 export const configDocumentSchema = z.object({
   configVersion: z.number().int(),
@@ -56,6 +70,7 @@ export const configDocumentSchema = z.object({
   activeProviderId: z.string().optional(),
   permissions: z.object({ defaultBehavior: ruleBehaviorSchema.optional() }).optional(),
   compaction: z.object({ thresholdRatio: z.number(), keepRecentCount: z.number().int() }).optional(),
+  sandbox: sandboxConfigSchema.optional(),
 });
 export type ConfigDocument = z.infer<typeof configDocumentSchema>;
 
@@ -67,6 +82,7 @@ export const configDocumentStrictSchema = z
     activeProviderId: z.string().optional(),
     permissions: z.object({ defaultBehavior: ruleBehaviorSchema.optional() }).strict().optional(),
     compaction: z.object({ thresholdRatio: z.number(), keepRecentCount: z.number().int() }).strict().optional(),
+    sandbox: sandboxConfigSchema.strict().optional(),
   })
   .strict();
 

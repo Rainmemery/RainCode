@@ -13,10 +13,11 @@ import type {
   SessionSummary,
 } from "@raincode/shared";
 import type { BackgroundTaskRegistry } from "@raincode/tools";
-import type { SessionResume, Storage } from "@raincode/storage";
+import { StorageError, type SessionResume, type Storage } from "@raincode/storage";
 import { computeWorkspaceHash } from "@raincode/storage";
 import { SessionTurnLoop } from "@raincode/agent-core";
 import type { CompactionOptions, LlmPort, SessionEventPublisher, ToolPhaseDeps, TurnOutcome } from "@raincode/agent-core";
+import { memoryLoopEnhancements, type MemoryRuntime } from "./memory-runtime.js";
 
 /** AgentService 活跃会话表条目（agent-service.sessions 与 session-domain 共用同一形态）。 */
 export interface SessionEntry {
@@ -125,6 +126,78 @@ export async function buildSessionSnapshot(input: {
     ...(input.history !== undefined && { history: input.history }),
     pendingApprovals: input.pendingApprovals ?? [],
   };
+}
+
+/** session.resume 主流程（agent-service 委托；方法族拆分 06 §5，单文件 ≤500 行治理）：
+ * 存在性/归档校验 → replay 冷恢复 → loop 装配（initialHistory + seq/epoch 续起点）→
+ * 快照组装（messages=尾部增量 NFR-5 / history=全量 v1.3 冷重建 / pendingApprovals 补推）。 */
+export async function resumeSessionFlow(input: {
+  storage: Storage;
+  sessions: Map<string, SessionEntry>;
+  llmFor(providerId: string | undefined): LlmPort | null;
+  publishFactory(): SessionEventPublisher;
+  toolDeps: ToolPhaseDeps & { background: BackgroundTaskRegistry };
+  memory: MemoryRuntime | null;
+  systemPrompt?: string;
+  compaction?: CompactionOptions;
+  providerId: string;
+  providerModel: string;
+  maxContextTokens: number;
+  permissionPending(sessionId: string): SessionSnapshotPayload["pendingApprovals"];
+  sessionId: string;
+}): Promise<{ sessionId: string; snapshot: SessionSnapshotPayload }> {
+  const existing = input.sessions.get(input.sessionId);
+  if (existing) {
+    // 幂等：会话已 Active 直接返回当前快照（06 §2.1）；history=loop 内存历史（renderer 刷新冷重建同语义）
+    const snapshot = await buildSessionSnapshot({
+      storage: input.storage, sessionId: input.sessionId, lastSeq: existing.loop.lastEventSeq,
+      phase: existing.loop.phase, model: input.providerModel, activeProviderId: input.providerId,
+      maxContextTokens: input.maxContextTokens, messages: existing.loop.getHistory(),
+      pendingApprovals: input.permissionPending(input.sessionId),
+    });
+    return { sessionId: input.sessionId, snapshot };
+  }
+  const meta = await input.storage.sessions.get(input.sessionId);
+  if (!meta) {
+    throw new RpcCallError("SESSION_NOT_FOUND", `session not found: ${input.sessionId}`);
+  }
+  if (meta.status === "archived") {
+    // 归档会话不可恢复（本波口径；06 §2.1 未定义归档恢复路径）
+    throw new RpcCallError("SESSION_NOT_FOUND", `session is archived: ${input.sessionId}`);
+  }
+  let replay: SessionResume;
+  try {
+    replay = await input.storage.resumeSession(input.sessionId);
+  } catch (reason: unknown) {
+    if (reason instanceof StorageError && reason.code === "SESSION_NOT_FOUND") {
+      throw new RpcCallError("SESSION_NOT_FOUND", `session not found: ${input.sessionId}`);
+    }
+    throw reason;
+  }
+  const workspaceRoot = (await input.storage.workspaceRootOf(meta.id)) ?? process.cwd();
+  const llm = input.llmFor(undefined);
+  const loop = createSessionLoop({
+    sessionId: meta.id, mode: meta.mode, llm, storage: input.storage, publish: input.publishFactory(),
+    ...((await memoryLoopEnhancements(input.memory, input.systemPrompt, workspaceRoot, meta.id, meta.workspaceId))),
+    tools: input.toolDeps, workspaceRoot, workspaceId: meta.workspaceId,
+    initialHistory: replay.history,
+    initialEventSeq: seedEventSeq(replay),
+    initialEpoch: replay.epoch,
+    ...(input.compaction !== undefined && { compaction: input.compaction }),
+  });
+  const entry: SessionEntry = {
+    loop, llm, providerId: input.providerId,
+    workspaceHash: meta.workspaceId, mode: meta.mode, workspaceRoot, pending: null,
+  };
+  input.sessions.set(meta.id, entry);
+  // 断线重连补推（06 §2.1/§3.4）：messages=尾部增量（NFR-5）；history=全量（v1.3 冷重建，桌面端首次打开/renderer 刷新）
+  const snapshot = await buildSessionSnapshot({
+    storage: input.storage, sessionId: meta.id, lastSeq: entry.loop.lastEventSeq,
+    phase: entry.loop.phase, model: input.providerModel, activeProviderId: input.providerId,
+    maxContextTokens: input.maxContextTokens, messages: replay.messages, history: replay.history,
+    pendingApprovals: input.permissionPending(meta.id),
+  });
+  return { sessionId: meta.id, snapshot };
 }
 
 /** session.list（06 §2.1）：默认视图只含 Active（归档经 filter.state="Archived" 查询）。 */

@@ -16,6 +16,8 @@ export interface ExecRequest {
   command: string;
   /** 必须位于 workspaceRoot 内（调用方经 guardPath 校验）。 */
   cwd: string;
+  /** workspace 根（docker 执行域挂载基准；local/wsl 不消费，缺省回退 cwd）。 */
+  workspaceRoot?: string;
   env?: Record<string, string>;
   timeoutMs?: number;
   maxOutputBytes?: number;

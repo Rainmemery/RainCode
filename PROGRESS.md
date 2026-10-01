@@ -13,11 +13,11 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 当前里程碑 | **M2 验收完成**（T2.1~T2.10 全绿；场景 5 GUI 走查已于 2026-09-29 以 CDP 自动化方式闭环，场景 6 真实 MCP 样例留人工）→ 下一里程碑 M3 |
-| 已完成任务 | T2.1 auto-compact ✅ · T2.2 mcp 包 ✅ · T2.3 子代理 ✅ · T2.4 memory 包 ✅ · T2.5 permission 补齐 ✅ · T2.6 内核增强 ✅ · T2.7 工具增强与 P1 工具 ✅ · T2.8 rpc stdio + headless ✅ · T2.9 桌面端 Alpha ✅ · T2.10 M2 验收与基准留存 ✅ · CLI 展示升级 ✅ · 产品更名 RainCode ✅ · 场景 5 桌面 GUI 走查（自动化）✅ |
+| 当前里程碑 | **M3 进行中**（T3.1 容器沙箱 ✅；M2 验收完成，场景 5 GUI 走查已于 2026-09-29 以 CDP 自动化方式闭环，场景 6 真实 MCP 样例留人工） |
+| 已完成任务 | M1 全量 ✅ · M2 全量（T2.1~T2.10）✅ · CLI 展示升级 ✅ · 产品更名 RainCode ✅ · 场景 5 桌面 GUI 走查（自动化）✅ · NFR-4 口径修正复测 ✅ · T3.1 容器沙箱 ✅ |
 | 最新提交 | 见 `git log -1` |
 | 工作区状态 | clean |
-| 门禁状态 | typecheck ✅（13 项目）/ oxlint ✅ / architecture:check ✅ / 单测 105 ✅ / smoke:p0 全回归 ✅（smoke-memory case B 竞态用例增强后复验通过）/ NFR 基准留存 `docs/benchmarks/m2-2026-09-29.md`（NFR-1~7 全达标，NFR-1 增长原因已申报；NFR-4 口径申报见 §4） |
+| 门禁状态 | typecheck ✅（13 项目）/ oxlint ✅ / architecture:check ✅ / 单测 122 ✅ / smoke:p0 全回归 ✅（smoke-memory case B 竞态用例增强后复验通过）/ NFR 基准留存 `docs/benchmarks/m2-2026-09-29.md`（NFR-1~7 全达标；NFR-4 口径修正复测中位数 414.5MB 达标见报告 §7） |
 | 快照日期 | 2026-09-29 |
 
 ---
@@ -28,14 +28,17 @@
 | --- | --- | --- | --- |
 | Phase 1 设计 | — | 7 份产品/技术设计文档 | ✅ 完成（2026-09-28） |
 | M1 | P0 | 单进程 CLI 打通日常可用闭环 | ✅ 完成（2026-09-28） |
-| M2 | P1 | 能力补全 + 桌面端 Alpha | ⬜ 未开始 |
-| M3 | P2 | 七模块全量对齐 | ⬜ 未开始 |
+| M2 | P1 | 能力补全 + 桌面端 Alpha | ✅ 完成（2026-09-29，场景 5 走查已自动化闭环） |
+| M3 | P2 | 七模块全量对齐 | 🔄 进行中（T3.1 完成） |
 
 ---
 
 ## 3. 已完成任务日志（倒序追加）
 
 > 格式：`[日期] 任务 — 结果`（含关键产出物与提交号）。**新条目插在本节最上方。**
+
+### M3 · P2（七模块全量对齐）
+- [2026-09-29] T3.1 容器沙箱（SB-3 前置 / ES-3~4）— a) `packages/tools/src/sandbox/executor.ts`：`Executor` 执行域抽象（local/docker/wsl，命令投递面；后台任务生命周期仍由 BackgroundTaskRegistry 持有——02 §5.3 start/kill/list 拆分申报，registry 单例为所有权与审计事实源）；`DockerExecutor`（ES-3）：仅挂载 workspace（fs 隔离，主机其余路径容器内不可见）+ `--network none` 缺省断网（可配 bridge）+ workdir 相对映射（`D:\ws\docs` → `/workspace/docs`）+ env `-e` 注入 + exit 后 best-effort `docker rm -f` 清理（taskkill 硬杀不经信号代理，防容器孤儿）；`WslExecutor`（ES-4）：`wsl --cd` 自动翻译路径 + `-d` 发行版 + `env K=V` 前缀注入，发行版 fs 完整可见（环境隔离非安全边界口径申报）；`resolveSandboxExecutor` 工厂：CLI 探测（docker version / wsl --status，可注入替身）→ 不可用回退 local + stderr 告警（02 §5.4），kind 标记真实执行环境；b) 配置面：shared `sandboxConfigSchema`（executor/image/network/wslDistro）进 config.json 读 strip/写 strict 双 schema，`config.set` 可定点写；c) 接线：`createBashTool({executor})` 工厂化（bash 前台经 executor.run、后台经 registry 同域投递；结果 `data.sandbox` 字段 + 非 local 内容头行标注，local 输出与 P0 字节兼容）；`BackgroundTaskRegistry({executor})`；server 装配在 `createAgentServiceNode`（异步探测，构造器保持同步）——读 config.json sandbox 节（不可读按 local）→ 探测解析 → 回退告警走 stderr（stdout 只承载协议帧），调用方显式 `tools.executor` 优先于文件配置；d) agent-service.ts 469 行逼近治理上限：resume 主流程按方法族拆分下沉 `session-support.resumeSessionFlow`（06 §5 预留拆分口径，SessionEntry/快照组装同文件归位）；e) 单测 +17 共 122（工厂解析矩阵/docker argv 策略断言含「仅挂载 workspace」越界拦截语义/wsl 翻译/bash 接线与守卫不变/后台同域）。验收口径：本机无 Docker 且 WSL 无发行版（真实执行域运行时验证留人工项，随 M3 全量对齐执行）；不可用回退告警 + argv 级隔离策略已自动化覆盖。README 新增「沙箱执行域」节。
 
 ### M2 · P1（能力补全 + 桌面端 Alpha）
 - [2026-09-29] M2 场景 5 桌面端 GUI 走查（人工项自动化闭环）— 以「构建产物 electron.exe 直启 + CDP 远程调试（--remote-debugging-port）驱动 renderer 真实输入事件」方式执行 03 §6 四项走查：① 会话管理：新建会话/列表/跨会话切换 ✓；② 工作区选择：原生目录对话框选区 → 侧栏显示 ws 路径 ✓；③ 审批弹窗：高风险徽章 + 默认 ask reason + 参数预览 + 四级决策按钮全呈现，键盘「1」直选放行（焦点在输入框时按设计忽略）、Esc 拒绝后工具卡呈现 TOOL_PERMISSION_DENIED 且文件未落盘、批准后 mkdir 真实执行 ✓；④ Provider 设置：表单添加两项 / 切换 / 活跃徽章移动 / 侧栏状态行同步 ✓；另验证「CLI 里开始的会话桌面端打开即续接」（同 RAINCODE_HOME 跨端恢复）。**走查发现并修复 4 缺陷**：a) 桌面端 dev 模式 agent 子进程 spawn 路径错误（repoRoot() 从 dist-electron/main 上溯两级得 apps/desktop 而非仓库根 → MODULE_NOT_FOUND 崩溃循环 5 次放弃，窗口仅显示「已断开」）——拆分 desktopRoot()/repoRoot() 并在放弃守护诊断中附 stderr 尾部；b) renderer 无参 RPC 调用缺 `{}`（system.ping / config.providers.list → server strict schema INVALID_PARAMS；帧序列化丢 params 键）——两处补参 + call 包装器统一 `params ?? {}` 兜底；c) **桌面端冷恢复空白**：snapshot.messages 为 NFR-5 尾部增量口径，renderer 误当全量历史用 → 已收束会话恢复视图为空——协议 v1.3 增可选 `snapshot.history`（全量消息，resume 冷恢复/幂等路径双填充，06 §7.5 登记），renderer 以 `history ?? messages` 重建（含工具卡归并）；d) 无 title 会话落库空串（桌面端新建会话 → 列表出现无文字行）——server 端 createSession 缺省「新会话」。测试设施沉淀：`scripts/llm-fixture-http.mjs` OpenAI 兼容流式 fixture（SSE tool_call 分帧/工具结果续答/run: 前缀脚本化命令），GUI 走查与后续端到端联调复用。教训：构建产物直启形态（isPackaged=false）此前从未真实联调过 agent 链路——bench:mem:desktop 仅采样内存，agent 崩溃循环不影响测量值（NFR-4 口径申报见 §4），「能跑通的门禁」≠「联调过的功能」。
@@ -89,11 +92,11 @@
 
 ## 5. 下一步队列（M3，按 07-dev-plan §4 顺序）
 
-> 取任务时**必须**回读 `docs/07-dev-plan.md` §4 对应任务行获取完整验收标准；M2 收尾人工项（桌面 GUI 走查 / 真实 MCP 任务样例 / electron-builder dist 打包）可随时穿插执行。
+> 取任务时**必须**回读 `docs/07-dev-plan.md` §4 对应任务行获取完整验收标准；M2 收尾人工项（真实 MCP 任务样例 / electron-builder dist 打包 / Docker·WSL 真实执行域运行时验证）可随时穿插执行。
 
-1. **T3.1 容器沙箱（SB-3/4）** — 容器级执行环境（Docker/Podman 探测 + 受控执行）
-2. **T3.2 远程执行复用 Executor 抽象**（依赖 T3.1）
-3. **T3.3~T3.7** — 技能加载 / 插件化 / 编排增强 / 服务器管理（详见 07 §4.1）
+1. ~~**T3.1 容器沙箱（SB-3/4）**~~ ✅（2026-09-29；Docker/WSL 真实运行时验证留人工——本机无 Docker、WSL 无发行版）
+2. **T3.2 远程执行复用 Executor 抽象**（SSH / WSL 远程工作区，依赖 T3.1 ✅）
+3. **T3.3~T3.7** — 记忆自动抽取+管理界面 / 技能加载 / 插件化 / 编排增强 / 服务器管理（详见 07 §4.1）
 4. **T3.8 Web 界面** — WebSocketTransport + ws.auth + seq 缺口补偿
 5. **T3.9 桌面端补齐 + M3 全量对齐验收** — NFR-1~7 全量重测留存
 

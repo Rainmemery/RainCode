@@ -6,7 +6,8 @@
  * registry 单例持有为准（跨会话 kill 校验随权限链波次补齐）。会话归档前的任务
  * 提示/移交属 server/session 生命周期波次。
  */
-import { killProcessTree, spawnLocal, type ExecRequest, type SpawnHandle } from "./local-executor.js";
+import { killProcessTree, type ExecRequest, type SpawnHandle } from "./local-executor.js";
+import { LocalExecutor, type Executor } from "./executor.js";
 import type { BackgroundTaskInfo } from "@raincode/shared";
 
 export type KillOutcomeReason = "not_found" | "not_running" | "ownership_rejected" | "terminated";
@@ -32,6 +33,12 @@ interface TaskEntry {
 export class BackgroundTaskRegistry {
   private readonly tasks = new Map<string, TaskEntry>();
   private nextId = 0;
+  /** 执行域（M3 T3.1）：后台任务与前台 bash 同域投递；缺省 local。 */
+  private readonly executor: Executor;
+
+  constructor(options: { executor?: Executor } = {}) {
+    this.executor = options.executor ?? new LocalExecutor();
+  }
 
   /** 启动后台任务：登记 Running 后 fire-and-forget；退出时按 exitCode/超时/kill 归档状态。 */
   start(req: ExecRequest): BackgroundTask {
@@ -44,7 +51,7 @@ export class BackgroundTaskRegistry {
     };
     this.tasks.set(taskId, entry);
 
-    const handle = spawnLocal(req);
+    const handle = this.executor.spawn(req);
     entry.handle = handle;
     void handle.exit.then(({ exitCode, timedOut, killed }) => {
       entry.info = {

@@ -18,17 +18,14 @@ import type {
   SessionResumeParams,
   SessionSendParams,
   SessionSetModeParams,
-  SessionSnapshotPayload,
   SessionSteerParams,
   SystemShutdownParams,
 } from "@raincode/shared";
-import type { MessageRecord } from "@raincode/shared";
 import { RpcCallError, createServiceBinding } from "@raincode/rpc";
 import type { IMessageTransport, RpcMethodHandler, RpcServiceBinding } from "@raincode/rpc";
-import { Storage, StorageError } from "@raincode/storage";
-import type { SessionResume } from "@raincode/storage";
+import { Storage } from "@raincode/storage";
 import { createBuiltinTools, ToolExecutor } from "@raincode/tools";
-import type { BackgroundTaskRegistry, ToolRegistry } from "@raincode/tools";
+import type { BackgroundTaskRegistry, Executor, ToolRegistry } from "@raincode/tools";
 import { alwaysAllowApprover, alwaysDenyApprover, createMetadataPermissionPort } from "@raincode/agent-core";
 import type { AskUserChannelRequest, CompactionOptions, LlmPort, PermissionPort, SessionEventPublisher, ToolPhaseDeps, TurnOutcome } from "@raincode/agent-core";
 import { ConfigDomain } from "./config-domain.js";
@@ -40,13 +37,12 @@ import { buildLlmClient } from "./llm-factory.js";
 import {
   assertNoRunningBackgroundTasks,
   buildCompactionOptions,
-  buildSessionSnapshot,
   compactSession,
   createSessionLoop,
   eventPublisher,
   listSessions,
   recordUsage,
-  seedEventSeq,
+  resumeSessionFlow,
 } from "./session-support.js";
 import type { SessionEntry } from "./session-support.js";
 import { PermissionRuntime } from "./permission-runtime.js";
@@ -70,6 +66,8 @@ export interface ToolRuntimeConfig {
   /** 仅 default-allow 策略生效（normal 策略下忽略，走真实权限链）。 */
   approval?: "always-allow" | "always-deny";
   registry?: ToolRegistry;
+  /** 沙箱执行域（M3 T3.1：node.ts 按 config.json sandbox.executor 解析注入；缺省 local）。 */
+  executor?: Executor;
 }
 
 /** 权限域装配（06 §2.2；策略模式：default-allow[仅开发] / normal[默认]）。 */
@@ -134,8 +132,8 @@ export class AgentService {
     this.compaction = buildCompactionOptions(this.options.compaction, this.maxContextTokens);
     this.config = new ConfigDomain(new ConfigStore({ dataRoot: options.storage.dataRoot }));
 
-    // 工具系统组装（server 是唯一组装点；tools→shared、agent-core→tools 依赖方向不变）
-    const builtin = createBuiltinTools();
+    // 工具系统组装（server 唯一组装点）；沙箱执行域经 ToolRuntimeConfig.executor 注入（node.ts 解析 config.json sandbox）
+    const builtin = createBuiltinTools(options.tools?.executor !== undefined ? { executor: options.tools.executor } : {});
     const registry = options.tools?.registry ?? builtin.registry;
     let permission: PermissionPort;
     if ((options.permission?.policy ?? "normal") === "normal") {
@@ -393,47 +391,22 @@ export class AgentService {
   }
 
   private async resume(params: SessionResumeParams): Promise<unknown> {
-    const existing = this.sessions.get(params.sessionId);
-    if (existing) {
-      // 幂等：会话已 Active 直接返回当前快照（06 §2.1）；history=loop 内存历史（renderer 刷新冷重建同语义）
-      return { sessionId: params.sessionId, snapshot: await this.snapshotOf(params.sessionId, existing, existing.loop.getHistory()) };
-    }
-    const meta = await this.options.storage.sessions.get(params.sessionId);
-    if (!meta) {
-      throw new RpcCallError("SESSION_NOT_FOUND", `session not found: ${params.sessionId}`);
-    }
-    if (meta.status === "archived") {
-      // 归档会话不可恢复（本波口径；06 §2.1 未定义归档恢复路径）
-      throw new RpcCallError("SESSION_NOT_FOUND", `session is archived: ${params.sessionId}`);
-    }
-    let replay: SessionResume;
-    try {
-      replay = await this.options.storage.resumeSession(params.sessionId);
-    } catch (reason: unknown) {
-      if (reason instanceof StorageError && reason.code === "SESSION_NOT_FOUND") {
-        throw new RpcCallError("SESSION_NOT_FOUND", `session not found: ${params.sessionId}`);
-      }
-      throw reason;
-    }
-    const workspaceRoot = (await this.options.storage.workspaceRootOf(meta.id)) ?? process.cwd();
-    const llm = this.llmFor(undefined);
-    const publish = this.publisher();
-    const loop = createSessionLoop({
-      sessionId: meta.id, mode: meta.mode, llm, storage: this.options.storage, publish,
-      ...((await memoryLoopEnhancements(this.memory, this.options.systemPrompt, workspaceRoot, meta.id, meta.workspaceId))),
-      tools: this.toolDeps, workspaceRoot, workspaceId: meta.workspaceId,
-      initialHistory: replay.history,
-      initialEventSeq: seedEventSeq(replay),
-      initialEpoch: replay.epoch,
+    // 主流程在 session-support.resumeSessionFlow（方法族拆分）；本层只注入装配依赖
+    return await resumeSessionFlow({
+      storage: this.options.storage,
+      sessions: this.sessions,
+      llmFor: (id) => this.llmFor(id),
+      publishFactory: () => this.publisher(),
+      toolDeps: this.toolDeps,
+      memory: this.memory,
+      ...(this.options.systemPrompt !== undefined && { systemPrompt: this.options.systemPrompt }),
       ...(this.compaction !== undefined && { compaction: this.compaction }),
+      providerId: this.providerId,
+      providerModel: this.providerModel,
+      maxContextTokens: this.maxContextTokens,
+      permissionPending: (sessionId) => this.permission?.pendingGrantsOf(sessionId) ?? [],
+      sessionId: params.sessionId,
     });
-    const entry: SessionEntry = {
-      loop, llm, providerId: this.providerId,
-      workspaceHash: meta.workspaceId, mode: meta.mode, workspaceRoot, pending: null,
-    };
-    this.sessions.set(meta.id, entry);
-    // 断线重连补推（06 §2.1/§3.4）：messages=尾部增量（NFR-5）；history=全量（v1.3 冷重建，桌面端首次打开/renderer 刷新）
-    return { sessionId: meta.id, snapshot: await this.snapshotOf(meta.id, entry, replay.messages, replay.history) };
   }
 
   // system 域（06 §2.8）
@@ -491,10 +464,5 @@ export class AgentService {
       throw new RpcCallError("SESSION_ARCHIVED", `session is archived (read-only): ${sessionId}`);
     }
     throw new RpcCallError("SESSION_NOT_FOUND", `session not found or not resumed: ${sessionId}`);
-  }
-
-  /** T2.8 补推（06 §3.2/02 §6.4）：messages=尾部增量 / pendingApprovals=未决审批；history=可选全量（v1.3 冷重建）。 */
-  private async snapshotOf(sessionId: string, entry: SessionEntry, tailMessages: MessageRecord[] = [], history?: MessageRecord[]): Promise<SessionSnapshotPayload> {
-    return buildSessionSnapshot({ storage: this.options.storage, sessionId, lastSeq: entry.loop.lastEventSeq, phase: entry.loop.phase, model: this.providerModel, activeProviderId: this.providerId, maxContextTokens: this.maxContextTokens, messages: tailMessages, pendingApprovals: this.permission?.pendingGrantsOf(sessionId) ?? [], ...(history !== undefined && { history }) });
   }
 }

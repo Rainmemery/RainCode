@@ -5,13 +5,14 @@
  */
 import { ToolRegistry } from "./registry.js";
 import { BackgroundTaskRegistry } from "./sandbox/background.js";
+import type { Executor } from "./sandbox/executor.js";
 import { TodoStore } from "./todo-store.js";
 import { readTool } from "./handlers/read.js";
 import { writeTool } from "./handlers/write.js";
 import { editTool } from "./handlers/edit.js";
 import { globTool } from "./handlers/glob.js";
 import { grepTool } from "./handlers/grep.js";
-import { bashTool } from "./handlers/bash.js";
+import { createBashTool } from "./handlers/bash.js";
 import { webFetchTool } from "./handlers/web-fetch.js";
 import { askUserTool } from "./handlers/ask-user.js";
 import { createTodoWriteTool, createTodoReadTool } from "./handlers/todo.js";
@@ -32,8 +33,20 @@ export interface CreateBuiltinToolsOptions {
   todoStateDir?: string | null;
 }
 
+export interface CreateBuiltinToolsOptions {
+  /**
+   * todo 持久化目录回退（缺省 null）；实际持久化目录优先取执行 ctx 的
+   * `<workspaceRoot>/.raincode/todos`（见 handlers/todo.ts），此选项仅作显式覆盖。
+   */
+  todoStateDir?: string | null;
+  /** 沙箱执行域（M3 T3.1：server 按 config.json sandbox 解析注入；缺省 local）。 */
+  executor?: Executor;
+}
+
 export function createBuiltinTools(options: CreateBuiltinToolsOptions = {}): BuiltinToolSet {
-  const background = new BackgroundTaskRegistry();
+  const background = new BackgroundTaskRegistry(
+    options.executor !== undefined ? { executor: options.executor } : {},
+  );
   const todos = new TodoStore(options.todoStateDir ?? null);
   const registry = new ToolRegistry();
   registry.register(readTool);
@@ -41,7 +54,7 @@ export function createBuiltinTools(options: CreateBuiltinToolsOptions = {}): Bui
   registry.register(editTool);
   registry.register(globTool);
   registry.register(grepTool);
-  registry.register(bashTool);
+  registry.register(createBashTool(options.executor !== undefined ? { executor: options.executor } : {}));
   registry.register(webFetchTool);
   registry.register(askUserTool);
   registry.register(createTodoWriteTool(todos));

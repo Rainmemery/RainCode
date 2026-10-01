@@ -30,7 +30,7 @@ export { writeTool } from "./handlers/write.js";
 export { editTool } from "./handlers/edit.js";
 export { globTool } from "./handlers/glob.js";
 export { grepTool } from "./handlers/grep.js";
-export { bashTool } from "./handlers/bash.js";
+export { createBashTool, bashTool } from "./handlers/bash.js";
 export { webFetchTool, htmlToText } from "./handlers/web-fetch.js";
 export { askUserTool } from "./handlers/ask-user.js";
 export { createTodoReadTool, createTodoWriteTool } from "./handlers/todo.js";
@@ -52,6 +52,14 @@ export type {
 } from "./sandbox/local-executor.js";
 export { BackgroundTaskRegistry } from "./sandbox/background.js";
 export type { BackgroundTask, KillOutcome, KillOutcomeReason } from "./sandbox/background.js";
+export { DockerExecutor, LocalExecutor, WslExecutor, resolveSandboxExecutor } from "./sandbox/executor.js";
+export type {
+  Executor,
+  ExecutorKind,
+  ExecutorTransport,
+  ResolvedSandboxExecutor,
+  SandboxProbes,
+} from "./sandbox/executor.js";
 
 // 路径守卫与投影工具
 export { guardPath, normalizeForGuard } from "./path-guard.js";

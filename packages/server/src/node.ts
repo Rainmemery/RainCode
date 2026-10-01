@@ -4,9 +4,13 @@
  * 打开 Storage → 组装 LlmClient + AgentService → 绑定到注入的 transport。
  * 端层只领取「组装好的服务」，禁止各自拼装内核依赖（杜绝第二组装点）。
  */
-import { Storage } from "@raincode/storage";
+import { Storage, resolveDataRoot } from "@raincode/storage";
 import type { IMessageTransport, RpcServiceBinding } from "@raincode/rpc";
+import type { SandboxConfig } from "@raincode/shared";
+import { resolveSandboxExecutor } from "@raincode/tools";
+import type { ResolvedSandboxExecutor } from "@raincode/tools";
 import { AgentService } from "./agent-service.js";
+import { ConfigStore } from "./config-store.js";
 import type {
   AgentServiceOptions,
   PermissionConfig,
@@ -35,6 +39,8 @@ export interface AgentServiceNodeOptions {
   subagent?: AgentServiceOptions["subagent"];
   /** memory 域装配（02 §7；缺省 = 不启用；workspaceRoot 为 promote 反查兜底域）。 */
   memory?: AgentServiceOptions["memory"];
+  /** 沙箱执行域配置（M3 T3.1；缺省读 `<dataRoot>/config.json` 的 sandbox 节，不可读按 local）。 */
+  sandboxConfig?: SandboxConfig;
 }
 
 export interface AgentServiceNode {
@@ -45,12 +51,33 @@ export interface AgentServiceNode {
   close(): Promise<void>;
 }
 
+/** 沙箱执行域解析（M3 T3.1）：显式配置优先，缺省读 config.json sandbox 节；回退告警走 stderr（诊断通道，stdout 只承载协议帧）。 */
+async function resolveNodeSandbox(dataRoot: string, override: SandboxConfig | undefined): Promise<ResolvedSandboxExecutor> {
+  let config = override;
+  if (config === undefined) {
+    try {
+      config = new ConfigStore({ dataRoot }).read().sandbox;
+    } catch {
+      config = undefined; // config.json 缺失/非法按缺省 local（合法性由 config 域方法单独报错）
+    }
+  }
+  const resolved = await resolveSandboxExecutor(config);
+  for (const warning of resolved.warnings) {
+    process.stderr.write(`[raincode/server] ${warning}\n`);
+  }
+  return resolved;
+}
+
 export async function createAgentServiceNode(
   transport: IMessageTransport,
   options: AgentServiceNodeOptions = {},
 ): Promise<AgentServiceNode> {
   const storage =
     options.storage ?? (await Storage.open({ dataRoot: options.dataRoot, env: options.env }));
+  const sandboxResolved = await resolveNodeSandbox(
+    options.dataRoot ?? resolveDataRoot(options.env),
+    options.sandboxConfig,
+  );
   // 存储关闭单次化：system.shutdown（经 AgentService.onShutdown）与 node.close() 共用同一守卫，
   // 保证 shutdown 应答仍可经 transport 投递后再由持有方收尾（06 §6.2 CLI 行映射）。
   let storageClosed = false;
@@ -63,7 +90,11 @@ export async function createAgentServiceNode(
     storage,
     provider: options.provider ?? null,
     systemPrompt: options.systemPrompt,
-    tools: options.tools,
+    // 沙箱执行域：调用方显式注入（tools.executor）优先，否则用 config.json 解析结果
+    tools: {
+      ...(options.tools ?? {}),
+      ...(options.tools?.executor === undefined && { executor: sandboxResolved.executor }),
+    },
     permission: options.permission,
     ...(options.compaction !== undefined && { compaction: options.compaction }),
     ...(options.mcp !== undefined && { mcp: options.mcp }),
