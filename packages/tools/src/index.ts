@@ -52,13 +52,14 @@ export type {
 } from "./sandbox/local-executor.js";
 export { BackgroundTaskRegistry } from "./sandbox/background.js";
 export type { BackgroundTask, KillOutcome, KillOutcomeReason } from "./sandbox/background.js";
-export { DockerExecutor, LocalExecutor, WslExecutor, resolveSandboxExecutor } from "./sandbox/executor.js";
+export { DockerExecutor, LocalExecutor, SshExecutor, WslExecutor, resolveSandboxExecutor, toRemotePath } from "./sandbox/executor.js";
 export type {
   Executor,
   ExecutorKind,
   ExecutorTransport,
   ResolvedSandboxExecutor,
   SandboxProbes,
+  SshTarget,
 } from "./sandbox/executor.js";
 
 // 路径守卫与投影工具

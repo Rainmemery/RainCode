@@ -13,6 +13,7 @@ import {
   BackgroundTaskRegistry,
   DockerExecutor,
   LocalExecutor,
+  SshExecutor,
   WslExecutor,
   resolveSandboxExecutor,
   type ExecRequest,
@@ -62,6 +63,7 @@ describe("resolveSandboxExecutor（02 §5.4 工厂）", () => {
     const resolved = await resolveSandboxExecutor(undefined, {
       docker: async () => { probed = true; return true; },
       wsl: async () => { probed = true; return true; },
+      ssh: async () => { probed = true; return true; },
     });
     assert.equal(resolved.executor.kind, "local");
     assert.equal(resolved.requested, "local");
@@ -73,6 +75,7 @@ describe("resolveSandboxExecutor（02 §5.4 工厂）", () => {
     const resolved = await resolveSandboxExecutor({ executor: "docker" }, {
       docker: async () => false,
       wsl: async () => true,
+      ssh: async () => false,
     });
     assert.equal(resolved.executor.kind, "local");
     assert.equal(resolved.requested, "docker");
@@ -84,6 +87,7 @@ describe("resolveSandboxExecutor（02 §5.4 工厂）", () => {
     const resolved = await resolveSandboxExecutor({ executor: "wsl" }, {
       docker: async () => true,
       wsl: async () => false,
+      ssh: async () => false,
     });
     assert.equal(resolved.executor.kind, "local");
     assert.ok(resolved.warnings[0]!.includes("wsl"));
@@ -92,7 +96,7 @@ describe("resolveSandboxExecutor（02 §5.4 工厂）", () => {
   it("docker 可用：DockerExecutor 生效且配置透传", async () => {
     const resolved = await resolveSandboxExecutor(
       { executor: "docker", image: "ubuntu:24.04", network: "bridge" },
-      { docker: async () => true, wsl: async () => false },
+      { docker: async () => true, wsl: async () => false, ssh: async () => false },
     );
     assert.ok(resolved.executor instanceof DockerExecutor);
     assert.deepEqual(resolved.warnings, []);
@@ -198,6 +202,94 @@ describe("LocalExecutor", () => {
     const result = await local.run({ command: "git status", cwd: WORKSPACE });
     assert.equal(result.exitCode, 0);
     assert.equal(execed[0]!.command, "git status");
+  });
+});
+
+describe("SshExecutor（T3.2 / ES-5 远程工作区）", () => {
+  const target = {
+    host: "build.example.com",
+    user: "deploy",
+    port: 2222,
+    identityFile: "C:/keys/id_ed25519",
+    remoteWorkspaceRoot: "/srv/work/ws",
+  };
+
+  it("远端路径映射：workspace 内 cwd → remoteWorkspaceRoot 相对展开", () => {
+    const wsl = new SshExecutor(target);
+    const { file, args } = wsl.buildArgv({ command: "make", cwd: inside("src"), workspaceRoot: WORKSPACE });
+    assert.equal(file, "ssh");
+    const remote = args.at(-1)!;
+    assert.ok(remote.startsWith(`cd "/srv/work/ws/src" && `), remote);
+    assert.ok(remote.includes("sh -c"));
+  });
+
+  it("连接参数：user@host + -p 端口 + -i 密钥 + BatchMode（禁交互提示）", () => {
+    const wsl = new SshExecutor(target);
+    const { args } = wsl.buildArgv({ command: "ls", cwd: WORKSPACE, workspaceRoot: WORKSPACE });
+    assert.ok(args.includes("-o"));
+    assert.ok(args.includes("BatchMode=yes"));
+    assert.ok(args.includes("-p"));
+    assert.ok(args.includes("2222"));
+    assert.ok(args.includes("-i"));
+    assert.ok(args.includes("C:/keys/id_ed25519"));
+    assert.ok(args.includes("deploy@build.example.com"));
+  });
+
+  it("env 注入：远端 env K=V 前缀（ssh 不转发本地环境）", () => {
+    const wsl = new SshExecutor(target);
+    const remote = wsl.buildRemoteCommand({ command: "npm test", cwd: WORKSPACE, env: { CI: "1" } });
+    assert.ok(remote.includes(`env CI=${JSON.stringify("1")} sh -c`));
+  });
+
+  it("无 user/无端口：destination 仅 host", () => {
+    const wsl = new SshExecutor({ host: "h1", remoteWorkspaceRoot: "/w" });
+    const { args } = wsl.buildArgv({ command: "ls", cwd: WORKSPACE, workspaceRoot: WORKSPACE });
+    assert.ok(args.includes("h1"));
+    assert.ok(!args.includes("-p"));
+  });
+
+  it("工厂：探针通过生效 / 未配置 ssh 节或不可达回退告警", async () => {
+    const ok = await resolveSandboxExecutor(
+      { executor: "ssh", ssh: target },
+      { docker: async () => false, wsl: async () => false, ssh: async () => true },
+    );
+    assert.equal(ok.executor.kind, "ssh");
+    assert.ok(ok.executor instanceof SshExecutor);
+    assert.deepEqual(ok.warnings, []);
+
+    const noCfg = await resolveSandboxExecutor(
+      { executor: "ssh" },
+      { docker: async () => false, wsl: async () => false, ssh: async () => false },
+    );
+    assert.equal(noCfg.executor.kind, "local");
+    assert.ok(noCfg.warnings[0]!.includes("ssh 连接配置"));
+
+    const unreachable = await resolveSandboxExecutor(
+      { executor: "ssh", ssh: target },
+      { docker: async () => false, wsl: async () => false, ssh: async () => false },
+    );
+    assert.equal(unreachable.executor.kind, "local");
+    assert.ok(unreachable.warnings[0]!.includes("连通性探测失败"));
+  });
+
+  it("bash 接线：data.sandbox=ssh 且内容头行标注", async () => {
+    const { transport, execed } = recordingTransport();
+    const tool = createBashTool({ executor: new SshExecutor(target, transport) });
+    const background = new BackgroundTaskRegistry();
+    const out = await tool.execute(
+      { command: "make all" },
+      {
+        signal: new AbortController().signal,
+        workspaceRoot: WORKSPACE,
+        cwd: WORKSPACE,
+        sessionKey: "test",
+        background,
+      },
+    );
+    assert.equal(out.data.sandbox, "ssh");
+    assert.ok(out.content!.startsWith("sandbox: ssh\nexit code: 0"));
+    assert.ok(execed[0]!.command.startsWith("ssh -o"));
+    assert.ok(execed[0]!.command.includes("make all"));
   });
 });
 

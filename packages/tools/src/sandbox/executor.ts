@@ -15,7 +15,7 @@ import { relative, resolve } from "node:path";
 import type { SandboxConfig } from "@raincode/shared";
 import { execLocal, spawnLocal, type ExecRequest, type ExecResult, type SpawnHandle } from "./local-executor.js";
 
-export type ExecutorKind = "local" | "docker" | "wsl";
+export type ExecutorKind = "local" | "docker" | "wsl" | "ssh";
 
 /** 执行域抽象（02 §5.3 Executor 的命令投递面；run=前台，spawn=后台/流式）。 */
 export interface Executor {
@@ -201,6 +201,82 @@ export class WslExecutor implements Executor {
 }
 
 // ---------------------------------------------------------------------------
+// SSH 远程执行域（T3.2 / ES-5：远程工作区执行，本地审计记录保留——JSONL 事件流与审批审计均落本地）
+// ---------------------------------------------------------------------------
+
+export interface SshTarget {
+  host: string;
+  user?: string;
+  port?: number;
+  identityFile?: string;
+  /** 远端 workspace 根绝对路径（POSIX）；与本地 workspaceRoot 一一映射。 */
+  remoteWorkspaceRoot: string;
+}
+
+/** 本地 cwd（workspace 内）→ 远端绝对路径（前缀映射；guardPath 已保证 cwd ∈ workspaceRoot）。 */
+export function toRemotePath(target: SshTarget, workspaceRoot: string, cwd: string): string {
+  const rel = relative(resolve(workspaceRoot), resolve(cwd));
+  const root = target.remoteWorkspaceRoot.replace(/\/+$/, "");
+  if (rel.length === 0 || rel.startsWith("..")) {
+    return root; // 防御：非内路径一律落在远端根
+  }
+  return `${root}/${rel.replace(/\\/g, "/")}`;
+}
+
+export class SshExecutor implements Executor {
+  readonly kind = "ssh" as const;
+  private readonly target: SshTarget;
+  private readonly transport: ExecutorTransport;
+
+  constructor(target: SshTarget, transport: ExecutorTransport = localTransport) {
+    this.target = target;
+    this.transport = transport;
+  }
+
+  /** ssh argv 前缀（连接参数；BatchMode 禁交互提示——密钥不通即失败收敛，不挂审批链）。 */
+  private connectionArgs(): string[] {
+    const args = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new"];
+    if (this.target.port !== undefined) args.push("-p", String(this.target.port));
+    if (this.target.identityFile !== undefined) args.push("-i", this.target.identityFile);
+    const destination = this.target.user !== undefined ? `${this.target.user}@${this.target.host}` : this.target.host;
+    return [...args, destination];
+  }
+
+  /**
+   * 远端命令串：`cd <remoteCwd> && env K=V ... sh -c <command>`。
+   * env 经远端 env 前缀注入（ssh 不转发本地环境，AcceptEnv 依赖服务端配置不可靠）。
+   */
+  buildRemoteCommand(req: ExecRequest): string {
+    const remoteCwd = toRemotePath(this.target, resolve(req.workspaceRoot ?? req.cwd), req.cwd);
+    const envEntries = Object.entries(req.env ?? {});
+    const envPrefix = envEntries.map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(" ");
+    const inner = envPrefix.length > 0
+      ? `env ${envPrefix} sh -c ${JSON.stringify(req.command)}`
+      : `sh -c ${JSON.stringify(req.command)}`;
+    return `cd ${JSON.stringify(remoteCwd)} && ${inner}`;
+  }
+
+  buildArgv(req: ExecRequest): { file: string; args: string[] } {
+    return { file: "ssh", args: [...this.connectionArgs(), this.buildRemoteCommand(req)] };
+  }
+
+  display(req: ExecRequest): string {
+    const { args } = this.buildArgv(req);
+    return `ssh ${args.slice(0, -1).join(" ")} ${args.at(-1)}`;
+  }
+
+  run(req: ExecRequest): Promise<ExecResult> {
+    const { file, args } = this.buildArgv(req);
+    return this.transport.exec({ ...req, command: [file, ...args].join(" ") });
+  }
+
+  spawn(req: ExecRequest): SpawnHandle {
+    const { file, args } = this.buildArgv(req);
+    return this.transport.spawn({ ...req, command: [file, ...args].join(" ") });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 可用性探测与工厂（02 §5.4：不可用回退 local 并告警）
 // ---------------------------------------------------------------------------
 
@@ -212,16 +288,37 @@ function probeByCli(command: string, timeoutMs: number): Promise<boolean> {
   });
 }
 
-/** CLI 探测（可注入替身；docker version / wsl --status 可执行即视为可用）。 */
+/** CLI 探测（可注入替身；docker version / wsl --status / ssh 连通性可执行即视为可用）。 */
 export interface SandboxProbes {
   docker(): Promise<boolean>;
   wsl(): Promise<boolean>;
+  ssh(config: SandboxConfig | undefined): Promise<boolean>;
 }
 
 const defaultProbes: SandboxProbes = {
   docker: () => probeByCli("docker version --format ok", 8_000),
   wsl: () => probeByCli("wsl --status", 8_000),
+  ssh: (config) => {
+    if (config?.executor !== "ssh" || config.ssh === undefined) {
+      return Promise.resolve(false);
+    }
+    // 探测 = 对配置主机跑 `exit 0`（BatchMode：密钥不通即失败，不挂交互提示）
+    const target: SshTarget = config.ssh;
+    const args = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=6"];
+    if (target.port !== undefined) args.push("-p", String(target.port));
+    if (target.identityFile !== undefined) args.push("-i", target.identityFile);
+    const destination = target.user !== undefined ? `${target.user}@${target.host}` : target.host;
+    return probeByCliArgs("ssh", [...args, destination, "exit 0"], 10_000);
+  },
 };
+
+function probeByCliArgs(file: string, args: string[], timeoutMs: number): Promise<boolean> {
+  return new Promise((resolvePromise) => {
+    execFile(file, args, { timeout: timeoutMs, windowsHide: true }, (err) => {
+      resolvePromise(err === null);
+    });
+  });
+}
 
 export interface ResolvedSandboxExecutor {
   /** 实际生效执行域（配置期望不可用时 = local 回退）。 */
@@ -232,7 +329,7 @@ export interface ResolvedSandboxExecutor {
   warnings: string[];
 }
 
-/** 解析沙箱执行域：未配置 → local（零探测开销）；docker/wsl 不可用 → 回退 local + 告警。 */
+/** 解析沙箱执行域：未配置 → local（零探测开销）；docker/wsl/ssh 不可用 → 回退 local + 告警。 */
 export async function resolveSandboxExecutor(
   config: SandboxConfig | undefined,
   probes: SandboxProbes = defaultProbes,
@@ -267,6 +364,24 @@ export async function resolveSandboxExecutor(
       executor: new LocalExecutor(),
       requested,
       warnings: [`sandbox.executor=wsl 不可用（wsl 探测失败/无发行版），回退 local（02 §5.4）`],
+    };
+  }
+  if (requested === "ssh") {
+    if (config?.ssh !== undefined && (await probes.ssh(config))) {
+      return {
+        executor: new SshExecutor(config.ssh),
+        requested,
+        warnings: [],
+      };
+    }
+    return {
+      executor: new LocalExecutor(),
+      requested,
+      warnings: [
+        config?.ssh === undefined
+          ? "sandbox.executor=ssh 缺少 ssh 连接配置（sandbox.ssh），回退 local（02 §5.4）"
+          : `sandbox.executor=ssh 不可达（${config.ssh.host} 连通性探测失败），回退 local（02 §5.4）`,
+      ],
     };
   }
   return { executor: new LocalExecutor(), requested, warnings: [] };

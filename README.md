@@ -29,7 +29,8 @@ RainCode 的功能定位与 Claude Code / Codex 对齐：整合**代码生成、
 | 桌面端 Alpha（Electron 三泳道 + React，会话流 / 工具卡 / 审批弹窗 / Provider 设置） | ✅ M2 |
 | 会话管理（rename / fork / usage 费用估算 / archive / mode） | ✅ M2 |
 | 容器沙箱（Docker / WSL 执行域 + 不可用回退，config.json `sandbox` 节） | ✅ M3 |
-| 技能 / 插件 / 远程执行 / Web 界面 | ⬜ M3 |
+| 远程执行（SSH 远程工作区，复用 Executor 抽象，本地审计保留） | ✅ M3 |
+| 技能 / 插件 / 编排增强 / MCP 服务器管理 / Web 界面 | ⬜ M3 |
 
 ## 环境要求
 
@@ -247,17 +248,25 @@ bash 与后台任务的执行环境经 `Executor` 抽象投递（02 §5.3 扩展
 ```jsonc
 {
   "sandbox": {
-    "executor": "docker",          // local（缺省）| docker | wsl
+    "executor": "docker",          // local（缺省）| docker | wsl | ssh
     "image": "node:20-bookworm-slim", // docker 专用，缺省如左
     "network": "none",             // docker 网络策略：none（缺省，断网隔离）| bridge
-    "wslDistro": "Ubuntu-22.04"    // wsl 专用，缺省默认发行版
+    "wslDistro": "Ubuntu-22.04",   // wsl 专用，缺省默认发行版
+    "ssh": {                       // ssh 专用（executor=ssh 时必填）
+      "host": "build.example.com",
+      "user": "deploy",            // 可选，缺省当前用户
+      "port": 22,                  // 可选
+      "identityFile": "C:/keys/id_ed25519", // 可选；BatchMode 下密钥不通即回退
+      "remoteWorkspaceRoot": "/srv/work/ws" // 远端 workspace 根（与本地一一映射）
+    }
   }
 }
 ```
 
 - **docker（ES-3）**：容器内仅挂载 workspace（文件系统隔离，主机其余路径不可见）+ 缺省断网；命令经 `docker run --rm` 执行，workdir 自动映射（`D:\ws\docs` → `/workspace/docs`）；CLI 进程退出后 best-effort `docker rm -f` 清理容器。
 - **wsl（ES-4）**：Linux 环境隔离（`wsl --cd` 自动翻译路径）；发行版文件系统完整可见——环境隔离而非安全边界。
-- **回退与标记**：执行域不可用（CLI 探测失败，如本机未装 Docker/WSL 发行版）自动回退 local 并在 stderr 告警；bash 结果 `data.sandbox` 与非 local 时的内容头行标注真实执行环境。local 模式保持 P0「约束非隔离」语义（路径守卫 / 审批前置 / 超时终止不变）。
+- **ssh（ES-5 远程执行）**：命令经 `ssh` 在远端主机执行，本地 cwd 前缀映射到 `remoteWorkspaceRoot`（远端仓库修改 → 远程测试 → 结果回传）；连接参数含 `-o BatchMode=yes`（密钥不通即收敛，不挂交互提示）；**本地审计记录保留**——JSONL 事件流、审批审计均落本地 `RAINCODE_HOME`，与执行域无关。
+- **回退与标记**：执行域不可用（CLI 探测失败——本机未装 Docker/WSL 发行版、SSH 主机不可达或连接配置缺失）自动回退 local 并在 stderr 告警；bash 结果 `data.sandbox` 与非 local 时的内容头行标注真实执行环境。local 模式保持 P0「约束非隔离」语义（路径守卫 / 审批前置 / 超时终止不变）。
 
 ## 命令权限与审批
 

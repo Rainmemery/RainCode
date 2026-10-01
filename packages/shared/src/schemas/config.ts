@@ -50,16 +50,29 @@ export const providerAddInputSchema = providerInputSchema.extend({
 export type ProviderAddInput = z.infer<typeof providerAddInputSchema>;
 
 /**
- * 沙箱执行域配置（M3 T3.1 / 02 §5.3 Executor 扩展点）。
- * executor 期望执行环境：local（缺省）/ docker（容器级 fs+网络隔离）/ wsl（Linux 环境隔离）；
- * 不可用时工厂回退 local 并告警（02 §5.4），kind 标记保证 UI 展示真实执行环境。
- * docker：仅挂载 workspace（fs 隔离），network 缺省 none（容器无外网）；wsl：环境隔离非安全边界。
+ * 沙箱执行域配置（M3 T3.1/T3.2 / 02 §5.3 Executor 扩展点）。
+ * executor 期望执行环境：local（缺省）/ docker（容器级 fs+网络隔离）/ wsl（Linux 环境隔离）/
+ * ssh（T3.2 ES-5 远程工作区，本地审计保留）；不可用时工厂回退 local 并告警（02 §5.4），
+ * kind 标记保证 UI 展示真实执行环境。
+ * docker：仅挂载 workspace（fs 隔离），network 缺省 none（容器无外网）；wsl：环境隔离非安全边界；
+ * ssh：命令在远端主机执行，workspaceRoot 映射远端路径（ssh.remoteWorkspaceRoot）。
  */
 export const sandboxConfigSchema = z.object({
-  executor: z.enum(["local", "docker", "wsl"]),
+  executor: z.enum(["local", "docker", "wsl", "ssh"]),
   image: z.string().optional(),
   network: z.enum(["none", "bridge"]).optional(),
   wslDistro: z.string().optional(),
+  /** ssh 执行域连接参数（executor=ssh 时必填；远端 workspace 根路径映射，审计记录仍落本地）。 */
+  ssh: z
+    .object({
+      host: z.string().min(1),
+      user: z.string().optional(),
+      port: z.number().int().positive().optional(),
+      identityFile: z.string().optional(),
+      /** 远端 workspace 根绝对路径（POSIX；本地 workspaceRoot 与之一一映射）。 */
+      remoteWorkspaceRoot: z.string().min(1),
+    })
+    .optional(),
 });
 export type SandboxConfig = z.infer<typeof sandboxConfigSchema>;
 
