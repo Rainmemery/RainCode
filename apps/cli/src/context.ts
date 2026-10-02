@@ -85,6 +85,7 @@ export async function startServiceNode(args: ParsedCliArgs): Promise<CliContext>
       : null,
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
     skills: {}, // skills 域启用（T3.4）：workspace 技能目录按会话 workspaceRoot 逐会话解析
+    plugins: {}, // plugins 域启用（T3.5）：数据根 plugins 目录扫描 + 激活（单插件故障隔离）
   });
   const client = createRpcClient({ transport: transports[0] });
   return { client, node, transports, providerSource: resolved ? resolved.source : "none" };

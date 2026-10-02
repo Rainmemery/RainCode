@@ -262,7 +262,16 @@ system 域承载握手、版本发现与优雅停机，是唯一与业务无关�
 | `skills.list` | `{ sessionId? }` | `{ items: SkillSummary[] }` | `SESSION_NOT_FOUND` | 技能清单（frontmatter 投影，不含模板正文）：每项含 `{ name, description, source: "workspace"\|"global", argumentHint? }`；提供 `sessionId` 时含该会话 workspace 层（同名 workspace 优先），缺省仅 global 层；**非法文件跳过不阻塞面板**（仅产诊断） |
 | `skills.invoke` | `{ sessionId, name, arguments? }` | `{ turnId, admission: "started"\|"queued", queuePosition? }` | `SESSION_NOT_FOUND` `SESSION_ARCHIVED` `SKILL_NOT_FOUND` `SKILL_INVALID` | 斜杠命令受理：按名解析 → 模板展开 → 复用 `session.send` 提交链（requireActive + provider 缺席拒绝 + 受理即返 + usage 旁路）；展开后文本即该 turn 的 user 消息（会话历史可见完整展开） |
 
-### 2.10 与 02 模块接口的映射与不暴露决策
+### 2.10 plugins 域（插件化，M3 T3.5，v1.8）
+
+插件 = `<dataRoot>/plugins/<name>/` 目录（`plugin.json` 清单：`name`[a-z0-9-]+ 与目录名一致 / `description` 必填 / `version?` / `entry?` 缺省 index.mjs + 入口 ES module 契约 `activate({ pluginDir }) → 工具描述符数组`、可选 `deactivate()`）。工具全名 `plugin__<pluginName>__<toolName>`（source="plugin"，与 `mcp__` 命名空间同构，registry 命名空间豁免对应）；描述符 `parametersJsonSchema` 走 JSON Schema 直通（plain JS 契约无 zod），`metadata` 缺省从严（needsApproval=true / riskLevel="medium"，同 MCP 口径，声明可收窄）。插件是节点全局的可执行代码扩展——不做 workspace 逐会话层（注册进全局 ToolRegistry 会跨会话泄漏；技能的 per-session 解析不适用于插件）；停用状态持久化于 `<dataRoot>/plugins.json`（`{ disabled: string[] }`，目录即配置、停用 ≠ 卸载）。故障隔离（T3.5 验收）：清单非法 / 入口缺失 / activate 抛错 → 该插件 `failed` + lastError（不阻塞启动与其他插件）；插件工具 execute 抛错 → 数据级 ToolExecutionError（TOOL_EXEC_FAILED），turn 继续模型可自纠。CLI in-process 与 stdio 宿主（桌面 agent 子进程）默认装配。
+
+| 方法 | 请求 params | 返回 result | 业务错误码 | 说明 |
+| --- | --- | --- | --- | --- |
+| `plugins.list` | `{}` | `{ plugins: PluginSummary[] }` | — | 插件摘要投影（按名排序）：`{ name, description, version?, dir, enabled, status: "active"\|"disabled"\|"failed", tools: 全名数组, lastError }`；就绪门语义——初次目录扫描完成前调用等待而非落空 |
+| `plugins.setEnabled` | `{ name, enabled }` | `{ name, enabled, status }` | `PLUGIN_NOT_FOUND` | 受理即返启停：disable = deactivate + 工具注销 + 停用名单落盘；enable = 名单移除 + 激活（失败 → failed，经 `plugin.status_changed` 与本方法可查）；同态重复请求幂等 |
+
+### 2.11 与 02 模块接口的映射与不暴露决策
 
 控制面对 02 七大模块对外接口的覆盖逐条核对如下：
 
@@ -285,7 +294,7 @@ system 域承载握手、版本发现与优雅停机，是唯一与业务无关�
 | `ProjectMemoryService.extractFromSession` | （compact 内部自动触发，无独立方法） | 结果经 `memory.entries.list` 查询 |
 | `BashRuleEvaluator`、`ProcessTreeTerminator`、`Executor`（P2 容器扩展点） | **不暴露** | 内核/沙箱内部接口，无端层语义 |
 
-### 2.11 典型交互时序
+### 2.12 典型交互时序
 
 一次「发送 → 审批 → 完成」的完整协议时序（数字为帧到达顺序）：
 
@@ -418,6 +427,7 @@ payload 惯例：所有事件 payload 继承 §3.1 的 `EventBase`；下表只�
 | `compact.started` | `{ compactionId, epoch, trigger: "auto"\|"manual" }` | 阈值命中（估算 token ≥ 窗口 80%）或手动触发（02 §1.2.5） | context 用量条「压缩中」态 |
 | `compact.completed` | `{ compactionId, epoch, ok, tokensBefore?, tokensAfter?, failure?: { reason } }` | 压缩任务终态：成功写入 epoch+1 checkpoint；失败保留原历史、阈值临时升至 90%（02 §1.2.5） | 用量条刷新与提示 |
 | `mcp.server_status_changed` | `{ serverKey, status: "Disconnected"\|"Connecting"\|"Connected"\|"Reconnecting"\|"Failed", toolCount?, error? }` | 02 §3.2 M1–M8 任一迁移（sessionId 缺省的全局事件） | MCP 面板状态灯；不可用工具标记 |
+| `plugin.status_changed` | `{ name, status: "active"\|"disabled"\|"failed", toolCount?, error? }` | 插件激活/停用/加载失败（v1.8，sessionId 缺省的全局事件） | 插件管理状态灯；不可用工具标记 |
 
 ### 3.3 事件投递语义
 
@@ -526,6 +536,8 @@ flush 边界保证：`message.completed`、`tool_call.*`、`permission.*`、`tur
 | 7 tool | `TOOL_INPUT_RETRY_EXCEEDED` | 单 turn 内工具参数校验失败次数超限（受限重试上限 3），强制收束 |
 | 9 skills | `SKILL_NOT_FOUND` | 技能名无法解析（未命中 / 名字非法含路径逃逸形态 / 文件读取失败） |
 | 9 skills | `SKILL_INVALID` | 技能文件校验失败（缺 frontmatter / 缺 description / name 非法）；清单路径跳过、调用路径报错 |
+| 10 plugins | `PLUGIN_NOT_FOUND` | plugins.setEnabled 未知插件名（v1.8） |
+| 10 plugins | `PLUGIN_INVALID` | 插件清单/入口/工具描述符非法（正常情况下加载期即拦截为 failed 状态，不达方法面） |
 | 8 system | — | system 域无专属业务码；停机中再收请求返回 `CANCELLED` |
 
 > 区分原则：**turn 内工具执行失败是数据不是协议错误**——模型路径与 `tool.call` 直接调用一律以 `ToolResult{isError, error}` 返回（`invalid_input` / `timeout` / `ambiguous_match` / `permission_denied` 等，见 02 §2.3/§2.4）；协议错误只表达「调用本身未能被受理或执行」。
@@ -547,6 +559,7 @@ schema 真源在 `packages/shared`（zod 单一事实源，04 §4.3 / PRD §6.2�
 | `subagent.ts` | subagent 域方法 + SubagentProfile + subagent.* 事件 payload | `subagentSchemas` | ~160 行 |
 | `memory.ts` | memory 域方法 + MemoryEntry/MemorySection | `memorySchemas` | ~140 行 |
 | `skill.ts` | skills 域方法（技能清单/斜杠命令受理）+ SkillSummary | `skillSchemas` | ~50 行 |
+| `plugin.ts` | plugins 域方法（插件清单/启停）+ PluginSummary + plugin.status_changed payload | `pluginSchemas` | ~90 行 |
 | `tool.ts` | tool 域方法 + ToolMetadata/ToolResult/ToolDescriptor | `toolSchemas` | ~180 行 |
 | `system.ts` | system 域方法 + capabilities 列表 | `systemSchemas` | ~60 行 |
 | `index.ts` | `METHOD_SCHEMAS`（method → {request, response}）与 `EVENT_SCHEMAS`（name → payload）注册表；事件构造函数 re-export | `METHOD_SCHEMAS` `EVENT_SCHEMAS` | ~120 行 |
@@ -725,12 +738,13 @@ capability 命名约定：`<domain>.<feature>`（小写点分），登记于 `sy
 | 1.5 | 2026-09-29 | T3.7 MCP 服务器管理（minor+1）：mcp 域新增 2 方法 `mcp.servers.setEnabled`（运行时启停——停 = 断连 + 工具注销 + mcp.json `enabled` 持久化，配置保留可再启；启 = 受理即返重连）与 `mcp.servers.health`（Connected server 主动 MCP ping 实测 RTT，其余状态只读投影，探测不改状态机）。协议规模 49 方法 / 18 事件 |
 | 1.6 | 2026-09-29 | T3.6 子代理编排增强（minor+1，additive）：`SubagentProfileSummary.source` 枚举增 `"builtin"`——内置角色模板（researcher/reviewer/tester，代码常量不落盘）作为 profile 解析链 workspace → global → builtin 的最后一级（用户同名 profile 遮蔽内置）；`subagent.profiles.list` 与 `agent` 工具 description 均投影内置模板；并行编排汇聚语义不变（`agent` 工具 readOnly → 同轮多派发经 ToolExecutor 只读并行执行，各完成通知按批次合并回主循环，验收用例 smoke-subagent case H）。协议规模不变（49 方法 / 18 事件） |
 | 1.7 | 2026-10-02 | T3.3 记忆自动抽取 + 管理界面（minor+1，additive）：memory 域新增 2 方法 `memory.drafts.list` / `memory.drafts.resolve`——晋升草案待确认区（02 §7.2 第三层「记忆 Agent 循环」的用户确认入口）：抽取高置信（≥0.8）新条目自动生成草案（kind → 章节预填、todo/低置信排除），confirm 经 promote 链合入 MEMORY.md、reject 仅标记，直管 promote 自动收敛同条目 pending 草案；错误码段 6 增 `MEMORY_DRAFT_NOT_FOUND`。协议规模 51 方法 / 18 事件 |
+| 1.8 | 2026-10-02 | T3.5 插件化（minor+1，additive）：新增 plugins 域 2 方法 `plugins.list` / `plugins.setEnabled`（§2.10）与新事件 `plugin.status_changed`——插件 = `<dataRoot>/plugins/<name>/`（plugin.json 清单 + 入口 ES module `activate()/deactivate()` 契约），工具以 `plugin__<pluginName>__<toolName>` 注册（source="plugin"，registry 命名空间豁免）；启停经 plugins.json 停用名单持久化（目录即配置，停用 ≠ 卸载）；故障隔离：加载失败 → failed 状态、工具执行错误 → 数据级 ToolExecutionError，插件故障不拖垮内核。错误码新增段 10：`PLUGIN_NOT_FOUND` / `PLUGIN_INVALID`。协议规模 53 方法 / 19 事件 |
 
 ---
 
 ## 8. 自检清单
 
-- [x] **控制面覆盖 02 模块接口全集**：§2.10 映射表逐条核对七大模块对外接口；`BashRuleEvaluator`/`ProcessTreeTerminator`/`Executor` 等内核内部接口的不暴露决策已注明。
+- [x] **控制面覆盖 02 模块接口全集**：§2.11 映射表逐条核对七大模块对外接口；`BashRuleEvaluator`/`ProcessTreeTerminator`/`Executor` 等内核内部接口的不暴露决策已注明。
 - [x] **数据面覆盖状态机与审批闭环关键节点**：TurnPhase 每次迁移（`turn.phase_changed`）、turn 终态（`done`/`error`）、审批闭环（`permission.requested` → `permission.respond` 单消费 → `permission.resolved`，含超时/离线兜底）、子代理镜像（02 §4.2 映射表同构）。
 - [x] **帧结构与 04 §4.1 一致**：RpcFrame 三种 kind 逐字段一致；唯一细化是 error 增加可选 `details`（兼容扩展，已在 §1.2 声明）。
 - [x] **绑定映射完整**：in-memory / stdio 逐维度对照（§6.2），方法/schema/错误码绑定无关；websocket 预留差异单列（§6.3）；renderer↔main 虚拟 stdio 已说明。

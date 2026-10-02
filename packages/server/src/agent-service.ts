@@ -3,7 +3,7 @@
  * 组装 Storage + LlmClient + SessionTurnLoop（agent-core），经 createServiceBinding 暴露控制面；
  * 方法表 schema 全部引用 @raincode/shared METHOD_SCHEMAS（04 ADR-07）；事件由 agent-core 构造 payload。
  */
-import { stat } from "node:fs/promises";
+import {  } from "node:fs/promises";
 import {
   METHOD_SCHEMAS,
   PROTOCOL_VERSION,
@@ -33,7 +33,12 @@ import { ConfigStore } from "./config-store.js";
 import { ToolDomain } from "./tool-domain.js";
 import { SessionDomain } from "./session-domain.js";
 import { appVersion } from "./app-version.js";
-import { buildLlmClient } from "./llm-factory.js";
+import {
+  buildLlmClient,
+  resolveLlmForModel,
+  resolveLlmForProvider,
+} from "./llm-factory.js";
+import type { LlmProviderResolverDeps } from "./llm-factory.js";
 import {
   assertNoRunningBackgroundTasks,
   buildCompactionOptions,
@@ -41,13 +46,16 @@ import {
   createSessionLoop,
   eventPublisher,
   listSessions,
+  assertExistingWorkspace,
   recordUsage,
+  requireActiveSession,
   resumeSessionFlow,
 } from "./session-support.js";
 import type { SessionEntry } from "./session-support.js";
 import { PermissionRuntime } from "./permission-runtime.js";
 import type { PermissionPolicy, PermissionRuntimeOptions } from "./permission-runtime.js";
 import { McpRuntime } from "./mcp-runtime.js";
+import { PluginRuntime } from "./plugin-runtime.js";
 import { SubagentRuntime } from "./subagent-runtime.js";
 import { SkillRuntime } from "./skill-runtime.js";
 import { MemoryRuntime, memoryLoopEnhancements } from "./memory-runtime.js";
@@ -90,6 +98,8 @@ export interface AgentServiceOptions {
   compaction?: { thresholdRatio?: number; keepRecentCount?: number };
   /** MCP 域装配（02 §3；缺省 = 不启用 mcp 域；workspaceRoot 为 project 层 mcp.json 判定域）。 */
   mcp?: { workspaceRoot?: string };
+  /** plugins 域装配（06 §2.10 v1.8；缺省 = 不启用；数据根取 storage.dataRoot）。 */
+  plugins?: Record<string, never>;
   /** 子代理域装配（02 §4；缺省 = 不启用 subagent 域；workspaceRoot 为 workspace 层 profiles 判定域）。 */
   subagent?: { workspaceRoot?: string };
   /** memory 域装配（02 §7；缺省 = 不启用 memory 域；workspaceRoot 为 promote 反查兜底域）；
@@ -115,6 +125,7 @@ export class AgentService {
   private readonly toolDomain: ToolDomain;
   /** MCP 域（06 §2.5；缺省未装配）。 */
   private readonly mcp: McpRuntime | null;
+  private readonly plugins: PluginRuntime | null;
   /** 子代理域（06 §2.5；缺省未装配）。 */
   private readonly subagent: SubagentRuntime | null;
   /** memory 域（06 §2.6；缺省未装配）。 */
@@ -177,6 +188,15 @@ export class AgentService {
             publish: (event) => this.binding?.publish(event),
           });
     void this.mcp?.init();
+    // 插件域（06 §2.10 v1.8）：目录扫描 + 激活异步进行，单插件故障隔离为 failed 状态
+    this.plugins =
+      options.plugins === undefined
+        ? null
+        : new PluginRuntime({
+            registry,
+            dataRoot: options.storage.dataRoot,
+            publish: (event) => this.binding?.publish(event),
+          }); // bootstrap 于构造期启动；控制面方法经就绪门等待初次扫描完成
     // 子代理域（02 §4）：agent 工具进同一 registry；子会话宿主经 SubagentLoopHost 注入（ADR-06）
     this.subagent =
       options.subagent === undefined
@@ -219,6 +239,7 @@ export class AgentService {
     void this.mcp?.close(); // MCP 子进程/连接异步收敛
     void this.subagent?.dispose(); // 子代理级联停止 + agent 工具注销（异步收敛）
     void this.memory?.dispose(); // memory 域无长驻资源（dispose 最小实现）
+    void this.plugins?.dispose(); // 插件 deactivate + 工具注销（异步收敛）
     this.sessions.clear();
   }
 
@@ -274,6 +295,7 @@ export class AgentService {
       ...(this.subagent !== null ? this.subagent.methods(register) : {}),
       ...(this.memory !== null ? this.memory.methods(register) : {}), // memory 域未装配不暴露（同上）
       ...(this.skills !== null ? this.skills.methods(register) : {}), // skills 域未装配不暴露（同上）
+      ...(this.plugins !== null ? this.plugins.methods(register) : {}), // plugins 域未装配不暴露（同上）
       // default-allow 策略未装配 permission 域（requirePermission 在调用期报 PC_GRANT_NOT_FOUND）
       ...(this.permission !== null ? this.permission.methods(register) : {}),
     };
@@ -281,15 +303,7 @@ export class AgentService {
 
   // session 域（06 §2.1）
   private async createSession(params: SessionCreateParams): Promise<unknown> {
-    // workspaceRoot 必须为已存在目录（06 §2.1）；只读存在性探测，不读写任何数据（04 §2.4 铁律 2 注记）
-    try {
-      const info = await stat(params.workspaceRoot);
-      if (!info.isDirectory()) throw new Error("not a directory");
-    } catch {
-      throw new RpcCallError("INVALID_PARAMS", "workspaceRoot must be an existing directory", {
-        workspaceRoot: params.workspaceRoot,
-      });
-    }
+    await assertExistingWorkspace(params.workspaceRoot);
     const llm = this.llmFor(params.providerId); // 显式 providerId 未知 → CONFIG_PROVIDER_NOT_FOUND
     const workspace = await this.options.storage.ensureWorkspace(params.workspaceRoot);
     const meta = await this.options.storage.createSession({
@@ -446,6 +460,7 @@ export class AgentService {
     await Promise.all(pending);
     await this.subagent?.stopAll(params.reason ?? "shutdown"); // 子代理级联兜底（02 §4.4）
     await this.mcp?.close();
+    await this.plugins?.dispose();
     await this.options.onShutdown?.();
     return { shuttingDown: true as const };
   }
@@ -455,39 +470,30 @@ export class AgentService {
     return eventPublisher(this.binding);
   }
 
+  /** 解析依赖投影（llm-factory 下沉后的结构注入；providersList 每次现取反映 switch 后活跃项）。 */
+  private llmResolverDeps(): LlmProviderResolverDeps {
+    const list = this.config.providersList();
+    return {
+      primaryProviderId: this.providerId,
+      primary: this.llm,
+      cache: this.llmByProvider,
+      activeProviderId: list.activeProviderId,
+      findProviderByModel: (model) => list.providers.find((provider) => provider.model === model),
+      providerRuntime: (id) => this.config.providerRuntime(id),
+    };
+  }
+
+  /** session.create.providerId → LLM 客户端（AC-11 语义见 llm-factory.resolveLlmForProvider）。 */
   private llmFor(providerId: string | undefined): LlmPort | null {
-    // AC-11（06 §2.3）：缺省绑定 = config.activeProviderId（switch 后新会话走新活跃项），
-    // 无 active 或 active 即主 Provider 时回退主客户端（CLI 直传 provider 场景兼容）。
-    const requested = providerId === undefined ? this.config.providersList().activeProviderId : providerId;
-    if (requested === undefined || requested === null || requested === this.providerId) return this.llm;
-    const cached = this.llmByProvider.get(requested);
-    if (cached !== undefined) return cached;
-    const runtime = this.config.providerRuntime(requested); // 未知 id → CONFIG_PROVIDER_NOT_FOUND
-    if (runtime === null) {
-      throw new RpcCallError("CONFIG_PROVIDER_NOT_FOUND", `provider not found: ${requested}`);
-    }
-    const client = buildLlmClient(runtime);
-    this.llmByProvider.set(requested, client);
-    return client;
+    return resolveLlmForProvider(this.llmResolverDeps(), providerId);
   }
 
-  /** 子代理 profile.model（模型名）→ LLM 客户端（02 §4.3）：缺省/同主模型 → 主客户端；否则按模型名匹配 config 域 Provider。 */
+  /** 子代理 profile.model（模型名）→ LLM 客户端（02 §4.3；语义见 llm-factory.resolveLlmForModel）。 */
   private llmForModel(model: string | undefined): LlmPort | null {
-    if (model === undefined || model === this.providerModel) return this.llm;
-    const match = this.config.providersList().providers.find((provider) => provider.model === model);
-    if (match === undefined) {
-      throw new RpcCallError("CONFIG_PROVIDER_NOT_FOUND", `no provider serves model: ${model}`);
-    }
-    return this.llmFor(match.id);
+    return resolveLlmForModel(this.llmResolverDeps(), model, this.providerModel);
   }
 
-  private async requireActive(sessionId: string): Promise<SessionEntry> {
-    const entry = this.sessions.get(sessionId);
-    if (entry) return entry;
-    const meta = await this.options.storage.sessions.get(sessionId);
-    if (meta?.status === "archived") {
-      throw new RpcCallError("SESSION_ARCHIVED", `session is archived (read-only): ${sessionId}`);
-    }
-    throw new RpcCallError("SESSION_NOT_FOUND", `session not found or not resumed: ${sessionId}`);
+  private requireActive(sessionId: string): Promise<SessionEntry> {
+    return requireActiveSession(this.sessions, this.options.storage, sessionId);
   }
 }

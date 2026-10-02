@@ -13,6 +13,7 @@ import type {
   SessionSummary,
 } from "@raincode/shared";
 import type { BackgroundTaskRegistry } from "@raincode/tools";
+import { stat } from "node:fs/promises";
 import { StorageError, type SessionResume, type Storage } from "@raincode/storage";
 import { computeWorkspaceHash } from "@raincode/storage";
 import { SessionTurnLoop } from "@raincode/agent-core";
@@ -257,6 +258,36 @@ export async function recordUsage(
 }
 
 /** resume 场景 rpc seq 续起点：持久事件行（含 JSONL 头行 seq=1）与 checkpoint 的最大行号。 */
+/** workspaceRoot 存在性校验（06 §2.1：必须为已存在目录；只读探测不读写数据）。 */
+export async function assertExistingWorkspace(workspaceRoot: string): Promise<void> {
+  try {
+    const info = await stat(workspaceRoot);
+    if (!info.isDirectory()) throw new Error("not a directory");
+  } catch {
+    throw new RpcCallError("INVALID_PARAMS", "workspaceRoot must be an existing directory", {
+      workspaceRoot,
+    });
+  }
+}
+
+/**
+ * 活跃会话准入解析（agent-service requireActive 下沉，06 §2.1）：
+ * 内存命中优先（Active 会话），落库存活兜底；archived → 只读拒绝，未知 → SESSION_NOT_FOUND。
+ */
+export async function requireActiveSession(
+  sessions: Map<string, SessionEntry>,
+  storage: Storage,
+  sessionId: string,
+): Promise<SessionEntry> {
+  const entry = sessions.get(sessionId);
+  if (entry) return entry;
+  const meta = await storage.sessions.get(sessionId);
+  if (meta?.status === "archived") {
+    throw new RpcCallError("SESSION_ARCHIVED", `session is archived (read-only): ${sessionId}`);
+  }
+  throw new RpcCallError("SESSION_NOT_FOUND", `session not found or not resumed: ${sessionId}`);
+}
+
 export function seedEventSeq(replay: SessionResume): number {
   let max = 1; // 头行恒为 seq 1（05 §4.2）
   for (const event of replay.events) {

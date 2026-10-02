@@ -19,7 +19,7 @@ RainCode 的功能定位与 Claude Code / Codex 对齐：整合**代码生成、
 | Agent 内核（turn 状态机 / 会话生命周期 / checkpoint 恢复 / epoch 守卫 / 受限重试） | ✅ M1 |
 | 工具调用（9 个内置工具 / 声明式权限元数据 / 只读并行 / 输出预算裁剪） | ✅ M1 |
 | 命令权限控制（五级判定链 / bash argv 求值 / grantId 审批闭环 / 三层规则 / 审计） | ✅ M1 |
-| 控制面协议（47 方法 / 18 事件 / 密钥引用制 / capability 协商） | ✅ M2 |
+| 控制面协议（53 方法 / 19 事件 / 密钥引用制 / capability 协商） | ✅ M2/M3 |
 | 上下文压缩 compact（80% 阈值自动触发 / 异步不阻塞 / 记忆抽取钩子） | ✅ M2 |
 | MCP 接入（stdio / Streamable HTTP / SSE，`mcp__<server>__<tool>` 命名空间；运行时启停 / 健康检查 ping） | ✅ M2/M3 |
 | 子代理管理（profile 双源解析 / 并发槽排队 / 级联取消 / 事件镜像合并） | ✅ M2 |
@@ -31,6 +31,7 @@ RainCode 的功能定位与 Claude Code / Codex 对齐：整合**代码生成、
 | 容器沙箱（Docker / WSL 执行域 + 不可用回退，config.json `sandbox` 节） | ✅ M3 |
 | 远程执行（SSH 远程工作区，复用 Executor 抽象，本地审计保留） | ✅ M3 |
 | 技能与斜杠命令（技能包双源加载 / `$ARGUMENTS` 模板展开 / 3 个官方示例技能） | ✅ M3 |
+| 插件化（`plugins/<name>/` 清单+ES module 契约 / activate-deactivate 生命周期 / 启停持久化 / `plugin__<名>__<工具>` 命名空间 / 故障隔离不拖垮内核 / 官方示例插件 hello） | ✅ M3 |
 | 插件 / 编排增强 / MCP 服务器管理 / Web 界面 | ⬜ M3 |
 
 ## 环境要求
@@ -109,6 +110,29 @@ argumentHint: "<文件或目录或关注点>"
 ```
 
 仓库 `examples/skills/` 提供 3 个官方示例技能（`review` 代码审查 / `test-gen` 测试生成 / `docs` 文档生成），复制进上述任一技能目录即可使用；协议面为 `skills.list` / `skills.invoke`（06-api-spec §2.9）。
+
+### 插件化
+
+插件 = `<RAINCODE_HOME>/plugins/<name>/` 目录（`plugin.json` 清单 + 入口 ES module），是注册进工具注册表的**可执行代码扩展**——工具以 `plugin__<插件名>__<工具名>` 全名注册（`tool.tools.list` 中 source=plugin），权限缺省从严（needsApproval=true，可用声明或权限规则放宽）：
+
+```json
+{ "name": "hello", "description": "示例插件", "version": "0.1.0", "entry": "index.mjs" }
+```
+
+```js
+// index.mjs —— activate 返回工具描述符数组；deactivate 可选（停用时调用）
+export function activate() {
+  return [{
+    name: "greet",
+    description: "问候语生成",
+    parametersJsonSchema: { type: "object", properties: { name: { type: "string" } } },
+    metadata: { readOnly: true, needsApproval: false, riskLevel: "low" },
+    async execute(args) { return `Hello, ${args?.name ?? "world"}!`; },
+  }];
+}
+```
+
+发布 = 把插件目录拷入 plugins 目录；运行时启停经 `plugins.setEnabled`（停用名单持久化 `plugins.json`，目录即配置、停用 ≠ 卸载）。故障隔离：清单/入口/activate 失败 → 该插件 failed（其余插件与内核不受影响），工具执行错误 → 数据级错误回传模型自纠。仓库 `examples/plugins/hello` 为官方示例插件（greet + word_count 双工具）。
 
 ## 桌面端（Windows Alpha）
 
@@ -194,6 +218,8 @@ raincode chat --base-url https://your-endpoint/v1 --model your-model --api-key s
 
 <workspace>/.raincode/   # 项目级（随仓库，可入库共享给团队）
 ├── MEMORY.md            # 项目记忆（模板初始化；Agent 章节自动维护 / 用户章节手动）
+├── plugins/             # 插件目录（T3.5：plugin.json + 入口 index.mjs；发布 = 目录拷入）
+├── plugins.json         # 插件停用名单（目录即配置，仅状态持久化）
 ├── mcp.json             # 项目级 MCP 配置（与全局冲突键拒绝）
 ├── agents/<name>.md     # 项目级子代理 profiles
 └── skills/<name>.md     # 项目级技能（同名 workspace 层优先）
@@ -356,7 +382,7 @@ RainCode/
 │   ├── agent-core/   # turn 状态机 + 会话生命周期 + 子代理 + 压缩（内核）
 │   ├── tools/        # 工具注册中心 + 9 内置工具 + 执行器（并发/超时/输出预算/SSRF/路径守卫）
 │   ├── permission/   # 五级判定链 + bash argv 求值 + 审批闭环 + 规则持久化 + 审计
-│   ├── server/       # Agent Service 唯一组装点（双端共享；47 方法/18 事件装配）
+│   ├── server/       # Agent Service 唯一组装点（双端共享；53 方法/19 事件装配）
 │   ├── mcp/          # MCP 三 transport 接入 + 连接状态机 + 命名空间工具适配
 │   └── memory/       # MEMORY.md 管理 + FTS5 记忆检索 + 会话记忆抽取
 ├── architecture/     # policy.yaml（架构治理策略，门禁依据）

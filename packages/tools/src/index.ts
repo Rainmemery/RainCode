@@ -20,6 +20,20 @@ export type {
 } from "./tool.js";
 export { ToolRegistry } from "./registry.js";
 export { ToolExecutor, ToolExecutionError } from "./executor.js";
+// 插件化（T3.5，v1.8）：清单加载/激活 + 工具适配（source="plugin"，plugin__ 命名空间）
+export {
+  PLUGIN_DEFAULT_ENTRY,
+  PLUGIN_MANIFEST_FILE,
+  PLUGIN_NAME_PATTERN,
+  PLUGIN_TOOL_NAME_PATTERN,
+  PluginError,
+  activatePlugin,
+  readPluginManifest,
+  scanPluginDir,
+  toPluginToolName,
+} from "./plugin/loader.js";
+export { createPluginTool } from "./plugin/adapter.js";
+export type { PluginActivateContext, PluginActivation, PluginManifest, PluginToolDescriptor } from "./plugin/loader.js";
 export type { ToolExecutorOptions, ToolRunContext } from "./executor.js";
 
 // 内置工具与装配

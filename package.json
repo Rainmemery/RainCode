@@ -26,6 +26,7 @@
     "smoke:mcp": "tsx scripts/smoke-mcp.mts",
     "smoke:subagent": "tsx scripts/smoke-subagent.mts",
     "smoke:memory": "tsx scripts/smoke-memory.mts",
+    "smoke:plugin": "tsx scripts/smoke-plugin.mts",
     "smoke:migrations": "tsx scripts/smoke-migrations.mts",
     "smoke:p1tools": "tsx scripts/smoke-p1tools.mts",
     "smoke:kernel": "tsx scripts/smoke-kernel.mts",

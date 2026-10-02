@@ -2,8 +2,9 @@
  * ToolRegistry（02-module-design §2.3）：内置工具 + MCP 工具 + 插件工具的统一注册点。
  *
  * - 注册查重：重名即抛错（fail-fast，02 §2.4 表格外的装配期约束）；
- * - MCP 命名空间隔离预留：非 mcp 来源禁止占用 `mcp__<serverKey>__<toolName>` 命名空间
- *   与内嵌 `__` 的名字（02 §3.3/§3.4，MCP 接入波次复用此约束）；
+ * - 命名空间隔离：非 mcp 来源禁止占用 `mcp__<serverKey>__<toolName>` 命名空间；v1.8 起
+ *   source="plugin" 同构放行 `plugin__<pluginName>__<toolName>`（T3.5 插件化）；
+ *   其余来源禁止内嵌 `__` 的名字（02 §3.3/§3.4）；
  * - list：输出 ToolDescriptor（含 zod→JSON Schema 投影）。
  */
 import { zodToJsonSchema } from "./json-schema.js";
@@ -21,9 +22,14 @@ export class ToolRegistry {
     if (this.tools.has(tool.name)) {
       throw new Error(`duplicate tool registration: ${tool.name}`);
     }
-    if (source !== "mcp" && (tool.name.startsWith("mcp__") || tool.name.includes("__"))) {
-      // 命名空间保留：与 MCP 工具（mcp__<serverKey>__<toolName>）隔离（02 §3.4）
-      throw new Error(`tool name "${tool.name}" conflicts with the reserved mcp__ namespace`);
+    if (tool.name.includes("__")) {
+      // 命名空间保留（02 §3.4）：`mcp__`/`plugin__` 各自仅对应来源可用，其余来源禁用 `__`
+      const namespaceOk =
+        (source === "mcp" && tool.name.startsWith("mcp__")) ||
+        (source === "plugin" && tool.name.startsWith("plugin__"));
+      if (!namespaceOk) {
+        throw new Error(`tool name "${tool.name}" uses a reserved namespace`);
+      }
     }
     this.tools.set(tool.name, { tool, source });
   }

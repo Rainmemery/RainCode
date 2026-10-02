@@ -10,6 +10,7 @@ export * from "./schemas/config.js";
 export * from "./schemas/events-turn.js";
 export * from "./schemas/mcp.js";
 export * from "./schemas/memory.js";
+export * from "./schemas/plugin.js";
 export * from "./schemas/permission.js";
 export * from "./schemas/session.js";
 export * from "./schemas/skill.js";
@@ -129,6 +130,14 @@ import {
   mcpServerStatusChangedEventPayloadSchema,
 } from "./schemas/mcp.js";
 import {
+  buildPluginStatusChangedEvent,
+  pluginsListParamsSchema,
+  pluginsListResultSchema,
+  pluginsSetEnabledParamsSchema,
+  pluginsSetEnabledResultSchema,
+  pluginStatusChangedEventPayloadSchema,
+} from "./schemas/plugin.js";
+import {
   buildSubagentCompletedEvent,
   buildSubagentProgressEvent,
   buildSubagentSpawnedEvent,
@@ -178,11 +187,11 @@ export interface MethodSchemas {
  * 当前覆盖（07 §2.1 M1 P0 22 方法全集 + P1 permission.rules.* 3 方法 + T2.3 subagent 4 方法
  * + T2.4 memory 域 5 方法 + T2.6 session.rename/fork/usage 与 config.providers.switch 4 方法
  * + T3.4 skills 域 2 方法 + T3.7 mcp.servers.setEnabled/health 2 方法 + T3.3 memory.drafts.* 2 方法
- * （协议 v1.7，49 → 51 方法）：
+ * + T3.5 plugins 域 2 方法（协议 v1.8，51 → 53 方法 / 19 事件）：
  * system.ping/version/shutdown；session.create/send/steer/cancel/list/resume/archive/setMode/rename/fork/usage；
  * config.get/set/providers.list/add/remove/switch；tool.tools.list + 后台任务三方法；permission 5 方法；
  * subagent.spawn/stop/list/profiles.list；memory.read/write/search/entries.list/promote + drafts.list/resolve；
- * skills.list/invoke。
+ * skills.list/invoke；plugins.list/setEnabled。
  */
 export const METHOD_SCHEMAS: Readonly<Record<string, MethodSchemas>> = {
   "system.ping": { request: systemPingParamsSchema, response: systemPingResultSchema },
@@ -286,6 +295,11 @@ export const METHOD_SCHEMAS: Readonly<Record<string, MethodSchemas>> = {
     request: memoryDraftsResolveParamsSchema,
     response: memoryDraftsResolveResultSchema,
   },
+  "plugins.list": { request: pluginsListParamsSchema, response: pluginsListResultSchema },
+  "plugins.setEnabled": {
+    request: pluginsSetEnabledParamsSchema,
+    response: pluginsSetEnabledResultSchema,
+  },
   // T3.4 skills 域（06 §2.9）：清单 + 斜杠命令展开受理（未装配不暴露 handler，调用期 method not found）
   "skills.list": { request: skillsListParamsSchema, response: skillsListResultSchema },
   "skills.invoke": { request: skillsInvokeParamsSchema, response: skillsInvokeResultSchema },
@@ -311,6 +325,7 @@ export const EVENT_SCHEMAS: Readonly<Record<string, ZodTypeAny>> = {
   "compact.started": compactStartedEventPayloadSchema,
   "compact.completed": compactCompletedEventPayloadSchema,
   "mcp.server_status_changed": mcpServerStatusChangedEventPayloadSchema,
+  "plugin.status_changed": pluginStatusChangedEventPayloadSchema,
   "subagent.spawned": subagentSpawnedEventPayloadSchema,
   "subagent.progress": subagentProgressEventPayloadSchema,
   "subagent.completed": subagentCompletedEventPayloadSchema,
@@ -319,4 +334,5 @@ export const EVENT_SCHEMAS: Readonly<Record<string, ZodTypeAny>> = {
 export { buildPermissionRequestedEvent, buildPermissionResolvedEvent };
 export { buildCompactStartedEvent, buildCompactCompletedEvent };
 export { buildMcpServerStatusChangedEvent };
+export { buildPluginStatusChangedEvent };
 export { buildSubagentSpawnedEvent, buildSubagentProgressEvent, buildSubagentCompletedEvent };
