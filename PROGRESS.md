@@ -13,12 +13,12 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 当前里程碑 | **M3 进行中**（T3.1 容器沙箱 ✅ · T3.2 远程执行 ✅ · T3.4 技能与斜杠命令 ✅ · T3.6 子代理编排增强 ✅ · T3.7 MCP 服务器管理 ✅；M2 验收完成，场景 5 GUI 走查已于 2026-09-29 以 CDP 自动化方式闭环，场景 6 真实 MCP 样例留人工） |
-| 已完成任务 | M1 全量 ✅ · M2 全量（T2.1~T2.10）✅ · CLI 展示升级 ✅ · 产品更名 RainCode ✅ · 场景 5 桌面 GUI 走查（自动化）✅ · NFR-4 口径修正复测 ✅ · T3.1 容器沙箱 ✅ · T3.2 远程执行 ✅ · T3.4 技能与斜杠命令 ✅ · T3.6 子代理编排增强 ✅ · T3.7 MCP 服务器管理 ✅ |
+| 当前里程碑 | **M3 进行中**（T3.1 容器沙箱 ✅ · T3.2 远程执行 ✅ · T3.3 记忆自动抽取+管理界面 ✅ · T3.4 技能与斜杠命令 ✅ · T3.6 子代理编排增强 ✅ · T3.7 MCP 服务器管理 ✅；M2 验收完成，场景 5 GUI 走查已于 2026-09-29 以 CDP 自动化方式闭环，场景 6 真实 MCP 样例留人工） |
+| 已完成任务 | M1 全量 ✅ · M2 全量（T2.1~T2.10）✅ · CLI 展示升级 ✅ · 产品更名 RainCode ✅ · 场景 5 桌面 GUI 走查（自动化）✅ · NFR-4 口径修正复测 ✅ · T3.1 容器沙箱 ✅ · T3.2 远程执行 ✅ · T3.3 记忆自动抽取+管理界面 ✅ · T3.4 技能与斜杠命令 ✅ · T3.6 子代理编排增强 ✅ · T3.7 MCP 服务器管理 ✅ |
 | 最新提交 | 见 `git log -1` |
 | 工作区状态 | clean |
-| 门禁状态 | typecheck ✅（13 项目）/ oxlint ✅ / architecture:check ✅ / 单测 142 ✅ / smoke:p0 全回归 ✅（新增 smoke:skills 五用例入回归）/ NFR 基准留存 `docs/benchmarks/m2-2026-09-29.md`（NFR-1~7 全达标；NFR-4 口径修正复测中位数 414.5MB 达标见报告 §7） |
-| 快照日期 | 2026-09-29 |
+| 门禁状态 | typecheck ✅（13 项目）/ oxlint ✅（12 warning 基线）/ architecture:check ✅ / 单测 158 ✅（memory 单测 16 新增）/ smoke:p0 全回归 ✅（smoke-memory 增用例 G，case B 确定性收口）/ NFR 基准留存 `docs/benchmarks/m2-2026-09-29.md`（NFR-1~7 全达标；NFR-4 口径修正复测中位数 414.5MB 达标见报告 §7） |
+| 快照日期 | 2026-10-02 |
 
 ---
 
@@ -29,7 +29,7 @@
 | Phase 1 设计 | — | 7 份产品/技术设计文档 | ✅ 完成（2026-09-28） |
 | M1 | P0 | 单进程 CLI 打通日常可用闭环 | ✅ 完成（2026-09-28） |
 | M2 | P1 | 能力补全 + 桌面端 Alpha | ✅ 完成（2026-09-29，场景 5 走查已自动化闭环） |
-| M3 | P2 | 七模块全量对齐 | 🔄 进行中（T3.1/T3.2/T3.4/T3.6/T3.7 完成） |
+| M3 | P2 | 七模块全量对齐 | 🔄 进行中（T3.1/T3.2/T3.3/T3.4/T3.6/T3.7 完成） |
 
 ---
 
@@ -38,6 +38,8 @@
 > 格式：`[日期] 任务 — 结果`（含关键产出物与提交号）。**新条目插在本节最上方。**
 
 ### M3 · P2（七模块全量对齐）
+
+- [2026-10-02] T3.3 记忆自动抽取 + 管理界面（07 §4.1 / 02 §7.2 第三层，协议 v1.7 51 方法）——a) 晋升草案待确认区：`packages/memory/src/promotion/drafts.ts`，载体 settings KV（键 `memory.drafts.<workspaceId>`，05 §3.11 运行期非配置状态，不为 memory_entries 发明字段）；生成规则 = 抽取新落盘条目 confidence ≥ 0.8（MEMORY_DRAFT_MIN_CONFIDENCE 高置信晋升线，高于召回线 0.6）且 kind ≠ todo（「当前进行」为 Agent 专用章节，循环已直写无需晋升）→ pending 草案 + KIND_TO_SECTION 章节预填（decision→项目概览 / convention/preference→工作约定 / pitfall→已知坑 / todo→当前进行）；同条目任意状态草案不重复建议；superseded 条目的 pending 草案失效隔离不投影（升位条目另有草案）；处置流 confirm 经 promote 链合入 MEMORY.md（section 可覆盖预填）/ reject 仅标记，终态不可再变更（非 pending → MEMORY_DRAFT_NOT_FOUND）；**直接管 promote 同条目自动收敛其 pending 草案为 confirmed**（不悬挂过期建议）——「记忆 Agent 循环」= 事件驱动抽取（session-end/compact，T2.4 已有）+ 晋升草案生成（本任务），第三层落地完整；b) 协议 v1.7（minor+1 additive）：memory 域 5→7 方法 `memory.drafts.list {status?}`（MemoryDraft = 草案字段 + entry 本体随行，新者在前）/ `memory.drafts.resolve {draftId, action, section?} → {resolved, promoted}`；错误码段 6 增 MEMORY_DRAFT_NOT_FOUND；server 端 memory-runtime 扁平投影（包内嵌套 draft+entry → 协议扁平形状）；c) 单测 16 新增共 158（验收项「抽取幂等/去重/矛盾标记单测」落地：幂等键三态 / 归一化 touch / 互含新强 supersede / 旧强丢弃 / 候选清洗夹取截断；草案生成规则 / 失效隔离 / confirm-reject 终态 / section 覆盖 / 直管晋升收敛，内存替身不落盘）；smoke-memory 增用例 G（生成规则 / 直管晋升收敛 / confirm 合入 / 终态与 NOT_FOUND 族）；d) **case B 确定性收口**：SectionEditHooks.onBeforeRecheck 注入缝（project-file 写路径 S2 mtime 复检前同步触发，prod 依赖注入选项——ESM 静态绑定下 fs monkey-patch 不传播，PROGRESS §4 遗留项）贯穿 service/runtime/node 装配链，case B 弃「setInterval(0) 竞速 + 10 轮重放」改一次性装填直改，复跑 4/4 确定性命中 MEMORY_WRITE_CONFLICT（旧法 ~1/6 闪失终结）；e) 桌面记忆管理器（MR-4，03 §6.3 稿件 03）：MemoryManager 视图三栏——左记忆源（MEMORY.md 卡 + kind 分桶计数点击过滤）/ 中 MEMORY.md 只读预览 / 右待确认草案（章节 select 可改 + 确认合入 + 忽略）+ 条目检索 / kind chips / 置信度 / superseded 标记 / 直管晋升；Sidebar 增入口，view 联合类型 chat|settings|memory，rpcCall 低频控制面共享出口（memory 域无事件推送，进视图与处置后全量刷新）；f) 06-api-spec §2.6 两行 + §4.3 段 6 + §7.5 v1.7；README 项目记忆节 / 桌面端 Alpha 范围；testing.md 单测 158 + smoke-memory 行 + lint 基线 12 申报；PROGRESS §1/§2/§3/§5 推进（T3.3 ✅）；四门禁全绿 + smoke:p0 全回归 OK（smoke-memory 4/4 复跑确定性通过）。
 - [2026-09-29] T3.6 子代理编排增强（07 §4.1 / 验收：并行委派汇聚用例）— a) **内置角色模板**：BUILTIN_ROLE_TEMPLATES（agent-core 代码常量不落盘，无打包/路径问题）——researcher（只读调研）/ reviewer（代码审查）/ tester（测试执行），profile 解析链 **workspace → global → builtin** 三级（用户同名 profile 遮蔽内置，可整体覆写）；SubagentRuntime.resolveSpawnProfile 目录未命中时兜底（subagent.spawn 控制面 catch 原生 SubagentProfileError → RpcCallError 域码映射，agent 工具路径保持原生错误模型可自纠——两路径错误语义分层）；profileCatalog 未被用户覆盖的内置模板以 source:"builtin" 追加投影（agent 工具 description 同源，模型开箱可见）；shared subagentProfileSummarySchema.source 枚举增 "builtin"（协议 v1.6 additive，06 §7.5 登记）；b) **并行编排汇聚**：原语已在（agent 工具 metadata.readOnly=true → ToolExecutor 同批只读并行上限 4 + SubagentManager 并发槽 4 + 各完成通知按批次合并），本任务以验收用例坐实——smoke-subagent 用例 H 同轮两个 agent tool_call（index 0/1 分组流式帧，p0-lib toolCallFrame 增可选 index）→ 双子代理并发执行（mock 请求到达间隔 7ms，串行基线 ≥400ms）→ 双完成通知合并回主循环各自携带子结论；c) 测试：单测 +3 共 142（内置模板结构合法——名字互重/提示非空/maxTurns 界内/tools ⊆ 内置工具名/builtinRoleOf 命中语义）；smoke-subagent +2 用例共 8（G 内置角色 spawn 可收束 + C 组断言扩展 builtin 投影与遮蔽 / H 并行汇聚），既有 A~F 零回归（C 用例 count 2→4 适配内置项）；06 §2.5 profiles.list 行 + README 子代理节同步。（07 §4.1 / 06 §2.5 mcp 域 8 方法）— a) 运行时启停：mcp 包 `McpManager.setEnabled`（内存 config.enabled 改写，持久化归 runtime 层——mcp.json 归属层不同）+ `McpRuntime` 新方法 `mcp.servers.setEnabled {serverKey, enabled}`：**停 = 断连（M8 语义 intentionalClose）+ 命名空间工具注销 + mcp.json `enabled: false` 持久化（配置保留 ≠ remove，再启不重配）**；**启 = `enabled: true` 持久化 + 受理即返重连**（Disconnected/Failed 均可受理，connect 幂等保护在途态，最终状态经 `mcp.server_status_changed` 事件）；enabled 语义此前只被 init/add 消费一次（装配期静默跳过），运行时无任何切换入口——本任务补齐 07 §4.1「启停」缺口；b) 健康检查：`McpManager.health`（Connected server 发 MCP `ping` 实测 RTT，探测只读——失败不改状态机，自动恢复仍由 callTool 连续超时 + M4 重连链路承担；**探测不建连**——非 Connected 状态只读投影 status/lastError）+ `mcp.servers.health {serverKey?}`（缺省检查全部已注册 server，Promise.all 并发）；协议 v1.5（minor+1）：shared mcp.ts 增 setEnabled/health 请求响应 schema + METHOD_SCHEMAS 登记（49 方法），mcp-fixture-stdio 本就实现 ping 无需改动；c) 验收：smoke-mcp 用例 G（health on Connected RTT 实测 / Failed 只读投影 / 停后工具不可用 + MCP_UNAVAILABLE + enabled:false 落盘 / 重启 Connected + 工具恢复 + enabled:true 写回 / 未知 key NOT_FOUND 族）——T2.2 既有用例 A~F 零回归；README MCP 节补启停/健康检查两条。07 §4.2 验收对照：配置化管理（T2.2 mcp.json 双层 + add/remove ✅）、自动恢复（T2.2 M4 退避重连 ✅）、启停与健康检查（本任务 ✅），域验收闭环。
 - [2026-09-29] T3.4 技能与斜杠命令（TL-6 / 06 §2.9 skills 域）— a) 技能包规范：markdown + frontmatter 单文件（`<ws>/.raincode/skills/<name>.md` workspace 层 / `<dataRoot>/skills/<name>.md` global 层双源，workspace 同名先命中生效，镜像 T2.3 profile 目录口径）；字段 name（可省缺省文件名，[a-z0-9-]+ 挡路径逃逸）/ description（必填）/ argumentHint（可选），正文 = 提示词模板；frontmatter 解析抽包内共用模块 `agent-core/src/frontmatter.ts`（profile.ts 零行为变更复用）；b) 展开语义：`$ARGUMENTS` 占位替换（多次出现）→ 无占位符且有参 → 参数独立行追加末尾 → 无参原样；**展开在 server 侧**（04 ADR-06 唯一组装点），CLI 与桌面端只做 `/name args` 转发无第二展开点；c) 协议 v1.4（minor+1）：skills 域 2 方法 `skills.list {sessionId?}`（sessionId 提供时含该会话 workspace 层，缺省仅 global；非法文件跳过不阻塞面板仅产诊断）/ `skills.invoke {sessionId, name, arguments?}`（受理即返与 session.send 同形，turn 事件流完全一致故无新事件、无新 capability——端层经 METHOD_NOT_FOUND 探测）；错误码段 9 `SKILL_NOT_FOUND`/`SKILL_INVALID`；06 §2 原映射/时序两节顺延 §2.10/§2.11（外部引用已同步）；d) server：`SkillRuntime`（风格对齐 SubagentRuntime；workspace 层目录按会话 workspaceRoot 逐会话解析——storage.workspaceRootOf——装配期无参数，与 memory 同形态）；agent-service 提取 `submitTurn` 提交链（session.send / skills.invoke 共用：requireActive + provider 缺席拒绝 + 受理即返 + usage 旁路）；CLI in-process（context.ts）与 stdio 宿主（host.ts，桌面 agent 子进程同形态）默认装配；e) CLI chat：`/skills` 技能面板（名称/参数提示/来源层/描述）+ 内置命令未命中的斜杠输入路由 skills.invoke（stream.ts 提取 `streamTurn` 订阅先于提交、submit 点插拔，sendAndStream 成为其特例；SKILL_NOT_FOUND 回退未知命令提示；内置命令名优先于技能名）；f) 3 个官方示例技能 `examples/skills/`（review 代码审查 / test-gen 测试生成 / README 指引复制进技能目录）；g) 测试：单测 +11 共 139（解析校验/双源优先/首命中不回落/路径逃逸/展开三语义）；`smoke:skills` 五用例（A 官方示例真身加载入列+坏文件跳过 / B 双源优先级 / C 示例技能端到端——mock 请求体末条 user 含 $ARGUMENTS 替换后文本即展开在 server 侧的真实证据 / D 自定义技能展开语义三连 / E 错误族）入 smoke:p0 回归。桌面端斜杠命令面板 UI 留 T3.9（UI-4 补齐）。
 
@@ -104,7 +106,10 @@
 3. ~~**T3.4 技能与斜杠命令**~~ ✅（2026-09-29；示例技能端到端与自定义加载均为自动化验收，桌面端斜杠面板 UI 留 T3.9）
 4. ~~**T3.7 MCP 服务器管理**~~ ✅（2026-09-29；启停/健康检查补齐，域验收闭环）
 5. ~~**T3.6 子代理编排增强**~~ ✅（2026-09-29；内置角色模板 + 并行汇聚验收用例）
-6. **T3.3 / T3.5** — 记忆自动抽取+管理界面 / 插件化（依赖 T3.4 ✅）（详见 07 §4.1）
+6. ~~**T3.3 记忆自动抽取 + 管理界面**~~ ✅（2026-10-02；晋升草案待确认区 + 桌面记忆管理器 + case B 确定性收口；MR-4 走查自动化项由 smoke-memory 用例 G 与桌面视图构建覆盖，人工界面走查并入 T3.9）
+7. **T3.5 插件化** — 插件加载/启停/生命周期 + 示例插件（依赖 T3.4 ✅）（详见 07 §4.1）
+8. **T3.8 Web 界面** — WebSocketTransport + ws.auth + seq 缺口补偿
+9. **T3.9 桌面端补齐 + M3 全量对齐验收** — NFR-1~7 全量重测留存
 7. **T3.8 Web 界面** — WebSocketTransport + ws.auth + seq 缺口补偿
 8. **T3.9 桌面端补齐 + M3 全量对齐验收** — NFR-1~7 全量重测留存
 

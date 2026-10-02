@@ -217,7 +217,7 @@ MCP 域管理外部 server 的配置与连接生命周期，并把远端工具�
 
 ### 2.6 memory 域（项目记忆，对应 02 §7）
 
-记忆域区分「文件真源」（MEMORY.md，读写均受章节权限约束）与「条目库」（memory_entries，只读检索）。写入范围被刻意收窄为 Agent 专用章节——用户章节的合入只能经 `memory.promote` 由用户确认动作触发。
+记忆域区分「文件真源」（MEMORY.md，读写均受章节权限约束）与「条目库」（memory_entries，只读检索）。写入范围被刻意收窄为 Agent 专用章节——用户章节的合入只能经 `memory.promote` 由用户确认动作触发。**v1.7 增晋升草案待确认区**（`memory.drafts.*`，02 §7.2 第三层「记忆 Agent 循环」）：抽取落盘的高置信（confidence ≥ 0.8）新条目自动生成晋升草案（kind → 章节预填；todo 与低置信条目排除——「当前进行」为 Agent 专用章节、低置信不取信），confirm/reject 由用户处置；直接管 promote 同条目时其 pending 草案自动收敛为 confirmed。
 
 | 方法 | 请求 params | 返回 result | 业务错误码 | 说明 |
 | --- | --- | --- | --- | --- |
@@ -226,6 +226,8 @@ MCP 域管理外部 server 的配置与连接生命周期，并把远端工具�
 | `memory.search` | `{ query, kind?, limit? }` | `{ entries: MemoryEntry[] }` | — | 关键词/标签检索；P2 切换向量后端接口不变（02 §7.3）；无结果返回空数组（不注入占位文本） |
 | `memory.entries.list` | `{ kind?, source?, since?, page? }` | `{ items: MemoryEntry[], nextCursor? }` | — | SQLite `memory_entries` 只读分页查询；MemoryEntry 结构同 02 §7.3 |
 | `memory.promote` | `{ entryId, section: MemorySection }` | `{ promoted }` | `MEMORY_ENTRY_NOT_FOUND` `MEMORY_SECTION_FORBIDDEN` | 条目合入 MEMORY.md 指定章节；**调用本身即用户确认动作**（三层单向晋升，02 §7.2，P2 记忆 Agent 场景的确认入口） |
+| `memory.drafts.list` | `{ status?: "pending"\|"confirmed"\|"rejected" }` | `{ drafts: MemoryDraft[] }` | — | 晋升草案待确认区投影（**v1.7**，02 §7.2 第三层）；MemoryDraft = 草案字段（id/entryId/section/status/createdAt/resolvedAt）+ `entry: MemoryEntry` 本体随行；新者在前；superseded 条目的 pending 草案视为过期不投影 |
+| `memory.drafts.resolve` | `{ draftId, action: "confirm"\|"reject", section? }` | `{ resolved, promoted }` | `MEMORY_DRAFT_NOT_FOUND` `MEMORY_SECTION_FORBIDDEN` | 用户处置草案（**v1.7**）；confirm 经 promote 链合入 MEMORY.md（section 缺省 = 草案预填章节）、reject 仅标记；处置后进入终态不可再变更，非 pending → `MEMORY_DRAFT_NOT_FOUND` |
 
 ### 2.7 tool 域（工具系统，对应 02 §2 / §5）
 
@@ -515,6 +517,7 @@ flush 边界保证：`message.completed`、`tool_call.*`、`permission.*`、`tur
 | 5 subagent | `SUBAGENT_TOOLS_EMPTY` | 过滤后工具白名单为空，拒绝派发 |
 | 6 memory | `MEMORY_SECTION_FORBIDDEN` | 试图写用户专属章节（02 §7.1 边界） |
 | 6 memory | `MEMORY_WRITE_CONFLICT` | 并发修改检测，写入放弃（02 §7.4） |
+| 6 memory | `MEMORY_DRAFT_NOT_FOUND` | 晋升草案不存在或已处置（非 pending 不可再变更；v1.7） |
 | 6 memory | `MEMORY_ENTRY_NOT_FOUND` | entryId 不存在 |
 | 7 tool | `TOOL_UNKNOWN` | 工具名不存在（02 §2.4 `unknown_tool` 的直接调用投影） |
 | 7 tool | `TOOL_UNAVAILABLE` | MCP 工具所在 server 不可用（`mcp_unavailable` 投影）；ask_user_question 无交互通道（headless fail-safe，02 §2.4）同码收敛 |
@@ -721,6 +724,7 @@ capability 命名约定：`<domain>.<feature>`（小写点分），登记于 `sy
 | 1.4 | 2026-09-29 | T3.4 技能与斜杠命令（minor+1）：新增 skills 域 2 方法 `skills.list` / `skills.invoke`（§2.9，装配期缺省不启用；CLI 与 stdio 宿主默认装配）——技能 = markdown+frontmatter 提示词模板双源加载（workspace 优先），展开在 server 侧（`$ARGUMENTS` 替换/无占位符追加），turn 事件流与 `session.send` 复用；错误码新增段 9：`SKILL_NOT_FOUND` / `SKILL_INVALID`。协议规模 47 方法 / 18 事件 |
 | 1.5 | 2026-09-29 | T3.7 MCP 服务器管理（minor+1）：mcp 域新增 2 方法 `mcp.servers.setEnabled`（运行时启停——停 = 断连 + 工具注销 + mcp.json `enabled` 持久化，配置保留可再启；启 = 受理即返重连）与 `mcp.servers.health`（Connected server 主动 MCP ping 实测 RTT，其余状态只读投影，探测不改状态机）。协议规模 49 方法 / 18 事件 |
 | 1.6 | 2026-09-29 | T3.6 子代理编排增强（minor+1，additive）：`SubagentProfileSummary.source` 枚举增 `"builtin"`——内置角色模板（researcher/reviewer/tester，代码常量不落盘）作为 profile 解析链 workspace → global → builtin 的最后一级（用户同名 profile 遮蔽内置）；`subagent.profiles.list` 与 `agent` 工具 description 均投影内置模板；并行编排汇聚语义不变（`agent` 工具 readOnly → 同轮多派发经 ToolExecutor 只读并行执行，各完成通知按批次合并回主循环，验收用例 smoke-subagent case H）。协议规模不变（49 方法 / 18 事件） |
+| 1.7 | 2026-10-02 | T3.3 记忆自动抽取 + 管理界面（minor+1，additive）：memory 域新增 2 方法 `memory.drafts.list` / `memory.drafts.resolve`——晋升草案待确认区（02 §7.2 第三层「记忆 Agent 循环」的用户确认入口）：抽取高置信（≥0.8）新条目自动生成草案（kind → 章节预填、todo/低置信排除），confirm 经 promote 链合入 MEMORY.md、reject 仅标记，直管 promote 自动收敛同条目 pending 草案；错误码段 6 增 `MEMORY_DRAFT_NOT_FOUND`。协议规模 51 方法 / 18 事件 |
 
 ---
 

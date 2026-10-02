@@ -78,13 +78,22 @@ export default function Sidebar() {
             <span className="min-w-0 flex-1 truncate text-2xs text-warn">未配置 Provider</span>
           )}
         </div>
-        <button
-          type="button"
-          onClick={() => setView("settings")}
-          className="h-8 w-full rounded-md border border-border-strong text-2xs text-mid hover:bg-hover"
-        >
-          设置
-        </button>
+        <div className="flex flex-col gap-1.5">
+          <button
+            type="button"
+            onClick={() => setView("memory")}
+            className="h-8 w-full rounded-md border border-border-strong text-2xs text-mid hover:bg-hover"
+          >
+            记忆管理器
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("settings")}
+            className="h-8 w-full rounded-md border border-border-strong text-2xs text-mid hover:bg-hover"
+          >
+            设置
+          </button>
+        </div>
       </div>
     </aside>
   );

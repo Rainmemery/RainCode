@@ -1,11 +1,12 @@
 /**
- * 顶层布局：连接状态横条 + 可关闭错误横条 + 视图切换（chat 三栏主界面 / settings 设置页）
+ * 顶层布局：连接状态横条 + 可关闭错误横条 + 视图切换（chat 三栏主界面 / settings 设置页 / memory 记忆管理器）
  * + 审批弹窗模态叠加（03 §6.1 / §7）。
  */
 import { useDesktop } from "./store.js";
 import Sidebar from "./components/Sidebar.js";
 import ChatFlow from "./components/ChatFlow.js";
 import ProviderSettings from "./components/ProviderSettings.js";
+import MemoryManager from "./components/MemoryManager.js";
 import ApprovalDialog from "./components/ApprovalDialog.js";
 
 export default function App() {
@@ -32,14 +33,14 @@ export default function App() {
         </div>
       )}
       <div className="flex min-h-0 flex-1">
-        {view === "chat" ? (
+        {view === "chat" && (
           <>
             <Sidebar />
             <ChatFlow />
           </>
-        ) : (
-          <ProviderSettings />
         )}
+        {view === "settings" && <ProviderSettings />}
+        {view === "memory" && <MemoryManager />}
       </div>
       {hasApprovals && <ApprovalDialog />}
     </div>

@@ -58,7 +58,7 @@ export interface ProviderRow {
 export interface DesktopState {
   connection: "connecting" | "ready" | "agent-down";
   runMode: string;
-  view: "chat" | "settings";
+  view: "chat" | "settings" | "memory";
   workspace: string | null;
   sessions: Array<{ id: string; title: string; lastActiveAt: number }>;
   activeId: string | null;

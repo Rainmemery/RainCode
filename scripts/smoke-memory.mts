@@ -8,8 +8,9 @@
  * 用例 A 模板与注入：memory.read 不存在 → exists:false + 模板骨架；session.create + 一轮对话 →
  *   模型请求体 system 含标题行与模板章节标题（04 L86 启动全文注入，02 §7.4 不存在时注入模板）。
  * 用例 B write：工作约定落盘；用户章节经协议边界 zod 先拦（04 §4.3）→ INVALID_PARAMS，
- *   域内白名单兜底（service 直调）→ MEMORY_SECTION_FORBIDDEN；mtime 冲突：RPC write 在途时
- *   脚本同步直改 MEMORY.md（模拟并发窗口）→ MEMORY_WRITE_CONFLICT（02 §7.4）。
+ *   域内白名单兜底（service 直调）→ MEMORY_SECTION_FORBIDDEN；mtime 冲突：经 SectionEditHooks
+ *   .onBeforeRecheck 注入缝（prod 依赖注入选项）在 S2 复检前确定性直改 MEMORY.md →
+ *   MEMORY_WRITE_CONFLICT（02 §7.4；取代旧 setImmediate 竞速法，残余时序敏感性收口）。
  * 用例 C archive 抽取：会话一轮后 archive → 抽取请求（system 含「记忆抽取器」）→ 3 条
  *   source=session-end 落盘；幂等：直调 service.extractFromSession 同会话二次抽取 → []（05 §5.4）。
  * 用例 D search：FTS/LIKE 兜底/kind 过滤/无结果空数组/confidence<0.6 不入默认召回集但在
@@ -18,11 +19,14 @@
  *   MEMORY_ENTRY_NOT_FOUND（06 §2.6）。
  * 用例 F compact 抽取钩子：第二会话手动 compact（阈值 0.8×8192 不误触发）→ 摘要请求 →
  *   onBeforeReplace 抽取请求 → source=compact 条目落盘（02 §7.2 抽取先于历史替换）。
+ * 用例 G 晋升草案待确认区（02 §7.2 第三层，协议 v1.7 memory.drafts.*）：抽取高置信（≥0.8）
+ *   新条目自动生成草案（todo / 低置信排除）；case E 直接管晋升已收敛 decision 草案为 confirmed；
+ *   confirm 合入 MEMORY.md（章节预填）→ 终态不可再变更 → MEMORY_DRAFT_NOT_FOUND 族。
  * 全程仅本机回环与临时目录：无外呼、无真实密钥（mock provider apiKey 为占位符，绝不打印）。
  */
 import assert from "node:assert/strict";
 import { appendFileSync, writeFileSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RpcCallError, createInMemoryTransportPair, createRpcClient } from "../packages/rpc/src/index.ts";
@@ -42,6 +46,7 @@ import type { MockLlmServer, SseScript } from "./p0-lib.mts";
 interface Scenario {
   home: string;
   workspace: string;
+  sectionEditHooks: { onBeforeRecheck?: () => Promise<void> };
   client: RpcClient;
   node: AgentServiceNode;
   mock: MockLlmServer;
@@ -70,6 +75,8 @@ const EXTRACT_COMPACT = {
 
 async function startScenario(): Promise<Scenario> {
   const home = await mkdtemp(join(tmpdir(), "raincode-smoke-memory-"));
+  // 用例 B 冲突注入缝：未装填时零开销直通（SectionEditHooks 属性按次解引用，可事后装填）
+  const sectionEditHooks: { onBeforeRecheck?: () => Promise<void> } = {};
   const workspace = join(home, "ws");
   await mkdir(workspace, { recursive: true });
   const mock = await startMockLlmServer();
@@ -86,13 +93,14 @@ async function startScenario(): Promise<Scenario> {
     tools: { approval: "always-allow" },
     permission: { policy: "default-allow" },
     compaction: { keepRecentCount: 1 }, // 用例 F 手动 compact 需要 cutIndex>0
-    memory: { workspaceRoot: workspace },
+    memory: { workspaceRoot: workspace, sectionEditHooks: sectionEditHooks },
   });
   const client = createRpcClient({ transport: transports[0] });
   await client.call("system.ping", {}); // rpc 握手（首请求必须 system.ping）
   return {
     home,
     workspace,
+    sectionEditHooks,
     client,
     node,
     mock,
@@ -188,30 +196,20 @@ async function caseWrite(scenario: Scenario): Promise<void> {
     (err: unknown) => err instanceof MemoryError && err.code === "MEMORY_SECTION_FORBIDDEN",
   );
 
-  // mtime 冲突（02 §7.4）：handler 的「记 mtime(S1) → 提交前复检(S2)」两步 stat 之间若观测到
-  // 外部修改即 MEMORY_WRITE_CONFLICT。真实窗口 <1ms，外部写以「在途期间 setImmediate 逐轮持续直写」
-  // 尽量覆盖 handler 的 await 间隙（每轮直至 promise 收敛，10 轮重放直至命中）；残余时序敏感性见
-  // PROGRESS §4——确定性方案（prod 注入 stat 钩子）随 T3.3 记忆波次落地。ESM 静态导入绑定原函数，
-  // 进程内事后 patch fs.promises.stat 不可行（实测不传播），故不改走 spy 路线。
+  // mtime 冲突（02 §7.4）：经 SectionEditHooks.onBeforeRecheck 注入缝在 S2 复检 snapshot 前
+  // 确定性直改文件（一次性自拆），S2 观测到 mtime 变更即 MEMORY_WRITE_CONFLICT——
+  // 取代旧「setInterval(0) 竞速 + 10 轮重放」法（残余时序敏感性 ~1/6，PROGRESS §4 收口记录）。
   const memPath = join(workspace, ".raincode", "MEMORY.md");
-  let conflicted = false;
-  for (let round = 0; round < 10 && !conflicted; round += 1) {
-    const base = await readFile(memPath, "utf8");
-    const pending = client
-      .call("memory.write", { workspaceRoot: workspace, section: "工作约定", content: `并发探测 ${String(round)}` })
-      .catch((reason: unknown) => reason);
-    const writer = setInterval(() => {
-      appendFileSync(memPath, `<!-- 外部并发修改 ${String(round)}.${String(Date.now())} -->\n`, "utf8");
-    }, 0);
-    const outcome = await pending;
-    clearInterval(writer);
-    if (outcome instanceof RpcCallError) {
-      assert.equal(outcome.code, "MEMORY_WRITE_CONFLICT", `并发窗口应报写冲突，实得 ${outcome.code}`);
-      conflicted = true;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 20)); // 轮间让步，隔离下一轮首读
-  }
-  assert.ok(conflicted, "并发修改窗口内应触发 MEMORY_WRITE_CONFLICT（02 §7.4）");
+  scenario.sectionEditHooks.onBeforeRecheck = async () => {
+    delete scenario.sectionEditHooks.onBeforeRecheck; // 一次性：本轮冲突后恢复零开销直通
+    appendFileSync(memPath, `<!-- 外部并发修改 ${String(Date.now())} -->\n`, "utf8");
+  };
+  const outcome = await client
+    .call("memory.write", { workspaceRoot: workspace, section: "工作约定", content: "并发探测一次命中" })
+    .catch((reason: unknown) => reason);
+  assert.ok(outcome instanceof RpcCallError, "注入窗口内必现冲突（不再依赖竞速命中）");
+  assert.equal((outcome as RpcCallError).code, "MEMORY_WRITE_CONFLICT");
+  assert.equal(scenario.sectionEditHooks.onBeforeRecheck, undefined, "注入缝一次性自拆");
   console.log("case B: write（工作约定落盘 / 用户章节越界拦截 / mtime 冲突放弃）OK");
 }
 
@@ -326,6 +324,71 @@ async function caseCompactExtraction(scenario: Scenario): Promise<void> {
   console.log("case F: compact 抽取钩子（抽取先于历史替换，source=compact 落盘）OK");
 }
 
+/**
+ * G：晋升草案待确认区（memory.drafts.list/resolve，06 §2.6 v1.7）。
+ * 生成规则：confidence ≥ 0.8 且 kind ≠ todo（0.5 preference 与 compact todo 无草案）；
+ * 直接管晋升收敛：case E promote decision → 其草案 confirmed；confirm 合入 → 终态。
+ */
+async function caseDrafts(scenario: Scenario): Promise<void> {
+  const { client, workspace } = scenario;
+
+  const listDrafts = async (status?: string): Promise<Array<Record<string, unknown>>> => {
+    const res = (await client.call("memory.drafts.list", status === undefined ? {} : { status })) as {
+      drafts: Array<Record<string, unknown>>;
+    };
+    return res.drafts;
+  };
+
+  // 生成规则：0.9 decision + 0.8 preference 有草案；0.5 preference 与 0.9 todo（compact）无
+  const all = await listDrafts();
+  assert.equal(all.length, 2, `草案 2 条（decision 0.9 / preference 0.8），实得 ${String(all.length)}`);
+  const byEntry = new Map(all.map((row) => [String(row["entryId"]), row]));
+  const listed = (await client.call("memory.entries.list", {})) as { items: MemoryEntry[] };
+  const items = listed.items;
+  const decision = items.find((e) => e.kind === "decision");
+  const highPref = items.find((e) => e.kind === "preference" && e.confidence >= 0.6);
+  const lowPref = items.find((e) => e.confidence < 0.6);
+  const compactTodo = items.find((e) => e.source === "compact");
+  assert.ok(decision !== undefined && highPref !== undefined && lowPref !== undefined && compactTodo !== undefined);
+  assert.ok(byEntry.has(decision.id) && byEntry.has(highPref.id), "高置信条目有草案");
+  assert.ok(!byEntry.has(lowPref.id), "0.5 条目无草案（低于晋升线）");
+  assert.ok(!byEntry.has(compactTodo.id), "todo 无草案（当前进行为 Agent 专用章节）");
+
+  // 直接管晋升收敛（case E promote decision）：草案终态 confirmed，pending 只剩 preference
+  const decisionDraft = byEntry.get(decision.id)!;
+  assert.equal(decisionDraft["status"], "confirmed", "case E 直接管晋升已收敛 decision 草案");
+  assert.notEqual(decisionDraft["resolvedAt"], null);
+  const pending = await listDrafts("pending");
+  assert.equal(pending.length, 1, `pending 仅 preference，实得 ${String(pending.length)}`);
+  const prefDraft = pending[0]!;
+  assert.equal(prefDraft["section"], "工作约定", "kind→章节预填（preference → 工作约定）");
+  assert.equal((prefDraft["entry"] as MemoryEntry).id, highPref.id, "条目本体随行投影");
+
+  // confirm 合入（调用本身即用户确认动作）→ MEMORY.md 工作约定章节追加
+  const resolved = (await client.call("memory.drafts.resolve", {
+    draftId: prefDraft["id"],
+    action: "confirm",
+    section: "工作约定",
+  })) as { resolved: boolean; promoted: boolean };
+  assert.equal(resolved.resolved, true);
+  assert.equal(resolved.promoted, true);
+  const read = (await client.call("memory.read", { workspaceRoot: workspace })) as { content: string };
+  assert.ok(read.content.includes("- 回复使用中文交流"), "confirm 经 promote 链合入 MEMORY.md");
+
+  // 终态不可再变更 + 未知 id → MEMORY_DRAFT_NOT_FOUND（06 §4.3 段 6）
+  for (const draftId of [String(prefDraft["id"]), "draft_missing"]) {
+    await assert.rejects(
+      client.call("memory.drafts.resolve", { draftId, action: "confirm" }),
+      (err: unknown) => err instanceof RpcCallError && err.code === "MEMORY_DRAFT_NOT_FOUND",
+    );
+  }
+  const pendingAfter = await listDrafts("pending");
+  assert.equal(pendingAfter.length, 0, "处置后待确认区清空");
+  const confirmed = await listDrafts("confirmed");
+  assert.equal(confirmed.length, 2, "两草案均 confirmed");
+  console.log("case G: 晋升草案待确认区（生成规则 / 直接管晋升收敛 / confirm 合入 / 终态与 NOT_FOUND）OK");
+}
+
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
@@ -337,6 +400,7 @@ async function main(): Promise<void> {
     await caseSearch(scenario, ids);
     await casePromote(scenario, ids.decisionId);
     await caseCompactExtraction(scenario);
+    await caseDrafts(scenario);
   } finally {
     await scenario.close();
   }

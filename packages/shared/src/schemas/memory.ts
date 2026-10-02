@@ -18,6 +18,8 @@ export const MEMORY_ERROR_CODES = {
   SECTION_FORBIDDEN: "MEMORY_SECTION_FORBIDDEN",
   /** 并发修改检测，写入放弃（02 §7.4；06 §4.3 MEMORY_WRITE_CONFLICT）。 */
   WRITE_CONFLICT: "MEMORY_WRITE_CONFLICT",
+  /** 晋升草案不存在或已处置（非 pending 不可再变更；06 §4.3 MEMORY_DRAFT_NOT_FOUND）。 */
+  DRAFT_NOT_FOUND: "MEMORY_DRAFT_NOT_FOUND",
 } as const;
 export type MemoryErrorCode = (typeof MEMORY_ERROR_CODES)[keyof typeof MEMORY_ERROR_CODES];
 
@@ -150,3 +152,49 @@ export const memoryPromoteResultSchema = z.object({
   promoted: z.boolean(),
 });
 export type MemoryPromoteResult = z.infer<typeof memoryPromoteResultSchema>;
+
+// ---------------------------------------------------------------------------
+// memory.drafts.list / memory.drafts.resolve（06 §2.6：晋升草案待确认区，02 §7.2 第三层）
+// ---------------------------------------------------------------------------
+
+/** 草案状态（pending 待确认；confirmed/rejected 终态不可再变更）。 */
+export const memoryDraftStatusSchema = z.enum(["pending", "confirmed", "rejected"]);
+export type MemoryDraftStatus = z.infer<typeof memoryDraftStatusSchema>;
+
+/** 晋升草案投影（条目本体随行，UI 一次取全；kind→章节预填由服务端生成）。 */
+export const memoryDraftSchema = z.object({
+  id: z.string(),
+  entryId: z.string(),
+  /** 建议合入的 MEMORY.md 章节（确认时可用 params.section 覆盖）。 */
+  section: memorySectionSchema,
+  status: memoryDraftStatusSchema,
+  createdAt: z.number().int(),
+  resolvedAt: z.number().int().nullable(),
+  entry: memoryEntrySchema,
+});
+export type MemoryDraft = z.infer<typeof memoryDraftSchema>;
+
+export const memoryDraftsListParamsSchema = z.strictObject({
+  status: memoryDraftStatusSchema.optional(),
+});
+export type MemoryDraftsListParams = z.infer<typeof memoryDraftsListParamsSchema>;
+
+export const memoryDraftsListResultSchema = z.object({
+  drafts: z.array(memoryDraftSchema),
+});
+export type MemoryDraftsListResult = z.infer<typeof memoryDraftsListResultSchema>;
+
+export const memoryDraftsResolveParamsSchema = z.strictObject({
+  draftId: z.string().min(1),
+  action: z.enum(["confirm", "reject"]),
+  /** confirm 时覆盖草案的建议章节；缺省 = 草案预填章节。 */
+  section: memorySectionSchema.optional(),
+});
+export type MemoryDraftsResolveParams = z.infer<typeof memoryDraftsResolveParamsSchema>;
+
+export const memoryDraftsResolveResultSchema = z.object({
+  resolved: z.literal(true),
+  /** confirm 且合入成功为 true；reject 为 false。 */
+  promoted: z.boolean(),
+});
+export type MemoryDraftsResolveResult = z.infer<typeof memoryDraftsResolveResultSchema>;

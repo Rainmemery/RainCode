@@ -10,7 +10,10 @@
  *   初始化落盘只发生在显式写路径（write/promote，文件缺失时先落模板再改，02 §7.3 末行）；
  * - 写路径 = 读-改-写 + 文件级冲突检测（读时记 mtime，写前重 stat，变更即
  *   MEMORY_WRITE_CONFLICT 放弃，02 §7.4）+ 原子提交（同目录临时文件 + rename）；
- * - 文件是唯一真源，被用户手工改动时以文件为准（02 §7.4）。
+ * - 文件是唯一真源，被用户手工改动时以文件为准（02 §7.4）；
+ * - SectionEditHooks.onBeforeRecheck：S2 mtime 复检前的同步注入点（宿主/测试确定性制造
+ *   并发窗口；prod 缺省不传，注入面是依赖注入选项而非 fs monkey-patch——ESM 静态绑定下
+ *   进程内事后 patch 不传播，见 PROGRESS §4 smoke-memory case B 收口记录）。
  */
 import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -148,10 +151,17 @@ async function snapshot(path: string): Promise<FileSnapshot> {
   }
 }
 
+/** 章节写路径注入点（宿主/测试用；prod 缺省空实现路径）。 */
+export interface SectionEditHooks {
+  /** S2 mtime 复检 snapshot 前触发（一次性注入后自拆由调用方负责）。 */
+  onBeforeRecheck?: () => void | Promise<void>;
+}
+
 /** 读-改-写公共骨架：文件缺失先落模板；写前 mtime 复检，变更即 MEMORY_WRITE_CONFLICT。 */
 async function commitSectionEdit(
   workspaceRoot: string,
   edit: (lines: string[]) => string[],
+  hooks: SectionEditHooks = {},
 ): Promise<void> {
   const path = projectMemoryPath(workspaceRoot);
   let base: string[];
@@ -172,6 +182,7 @@ async function commitSectionEdit(
     before = { exists: false, mtimeMs: null };
   }
 
+  await hooks.onBeforeRecheck?.();
   const after = await snapshot(path);
   const changed =
     after.exists !== before.exists ||
@@ -209,9 +220,12 @@ export async function updateAgentSection(
   workspaceRoot: string,
   section: MemorySection,
   content: string,
+  hooks: SectionEditHooks = {},
 ): Promise<void> {
-  await commitSectionEdit(workspaceRoot, (lines) =>
-    replaceSectionBody(lines, section, contentToLines(content)),
+  await commitSectionEdit(
+    workspaceRoot,
+    (lines) => replaceSectionBody(lines, section, contentToLines(content)),
+    hooks,
   );
 }
 
@@ -220,8 +234,11 @@ export async function appendToSection(
   workspaceRoot: string,
   section: MemorySection,
   line: string,
+  hooks: SectionEditHooks = {},
 ): Promise<void> {
-  await commitSectionEdit(workspaceRoot, (lines) =>
-    appendSectionLine(lines, section, line.replace(/\r?\n/g, " ").trim()),
+  await commitSectionEdit(
+    workspaceRoot,
+    (lines) => appendSectionLine(lines, section, line.replace(/\r?\n/g, " ").trim()),
+    hooks,
   );
 }

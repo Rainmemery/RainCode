@@ -51,6 +51,7 @@ import { McpRuntime } from "./mcp-runtime.js";
 import { SubagentRuntime } from "./subagent-runtime.js";
 import { SkillRuntime } from "./skill-runtime.js";
 import { MemoryRuntime, memoryLoopEnhancements } from "./memory-runtime.js";
+import type { SectionEditHooks } from "@raincode/memory";
 
 /** Provider 运行时配置（apiKey 已由调用方解析为明文注入；绝不落日志）。 */
 export interface ProviderRuntimeConfig {
@@ -91,8 +92,9 @@ export interface AgentServiceOptions {
   mcp?: { workspaceRoot?: string };
   /** 子代理域装配（02 §4；缺省 = 不启用 subagent 域；workspaceRoot 为 workspace 层 profiles 判定域）。 */
   subagent?: { workspaceRoot?: string };
-  /** memory 域装配（02 §7；缺省 = 不启用 memory 域；workspaceRoot 为 promote 反查兜底域）。 */
-  memory?: { workspaceRoot?: string };
+  /** memory 域装配（02 §7；缺省 = 不启用 memory 域；workspaceRoot 为 promote 反查兜底域）；
+   * sectionEditHooks 透传 ProjectMemoryService（宿主/测试确定性并发窗口注入，见 memory 包）。 */
+  memory?: { workspaceRoot?: string; sectionEditHooks?: SectionEditHooks };
   /** skills 域装配（T3.4；缺省 = 不启用。workspace 层技能目录按会话 workspaceRoot 逐会话解析，无装配期参数）。 */
   skills?: Record<string, never>;
   /** system.shutdown 的存储关闭回调（node 注入；缺省跳过——传输关闭由持有方承担）。 */
@@ -191,7 +193,8 @@ export class AgentService {
     this.memory =
       options.memory === undefined ? null
         : new MemoryRuntime({ storage: options.storage, llmFor: () => this.llm,
-            ...(options.memory.workspaceRoot !== undefined && { workspaceRoot: options.memory.workspaceRoot }) });
+            ...(options.memory.workspaceRoot !== undefined && { workspaceRoot: options.memory.workspaceRoot }),
+            ...(options.memory.sectionEditHooks !== undefined && { sectionEditHooks: options.memory.sectionEditHooks }) });
     // skills 域（T3.4 / 06 §2.9）：提交链注入（session.send / skills.invoke 共用）
     this.skills =
       options.skills === undefined ? null

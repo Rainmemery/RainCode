@@ -4,15 +4,18 @@
  * - ProjectMemoryService 组装（04-architecture ADR-06：server 是唯一组装点）：
  *   MEMORY.md 文件真源 + memory_entries 抽取/召回；抽取的模型调用经 MemoryExtractPort
  *   端口注入（04 §2.2：memory 不可直接依赖 llm），本文件以 LLM 实现该端口；
- * - memory 域 5 协议方法（06 §2.6），形态对齐 mcp-runtime.methods；MemoryError →
+ * - memory 域 7 协议方法（06 §2.6），形态对齐 mcp-runtime.methods；MemoryError →
  *   RpcCallError 统一映射（06 §4.3 段 6 业务码，风格同 mcp/subagent 错误映射）；
  * - memoryLoopEnhancements / onArchive：MEMORY.md 系统提示注入（04 L86）与会话结束 /
- *   compact 抽取钩子（02 §7.2/§7.4）；未装配（AgentServiceOptions.memory 缺省）时
+ *   compact 抽取钩子（02 §7.2/§7.4）；晋升草案待确认区两方法（memory.drafts.list/resolve，
+ *   02 §7.2 第三层用户确认入口）；未装配（AgentServiceOptions.memory 缺省）时
  *   不注册方法、不注入 MEMORY.md、不挂抽取钩子。
  */
 import { RpcCallError } from "@raincode/rpc";
 import { memoryKindSchema } from "@raincode/shared";
 import type {
+  MemoryDraftsListParams,
+  MemoryDraftsResolveParams,
   MemoryEntriesListParams,
   MemoryPromoteParams,
   MemoryReadParams,
@@ -24,6 +27,7 @@ import type { LlmPort } from "@raincode/agent-core";
 import type { Storage } from "@raincode/storage";
 import { MEMORY_TEMPLATE, MemoryError, createProjectMemoryService } from "@raincode/memory";
 import type { ExtractedCandidate, MemoryExtractPort, ProjectMemoryService } from "@raincode/memory";
+import type { SectionEditHooks } from "@raincode/memory";
 
 // ---------------------------------------------------------------------------
 // LLM 抽取端口（02 §7.2：要点抽取 = 同会话模型一次调用）
@@ -151,6 +155,8 @@ export interface MemoryRuntimeOptions {
   llmFor: () => LlmPort | null;
   /** 实例绑定 workspace 根（promote 反查兜底域；缺省经 storage.workspaceRootByHash）。 */
   workspaceRoot?: string;
+  /** 章节写路径注入点（宿主/测试；见 memory SectionEditHooks）。 */
+  sectionEditHooks?: SectionEditHooks;
   /** 诊断出口（缺省 console.error，风格同 mcp-runtime）。 */
   onDiagnostic?: (message: string, err?: unknown) => void;
 }
@@ -171,6 +177,7 @@ export class MemoryRuntime {
       storage: options.storage,
       extractPort: createLlmExtractPort(options.llmFor, (message, err) => this.diag(message, err)),
       ...(options.workspaceRoot !== undefined && { workspaceRoot: options.workspaceRoot }),
+      ...(options.sectionEditHooks !== undefined && { sectionEditHooks: options.sectionEditHooks }),
     });
   }
 
@@ -235,6 +242,34 @@ export class MemoryRuntime {
           return { promoted: true };
         } catch (reason: unknown) {
           throw mapMemoryError(reason); // MEMORY_ENTRY_NOT_FOUND（06 §2.6）
+        }
+      }),
+      "memory.drafts.list": register("memory.drafts.list", async (params) => {
+        const { status } = params as MemoryDraftsListParams;
+        const rows = await this.service.listDrafts(this.requireWorkspaceId(), { status });
+        // memory 包内嵌套（draft+entry）→ 协议扁平投影（shared memoryDraftSchema：草案字段 + entry 随行）
+        return {
+          drafts: rows.map((row) => ({
+            id: row.draft.id,
+            entryId: row.draft.entryId,
+            section: row.draft.section,
+            status: row.draft.status,
+            createdAt: row.draft.createdAt,
+            resolvedAt: row.draft.resolvedAt,
+            entry: row.entry,
+          })),
+        };
+      }),
+      "memory.drafts.resolve": register("memory.drafts.resolve", async (params) => {
+        const { draftId, action, section } = params as MemoryDraftsResolveParams;
+        try {
+          return await this.service.resolveDraft(this.requireWorkspaceId(), {
+            draftId,
+            action,
+            ...(section !== undefined && { section }),
+          });
+        } catch (reason: unknown) {
+          throw mapMemoryError(reason); // MEMORY_DRAFT_NOT_FOUND / MEMORY_SECTION_FORBIDDEN / MEMORY_ENTRY_NOT_FOUND
         }
       }),
     };

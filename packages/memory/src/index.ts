@@ -33,6 +33,19 @@ export type { ExtractFromSessionDeps, ExtractFromSessionInput, ExtractedCandidat
 export { searchEntries } from "./recall/recall.js";
 export type { SearchEntriesOptions } from "./recall/recall.js";
 
+// 第三层：晋升草案待确认区（02 §7.2 记忆 Agent 循环；settings KV 载体）
+export {
+  KIND_TO_SECTION,
+  MEMORY_DRAFT_MIN_CONFIDENCE,
+  MEMORY_DRAFTS_KEY_PREFIX,
+  createDraftsForEntries,
+  listDrafts,
+  resolveDraft,
+  resolvePendingDraftsByEntry,
+} from "./promotion/drafts.js";
+export type { MemoryDraft, MemoryDraftStatus, MemoryDraftWithEntry, DraftStoreDeps } from "./promotion/drafts.js";
+export type { SectionEditHooks } from "./project-file/project-file.js";
+
 // 门面（02 §7.3 ProjectMemoryService 契约 + 06 §2.6 协议对齐）
 export { ProjectMemoryService, createProjectMemoryService } from "./service.js";
 export type { ListEntriesFilter, ProjectMemoryServiceOptions } from "./service.js";

@@ -26,7 +26,7 @@ interface SnapshotPayload {
 
 interface DesktopStore extends DesktopState {
   bootstrap(): Promise<void>;
-  setView(view: "chat" | "settings"): void;
+  setView(view: "chat" | "settings" | "memory"): void;
   setWorkspace(root: string): void;
   pickWorkspace(): Promise<void>;
   createSession(title?: string): Promise<void>;
@@ -46,6 +46,14 @@ function rpc(): RpcClient {
     client = createRpcClient({ transport: getBridge(), defaultTimeoutMs: 30_000 });
   }
   return client;
+}
+
+/**
+ * 低频控制面调用的共享出口（memory 域等本地状态自管的视图使用，不进全局 store）；
+ * 与 store 内 call 同口径：params 缺省补 {}（strict schema 拒绝 undefined）。
+ */
+export function rpcCall<T>(method: string, params?: unknown): Promise<T> {
+  return rpc().call<T>(method, params ?? {});
 }
 
 export const useDesktop = create<DesktopStore>((set, get) => {

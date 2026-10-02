@@ -23,7 +23,7 @@ RainCode 的功能定位与 Claude Code / Codex 对齐：整合**代码生成、
 | 上下文压缩 compact（80% 阈值自动触发 / 异步不阻塞 / 记忆抽取钩子） | ✅ M2 |
 | MCP 接入（stdio / Streamable HTTP / SSE，`mcp__<server>__<tool>` 命名空间；运行时启停 / 健康检查 ping） | ✅ M2/M3 |
 | 子代理管理（profile 双源解析 / 并发槽排队 / 级联取消 / 事件镜像合并） | ✅ M2 |
-| 项目记忆（MEMORY.md 注入 / FTS5 检索 / 会话记忆抽取 / promote 晋升） | ✅ M2 |
+| 项目记忆（MEMORY.md 注入 / FTS5 检索 / 会话记忆抽取 / 晋升草案待确认区 / 桌面记忆管理器） | ✅ M2/M3 |
 | P1 工具（`web_fetch` SSRF 防护 / `ask_user_question` 交互提问） | ✅ M2 |
 | rpc stdio 绑定 + headless 宿主（`raincode serve`） | ✅ M2 |
 | 桌面端 Alpha（Electron 三泳道 + React，会话流 / 工具卡 / 审批弹窗 / Provider 设置） | ✅ M2 |
@@ -125,7 +125,7 @@ pnpm --filter @raincode/desktop build
 pnpm --filter @raincode/desktop dist
 ```
 
-Alpha 功能范围：三栏主界面（会话列表 + 会话流 + 输入区）、工具调用卡片（五状态：排队 / 运行中 / 成功 / 失败 / 已作废）、权限审批弹窗（风险徽章 + 键盘 `1-4` 直选 + `Esc` 拒绝）、Provider 设置（添加 / 切换 / 活跃徽章）、工作区目录选择、流式输出与光标、子进程崩溃自动重启提示。与 CLI 共享同一 `RAINCODE_HOME` 数据目录——CLI 里开始的会话，桌面端打开即续接。
+Alpha 功能范围：三栏主界面（会话列表 + 会话流 + 输入区）、工具调用卡片（五状态：排队 / 运行中 / 成功 / 失败 / 已作废）、权限审批弹窗（风险徽章 + 键盘 `1-4` 直选 + `Esc` 拒绝）、Provider 设置（添加 / 切换 / 活跃徽章）、记忆管理器（MEMORY.md 预览 / 晋升草案确认 / 条目检索与晋升）、工作区目录选择、流式输出与光标、子进程崩溃自动重启提示。与 CLI 共享同一 `RAINCODE_HOME` 数据目录——CLI 里开始的会话，桌面端打开即续接。
 
 ## Provider 配置
 
@@ -306,6 +306,8 @@ bash 与后台任务的执行环境经 `Executor` 抽象投递（02 §5.3 扩展
 
 - **L1 项目记忆** `<workspace>/.raincode/MEMORY.md`：每次会话全文注入 systemPrompt；结构化章节（项目概览 / 技术栈 / 约定等）由 Agent 自动维护，`<!-- user -->` 用户章节仅手动修改（越界写入被拒）。
 - **L2 会话记忆**：会话归档 / compact 前由 LLM 抽取关键事实落 `memory_entries`（FTS5 trigram 检索），幂等去重、矛盾条目 supersede；`memory.search` 关键词检索、`memory.write` 手工写入、`memory.promote` 将会话记忆晋升进 MEMORY.md 指定章节（需用户确认）。
+- **L3 晋升草案待确认区**：抽取落盘的高置信（confidence ≥ 0.8）新条目自动生成晋升草案（kind → 章节预填，todo 与低置信排除），`memory.drafts.list/resolve` 待用户确认合入或忽略；直接管 promote 同条目自动收敛其 pending 草案。
+- **桌面记忆管理器**：左侧记忆源分桶 / 中部 MEMORY.md 只读预览 / 右侧待确认草案（章节可改、确认合入）+ 条目检索、kind 过滤、置信度与 superseded 标记、直管晋升（03 §6.3 稿件 03）。
 
 ## 环境变量总览
 
