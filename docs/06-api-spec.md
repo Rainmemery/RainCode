@@ -213,7 +213,7 @@ MCP 域管理外部 server 的配置与连接生命周期，并把远端工具�
 | `subagent.spawn` | `{ sessionId, profile: string \| SubagentProfileInline, task }` | `{ subagentId, status: "Pending"\|"Running", queuePosition? }` | `SESSION_NOT_FOUND` `SUBAGENT_PROFILE_NOT_FOUND` `SUBAGENT_PROFILE_INVALID` `SUBAGENT_TOOLS_EMPTY` | profile 传 name 时按名解析（`.nova/agents/*.md`）；并发上限默认 4，超限排队 Pending（S1）；层级固定为 2——子会话工具投影不含 `agent` 工具（02 §4.1） |
 | `subagent.stop` | `{ subagentId, reason? }` | `{ stopped, status }` | `SUBAGENT_NOT_FOUND` | 级联取消（进程树终止，S5/S6）；对终态句柄幂等返回 `stopped: false` |
 | `subagent.list` | `{ sessionId? }` | `{ items: SubagentInfo[] }` | — | 每项含 `{ id, profileName, status: "Pending"\|"Running"\|"Completed"\|"Failed"\|"Stopped", startedAt?, usage?, turnsUsed? }` |
-| `subagent.profiles.list` | `{}` | `{ profiles: SubagentProfileSummary[] }` | — | 扫描工作区与全局 profile 目录；每项含 `{ name, description, source: "workspace"\|"global", tools?, model?, maxTurns? }`（frontmatter 投影，02 §4.3） |
+| `subagent.profiles.list` | `{}` | `{ profiles: SubagentProfileSummary[] }` | — | 扫描工作区与全局 profile 目录；每项含 `{ name, description, source: "workspace"\|"global"\|"builtin", tools?, model?, maxTurns? }`（frontmatter 投影，02 §4.3）；**v1.6 增 `source: "builtin"`**（T3.6 内置角色模板 researcher/reviewer/tester，解析链 workspace → global → builtin 最后一级，用户同名 profile 遮蔽内置） |
 
 ### 2.6 memory 域（项目记忆，对应 02 §7）
 
@@ -720,6 +720,7 @@ capability 命名约定：`<domain>.<feature>`（小写点分），登记于 `sy
 | 1.3 | 2026-09-29 | 桌面端走查修复（minor+1，只增不改）：`SessionSnapshotPayload` 增可选 `history`（全量消息数组）——冷重建专用（桌面端首次打开 / renderer 刷新时端层无本地历史可拼，`messages` 尾部增量口径对已收束会话为空会导致恢复视图空白）；`session.resume` 幂等路径（Active 会话）与冷恢复路径均填充该字段，`session.snapshot` 事件投影可省略。协议规模不变（45 方法 / 18 事件） |
 | 1.4 | 2026-09-29 | T3.4 技能与斜杠命令（minor+1）：新增 skills 域 2 方法 `skills.list` / `skills.invoke`（§2.9，装配期缺省不启用；CLI 与 stdio 宿主默认装配）——技能 = markdown+frontmatter 提示词模板双源加载（workspace 优先），展开在 server 侧（`$ARGUMENTS` 替换/无占位符追加），turn 事件流与 `session.send` 复用；错误码新增段 9：`SKILL_NOT_FOUND` / `SKILL_INVALID`。协议规模 47 方法 / 18 事件 |
 | 1.5 | 2026-09-29 | T3.7 MCP 服务器管理（minor+1）：mcp 域新增 2 方法 `mcp.servers.setEnabled`（运行时启停——停 = 断连 + 工具注销 + mcp.json `enabled` 持久化，配置保留可再启；启 = 受理即返重连）与 `mcp.servers.health`（Connected server 主动 MCP ping 实测 RTT，其余状态只读投影，探测不改状态机）。协议规模 49 方法 / 18 事件 |
+| 1.6 | 2026-09-29 | T3.6 子代理编排增强（minor+1，additive）：`SubagentProfileSummary.source` 枚举增 `"builtin"`——内置角色模板（researcher/reviewer/tester，代码常量不落盘）作为 profile 解析链 workspace → global → builtin 的最后一级（用户同名 profile 遮蔽内置）；`subagent.profiles.list` 与 `agent` 工具 description 均投影内置模板；并行编排汇聚语义不变（`agent` 工具 readOnly → 同轮多派发经 ToolExecutor 只读并行执行，各完成通知按批次合并回主循环，验收用例 smoke-subagent case H）。协议规模不变（49 方法 / 18 事件） |
 
 ---
 

@@ -24,9 +24,11 @@ import type {
   SubagentStopParams,
 } from "@raincode/shared";
 import {
+  BUILTIN_ROLE_TEMPLATES,
   DEFAULT_SUBAGENT_MAX_TURNS,
   SubagentManager,
   SubagentProfileError,
+  builtinRoleOf,
   createAgentTool,
   parseProfileMarkdown,
   previewText,
@@ -109,7 +111,15 @@ export class SubagentRuntime {
     if (parent === null) {
       throw new RpcCallError("SESSION_NOT_FOUND", `session not found: ${params.sessionId}`);
     }
-    const profile = this.resolveSpawnProfile(params.profile);
+    let profile: SubagentProfile;
+    try {
+      profile = this.resolveSpawnProfile(params.profile);
+    } catch (reason: unknown) {
+      if (reason instanceof SubagentProfileError) {
+        throw new RpcCallError(reason.code, reason.message); // 控制面域码映射（模型路径保持原生错误可自纠）
+      }
+      throw reason;
+    }
     if (this.projectAllow(profile.tools).size === 0) {
       throw new RpcCallError("SUBAGENT_TOOLS_EMPTY", `subagent "${profile.name}" 工具白名单为空（02 §4.4）`);
     }
@@ -145,14 +155,17 @@ export class SubagentRuntime {
     return { items };
   }
 
-  /** profile 解析：string → 双层目录解析（NOT_FOUND/INVALID 透传域码）；inline → schema 已校验 + maxTurns 缺省 20。 */
+  /** profile 解析：string → 双层目录解析（SubagentProfileError 原生抛出，调用方按域映射）→
+   * 内置角色兜底（T3.6，workspace → global → builtin，用户同名遮蔽内置）；
+   * inline → schema 已校验 + maxTurns 缺省 20。 */
   private resolveSpawnProfile(profile: string | SubagentProfileInline): SubagentProfile {
     if (typeof profile === "string") {
       try {
         return resolveProfileFile(this.profileDirs(), profile).profile;
       } catch (reason: unknown) {
-        if (reason instanceof SubagentProfileError) {
-          throw new RpcCallError(reason.code, reason.message);
+        const builtin = builtinRoleOf(profile);
+        if (builtin !== undefined) {
+          return builtin; // 目录未命中 → 内置角色模板兜底（用户同名已在上游命中，不会到这里）
         }
         throw reason;
       }
@@ -262,7 +275,8 @@ export class SubagentRuntime {
     return dirs;
   }
 
-  /** profile 清单（subagent.profiles.list / agent 工具 description 数据源）：扫描两目录 *.md，同名 workspace 优先。 */
+  /** profile 清单（subagent.profiles.list / agent 工具 description 数据源）：扫描两目录 *.md，
+   * 同名 workspace 优先；目录未覆盖的内置角色模板以 source:"builtin" 追加（T3.6，用户可同名遮蔽）。 */
   private profileCatalog(): SubagentProfileSummary[] {
     const byName = new Map<string, SubagentProfileSummary>();
     for (const dir of this.profileDirs()) {
@@ -282,6 +296,17 @@ export class SubagentRuntime {
         } catch (reason: unknown) {
           this.diag(`profile 解析失败，已跳过: ${join(dir.path, fileName)}`, reason);
         }
+      }
+    }
+    for (const template of BUILTIN_ROLE_TEMPLATES) {
+      if (!byName.has(template.name)) {
+        byName.set(template.name, {
+          name: template.name,
+          description: template.description,
+          source: "builtin",
+          ...(template.tools !== undefined && { tools: template.tools }),
+          maxTurns: template.maxTurns,
+        });
       }
     }
     return [...byName.values()];
@@ -306,7 +331,9 @@ export class SubagentRuntime {
       createAgentTool({
         manager: this.manager,
         profileCatalog: () => this.profileCatalog(),
-        resolveProfile: (name) => resolveProfileFile(this.profileDirs(), name).profile,
+        // 解析链 workspace → global → builtin（T3.6）：SubagentProfileError 由工具侧映射数据级错误
+        resolveProfile: (name) =>
+          this.resolveSpawnProfile(name),
       }),
       "builtin",
     );

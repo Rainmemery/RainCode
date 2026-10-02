@@ -114,13 +114,13 @@ export function textFrame(text: string): unknown {
   return { choices: [{ index: 0, delta: { content: text } }] };
 }
 
-export function toolCallFrame(id: string, name: string, args: object): unknown {
+export function toolCallFrame(id: string, name: string, args: object, index = 0): unknown {
   return {
     choices: [
       {
         index: 0,
         delta: {
-          tool_calls: [{ index: 0, id, type: "function", function: { name, arguments: JSON.stringify(args) } }],
+          tool_calls: [{ index, id, type: "function", function: { name, arguments: JSON.stringify(args) } }],
         },
       },
     ],

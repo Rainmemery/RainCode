@@ -79,6 +79,9 @@ export type { CreateAgentToolOptions } from "./subagent/agent-tool.js";
 
 export { projectRegistry } from "./subagent/registry-projection.js";
 
+// 内置角色模板（T3.6 / M3）：workspace → global → builtin 三级解析的最后一级（用户同名遮蔽内置）
+export { BUILTIN_ROLE_TEMPLATES, builtinRoleOf } from "./subagent/role-templates.js";
+
 // 技能与斜杠命令（T3.4 / M3）：解析与展开在 agent-core，装配（skills 域方法表）在 server
 export {
   SKILL_NAME_PATTERN,

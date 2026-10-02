@@ -87,7 +87,8 @@ export type SubagentListResult = z.infer<typeof subagentListResultSchema>;
 export const subagentProfileSummarySchema = z.object({
   name: z.string(),
   description: z.string(),
-  source: z.enum(["workspace", "global"]),
+  /** v1.6 增 "builtin"（T3.6 内置角色模板，解析链 workspace → global → builtin 最后一级）。 */
+  source: z.enum(["workspace", "global", "builtin"]),
   tools: z.array(z.string()).optional(),
   model: z.string().optional(),
   maxTurns: z.number().int().optional(),

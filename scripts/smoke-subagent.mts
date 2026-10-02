@@ -14,6 +14,10 @@
  * 用例 E stop 幂等：终态句柄 stop → stopped:false 不抛（06 §2.5）。
  * 用例 F 排队（受理即返）：直调 spawn 5 个（默认并发 4）→ 第 5 个受理即 Pending + queuePosition=1
  *   → spawned 事件恰 1 个 Pending → 槽位释放 FIFO 补位后 5 个全部 Completed。
+ * 用例 G 内置角色模板（T3.6）：tester 无用户文件 → builtin 兜底 spawn 可收束；profiles.list
+ *   含 source:"builtin" 项且用户同名遮蔽（case C）。
+ * 用例 H 并行编排汇聚（T3.6 验收）：同轮两个 agent tool_call → 子代理并发执行（请求到达间隔
+ *   < 300ms，串行基线 ≥400ms）→ 双完成通知合并回主循环。
  * 全程仅本机回环与临时目录：无外呼、无真实密钥（mock provider apiKey 为占位符，绝不打印）。
  */
 import assert from "node:assert/strict";
@@ -38,7 +42,7 @@ import type {
   ToolCallCompletedEventPayload,
 } from "../packages/shared/src/index.ts";
 import { beginTurn, startMockLlmServer, textScript, toolCallFrame, waitFor, withTimeout } from "./p0-lib.mts";
-import type { SseScript } from "./p0-lib.mts";
+import type { MockLlmServer, SseScript } from "./p0-lib.mts";
 
 // ---------------------------------------------------------------------------
 // 场景装配：临时 RAINCODE_HOME + 双层 profile 目录 + in-memory 服务节点 + RPC 客户端
@@ -51,6 +55,7 @@ interface Scenario {
   workspace: string;
   client: RpcClient;
   node: AgentServiceNode;
+  mock: MockLlmServer;
   /** subagent.* 事件时间线（到达序；in-memory transport 同进程 FIFO）。 */
   timeline: TimelineEntry[];
   setScript: (script: SseScript[]) => void;
@@ -115,6 +120,7 @@ async function startScenario(): Promise<Scenario> {
     workspace,
     client,
     node,
+    mock,
     timeline,
     setScript: mock.setScript,
     close: async () => {
@@ -199,10 +205,11 @@ async function caseCompleteAndMirror(scenario: Scenario): Promise<void> {
   console.log("case B: 事件镜像（spawned → started → done → completed）OK");
 }
 
-/** C：profiles.list 双源投影。 */
+/** C：profiles.list 双源投影 + 内置角色模板（T3.6：用户同名遮蔽 builtin）。 */
 async function caseProfilesList(scenario: Scenario): Promise<void> {
   const { profiles } = (await scenario.client.call("subagent.profiles.list", {})) as SubagentProfilesListResult;
-  assert.equal(profiles.length, 2, `researcher+writer 在列、bad.md 解析失败跳过（实际 ${JSON.stringify(profiles)}）`);
+  // researcher（global 用户定义遮蔽同名内置）+ writer（workspace）+ reviewer/tester（builtin 兜底）
+  assert.equal(profiles.length, 4, `researcher+writer+reviewer+tester 在列、bad.md 解析失败跳过（实际 ${JSON.stringify(profiles)}）`);
   const researcher = profiles.find((profile) => profile.name === "researcher");
   assert.ok(researcher !== undefined, "researcher 在列");
   assert.equal(researcher.source, "global");
@@ -213,7 +220,14 @@ async function caseProfilesList(scenario: Scenario): Promise<void> {
   assert.equal(writer.source, "workspace");
   assert.equal(writer.tools, undefined); // 缺省继承主会话全集
   assert.equal(writer.maxTurns, 20); // 缺省 20
-  console.log("case C: profiles.list（workspace/global 双源 + frontmatter 投影）OK");
+  // T3.6 内置角色模板：用户未定义的名字以 source:"builtin" 兜底在列
+  for (const name of ["reviewer", "tester"]) {
+    const builtin = profiles.find((profile) => profile.name === name);
+    assert.ok(builtin !== undefined, `内置角色 ${name} 在列`);
+    assert.equal(builtin.source, "builtin", `内置角色 ${name} source=builtin`);
+    assert.ok(builtin.maxTurns !== undefined && builtin.maxTurns >= 1, "内置模板 maxTurns 给定");
+  }
+  console.log("case C: profiles.list（双源投影 + builtin 兜底 + 用户同名遮蔽）OK");
 }
 
 /** D：校验错误码。 */
@@ -311,6 +325,88 @@ async function caseQueueing(scenario: Scenario): Promise<void> {
   console.log("case F: 排队（并发 4 + 第 5 个 Pending/queuePosition=1 + FIFO 补位）OK");
 }
 
+/** G：内置角色模板 spawn（T3.6）：tester 无用户文件 → 内置兜底可派发可收束。 */
+async function caseBuiltinRoleSpawn(scenario: Scenario): Promise<void> {
+  const { client, timeline } = scenario;
+  scenario.setScript([textScript("测试结论：全部通过")]);
+  const sessionId = ((await client.call("session.create", {
+    workspaceRoot: scenario.workspace,
+    title: "builtin-role",
+  })) as SessionCreateResult).sessionId;
+  const marker = timeline.length;
+  const spawned = (await client.call("subagent.spawn", {
+    sessionId,
+    profile: "tester", // 目录未命中（global 只有 researcher；workspace 只有 writer）→ 内置角色兜底
+    task: "运行测试套件",
+  })) as SubagentSpawnResult;
+  assert.equal(spawned.status, "Running");
+  await waitFor(
+    () =>
+      timeline
+        .slice(marker)
+        .some((entry) => entry.name === "subagent.completed" && (entry.payload as SubagentCompletedEventPayload).status === "Completed"),
+    20000,
+    "内置角色子代理完成",
+  );
+  const spawnedPayload = timeline
+    .slice(marker)
+    .find((entry) => entry.name === "subagent.spawned")!.payload as SubagentSpawnedEventPayload;
+  assert.equal(spawnedPayload.profileName, "tester", "内置角色名派发");
+  const completedPayload = timeline
+    .slice(marker)
+    .find((entry) => entry.name === "subagent.completed")!.payload as SubagentCompletedEventPayload;
+  assert.ok(completedPayload.summary.includes("测试结论：全部通过"));
+  console.log("case G: 内置角色模板 spawn（tester 目录未命中 → builtin 兜底可运行）OK");
+}
+
+/** H：并行编排汇聚（T3.6 验收用例）：同轮两个 agent tool_call → 子代理并发执行 → 双完成通知合并回主循环。 */
+async function caseParallelFanOut(scenario: Scenario): Promise<void> {
+  const { client, mock } = scenario;
+  // main1（同轮两个 agent 调用，index 0/1）→ 两个子请求（各 400ms 延迟）→ main2 汇总收束
+  scenario.setScript([
+    {
+      frames: [
+        { choices: [{ index: 0, delta: { role: "assistant", content: "" } }] },
+        toolCallFrame("call_agent_p1", "agent", { profile: "researcher", task: "调研 A" }, 0),
+        toolCallFrame("call_agent_p2", "agent", { profile: "writer", task: "撰写 B" }, 1),
+        { choices: [], usage: { prompt_tokens: 30, completion_tokens: 10 } },
+      ],
+      finish: "tool_calls",
+    },
+    textScript("子结论A：并行", 400),
+    textScript("子结论B：并行", 400),
+    textScript("汇总：两路子代理结论已合并"),
+  ]);
+  const sessionId = ((await client.call("session.create", {
+    workspaceRoot: scenario.workspace,
+    title: "parallel-fanout",
+  })) as SessionCreateResult).sessionId;
+  const run = beginTurn(client, sessionId, "并行派发两个子任务");
+  const admission = (await run.sendPromise) as SessionSendResult;
+  assert.equal(admission.admission, "started");
+  const done = (await withTimeout(run.done, 30000, "parallel fan-out turn done")) as DoneEventPayload;
+  run.stop();
+  assert.equal(done.outcome, "completed");
+
+  // 汇聚：两个 agent 工具结果（完成通知）均回传主循环，各自携带子结论
+  const agentResults = run.toolCompleted.filter((event) => event.contentPreview?.includes("子结论"));
+  assert.equal(
+    agentResults.length,
+    2,
+    `两个完成通知合并回主循环（实际 ${JSON.stringify(run.toolCompleted.map((e) => e.contentPreview))}）`,
+  );
+  assert.ok(agentResults.some((e) => e.contentPreview?.includes("子结论A")));
+  assert.ok(agentResults.some((e) => e.contentPreview?.includes("子结论B")));
+
+  // 并发：两个子代理的 LLM 请求到达间隔 < 300ms（串行执行因 400ms 响应延迟必然 ≥400ms）
+  const subRequestGap = Math.abs(mock.bodyTimes[2]! - mock.bodyTimes[1]!);
+  assert.ok(
+    subRequestGap < 300,
+    `子代理请求并发到达（间隔 ${subRequestGap.toFixed(0)}ms < 300ms；串行基线 ≥400ms）`,
+  );
+  console.log(`case H: 并行编排汇聚（同轮双派发并发执行，请求间隔 ${subRequestGap.toFixed(0)}ms，双结果合并）OK`);
+}
+
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
@@ -321,6 +417,8 @@ async function main(): Promise<void> {
     await caseValidationErrors(scenario);
     await caseStopIdempotent(scenario);
     await caseQueueing(scenario);
+    await caseBuiltinRoleSpawn(scenario);
+    await caseParallelFanOut(scenario);
   } finally {
     await scenario.close();
   }

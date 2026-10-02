@@ -246,6 +246,7 @@ maxTurns: 20
 ```
 
 - 主代理经 `agent` 工具派发：`{ profile: "reviewer", task: "审查 src/rpc" }`，阻塞等待子会话终态、结论回传主循环（子代理中间过程不污染主上下文）。
+- **内置角色模板**（M3 T3.6）：未放置任何 profile 时也有开箱即用的 `researcher`（只读调研）/ `reviewer`（代码审查）/ `tester`（测试执行）——解析链 workspace → global → 内置，用户同名 profile 遮蔽内置；同轮多个 `agent` 调用经只读并行并发执行（上限 4），完成通知按批次合并回主循环。
 - 并发槽缺省 4，超限 FIFO 排队（`queuePosition` 可见）；`subagent.stop` 级联取消。
 - 子代理事件镜像（spawned / progress / completed）500ms 窗口合并，终态永不合并。
 - profile 缺省 `tools` 只读白名单，层级固定 2（子代理不可再派孙子代理）。
