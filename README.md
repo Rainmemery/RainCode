@@ -21,7 +21,7 @@ RainCode 的功能定位与 Claude Code / Codex 对齐：整合**代码生成、
 | 命令权限控制（五级判定链 / bash argv 求值 / grantId 审批闭环 / 三层规则 / 审计） | ✅ M1 |
 | 控制面协议（47 方法 / 18 事件 / 密钥引用制 / capability 协商） | ✅ M2 |
 | 上下文压缩 compact（80% 阈值自动触发 / 异步不阻塞 / 记忆抽取钩子） | ✅ M2 |
-| MCP 接入（stdio / Streamable HTTP / SSE，`mcp__<server>__<tool>` 命名空间） | ✅ M2 |
+| MCP 接入（stdio / Streamable HTTP / SSE，`mcp__<server>__<tool>` 命名空间；运行时启停 / 健康检查 ping） | ✅ M2/M3 |
 | 子代理管理（profile 双源解析 / 并发槽排队 / 级联取消 / 事件镜像合并） | ✅ M2 |
 | 项目记忆（MEMORY.md 注入 / FTS5 检索 / 会话记忆抽取 / promote 晋升） | ✅ M2 |
 | P1 工具（`web_fetch` SSRF 防护 / `ask_user_question` 交互提问） | ✅ M2 |
@@ -227,7 +227,9 @@ raincode chat --base-url https://your-endpoint/v1 --model your-model --api-key s
 - MCP 工具以 `mcp__<serverKey>__<toolName>` 命名空间注册进工具系统，权限元数据**从严**（needsApproval=true），与内置工具同走三态判定。
 - 连接状态机：Disconnected → Connecting → Connected，失败指数退避重连（1/2/4/8/16s，5 次耗尽 → Failed）；单 server 故障仅影响自身命名空间（失败隔离）。
 - 断连重连后工具清单自动刷新；`mcp.server_status_changed` 事件实时上报状态。
-- 也可运行时经 RPC 管理：`mcp.servers.list/add/remove/retry`（桌面端 MCP 面板同源）。
+- 也可运行时经 RPC 管理：`mcp.servers.list/add/remove/retry/setEnabled/health`（桌面端 MCP 面板同源）。
+- **运行时启停**：`setEnabled(false)` 停用（断连 + 工具注销 + mcp.json `enabled` 持久化，配置保留可再启）；`setEnabled(true)` 受理即返重连。
+- **健康检查**：`mcp.servers.health` 对 Connected server 发 MCP `ping` 实测 RTT；其余状态只读投影（探测不建连、不改状态机，自动恢复仍由调用超时与重连链路承担）。
 
 ## 子代理（Sub-agent）
 

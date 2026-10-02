@@ -16,6 +16,9 @@
  *   退避重连成功 → Connected（M5 重新 listTools）。
  * 用例 F HTTP transport + add/remove：spawn fixture-http → mcp.servers.add（持久化写盘）→
  *   Connected → mcp.tools.call 回显 → remove → 工具注销 + Disconnected（M8）。
+ * 用例 G 运行时启停 + 健康检查（T3.7）：health on Connected 主动 ping 实测 RTT / Failed 只读投影；
+ *   setEnabled false → 断连 + 工具不可用 + mcp.json enabled:false（配置保留）；setEnabled true →
+ *   重连 Connected + 工具恢复 + enabled:true 持久化；未知 serverKey → MCP_SERVER_NOT_FOUND。
  * 全程仅本机回环与临时目录：无外呼、无真实密钥。
  */
 import assert from "node:assert/strict";
@@ -30,7 +33,9 @@ import type { AgentServiceNode } from "../packages/server/src/index.ts";
 import type {
   McpServerStatusChangedEventPayload,
   McpServersAddResult,
+  McpServersHealthResult,
   McpServersListResult,
+  McpServersSetEnabledResult,
   McpToolsCallResult,
   McpToolsListResult,
   SessionCreateResult,
@@ -312,6 +317,78 @@ async function caseHttpAndRemove(scenario: Scenario): Promise<void> {
   }
 }
 
+async function caseSetEnabledAndHealth(scenario: Scenario): Promise<void> {
+  const { client } = scenario;
+
+  // G1 健康检查：Connected server 主动 ping（RTT 实测）；Failed server 只读投影 ok=false
+  const alphaHealth = (await client.call("mcp.servers.health", { serverKey: "alpha" })) as McpServersHealthResult;
+  assert.equal(alphaHealth.items.length, 1);
+  const alpha = alphaHealth.items[0]!;
+  assert.equal(alpha.ok, true, `alpha 健康检查通过（实际 ${JSON.stringify(alphaHealth)}）`);
+  assert.equal(alpha.status, "Connected");
+  assert.ok(typeof alpha.latencyMs === "number" && alpha.latencyMs >= 0, "latencyMs 实测值");
+  const allHealth = (await client.call("mcp.servers.health", {})) as McpServersHealthResult;
+  const broken = allHealth.items.find((item) => item.serverKey === "broken");
+  assert.ok(broken !== undefined && broken.ok === false && broken.status === "Failed", "Failed server 只读投影 ok=false");
+
+  // G2 停（setEnabled false）：断连 + 命名空间工具不可用 + enabled:false 持久化
+  const stopped = (await client.call("mcp.servers.setEnabled", {
+    serverKey: "alpha",
+    enabled: false,
+  })) as McpServersSetEnabledResult;
+  assert.equal(stopped.enabled, false);
+  assert.equal(stopped.status, "Disconnected");
+  const toolsAfterStop = (await client.call("mcp.tools.list", {})) as McpToolsListResult;
+  assert.equal(toolsAfterStop.tools.some((t) => t.name === "mcp__alpha__echo" && t.available), false, "停后工具不可用");
+  await assert.rejects(
+    client.call("mcp.tools.call", { serverKey: "alpha", toolName: "echo", args: { text: "x" } }),
+    (err: unknown) => err instanceof RpcCallError && err.code === "MCP_UNAVAILABLE",
+  );
+  const persisted = JSON.parse(await readFile(join(scenario.home, "mcp.json"), "utf8")) as {
+    mcpServers: Record<string, { enabled?: boolean }>;
+  };
+  assert.ok(persisted.mcpServers["alpha"] !== undefined, "alpha 配置保留（停 ≠ 删除）");
+  assert.equal(persisted.mcpServers["alpha"]!.enabled, false, "enabled:false 写回 mcp.json");
+  const healthStopped = (await client.call("mcp.servers.health", { serverKey: "alpha" })) as McpServersHealthResult;
+  assert.equal(healthStopped.items[0]!.ok, false);
+  assert.equal(healthStopped.items[0]!.status, "Disconnected");
+
+  // G3 启（setEnabled true）：受理即返重连 → Connected + 工具恢复 + enabled:true 持久化
+  const started = (await client.call("mcp.servers.setEnabled", {
+    serverKey: "alpha",
+    enabled: true,
+  })) as McpServersSetEnabledResult;
+  assert.equal(started.enabled, true);
+  await waitForStatus(
+    scenario.watch,
+    (e) => e.serverKey === "alpha" && e.status === "Connected" && (e.toolCount ?? 0) > 0,
+    "alpha 重启 Connected",
+    CONNECT_TIMEOUT,
+    true,
+  );
+  const call = (await client.call("mcp.tools.call", {
+    serverKey: "alpha",
+    toolName: "echo",
+    args: { text: "restarted" },
+  })) as McpToolsCallResult;
+  assert.equal(call.content, "echo(alpha): restarted");
+  const persistedRestarted = JSON.parse(await readFile(join(scenario.home, "mcp.json"), "utf8")) as {
+    mcpServers: Record<string, { enabled?: boolean }>;
+  };
+  assert.equal(persistedRestarted.mcpServers["alpha"]!.enabled, true, "enabled:true 写回 mcp.json");
+
+  // 错误族：未知 serverKey → MCP_SERVER_NOT_FOUND
+  await assert.rejects(
+    client.call("mcp.servers.setEnabled", { serverKey: "no-such", enabled: true }),
+    (err: unknown) => err instanceof RpcCallError && err.code === "MCP_SERVER_NOT_FOUND",
+  );
+  await assert.rejects(
+    client.call("mcp.servers.health", { serverKey: "no-such" }),
+    (err: unknown) => err instanceof RpcCallError && err.code === "MCP_SERVER_NOT_FOUND",
+  );
+  console.log("case G: 运行时启停 + 健康检查（ping RTT/停后隔离与持久化/重启恢复）OK");
+}
+
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
@@ -320,6 +397,7 @@ async function main(): Promise<void> {
     await caseControlCall(scenario);
     await caseModelCall(scenario);
     await caseReconnect(scenario);
+    await caseSetEnabledAndHealth(scenario);
     await caseHttpAndRemove(scenario);
   } finally {
     scenario.watch.stop();

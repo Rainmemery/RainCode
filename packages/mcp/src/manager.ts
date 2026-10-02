@@ -39,6 +39,15 @@ export interface McpStatusSnapshot {
   lastError?: string;
 }
 
+/** 健康检查报告（T3.7 mcp.servers.health 数据源）：Connected 主动 ping 实测 RTT，其余只读投影。 */
+export interface McpHealthReport {
+  serverKey: string;
+  status: McpServerStatus;
+  ok: boolean;
+  latencyMs?: number;
+  lastError?: string;
+}
+
 type StatusListener = (snapshot: McpStatusSnapshot) => void;
 
 interface Connection {
@@ -157,6 +166,46 @@ export class McpManager {
   /** 优雅停机：断开全部连接（进程树由 transport close 收敛）。 */
   async closeAll(): Promise<void> {
     await Promise.all([...this.connections.keys()].map((key) => this.disconnect(key).catch(() => undefined)));
+  }
+
+  /** 运行时启停（T3.7）：改写内存 config.enabled；持久化由 runtime 层负责（mcp.json 归属层不同）。 */
+  setEnabled(serverKey: string, enabled: boolean): void {
+    const connection = this.require(serverKey);
+    connection.config = { ...connection.config, enabled };
+  }
+
+  /**
+   * 健康检查（T3.7 mcp.servers.health）：Connected server 发 MCP ping 实测 RTT（探测只读，
+   * 失败不改状态机——自动恢复仍由 callTool 连续超时与 M4 重连链路承担）；其余状态直接投影
+   * （status + lastError），不主动建连（健康检查不得引入连接副作用）。
+   */
+  async health(serverKey: string, probeTimeoutMs = 5000): Promise<McpHealthReport> {
+    const connection = this.require(serverKey);
+    if (connection.state !== "Connected" || connection.client === null) {
+      return {
+        serverKey,
+        status: connection.state,
+        ok: false,
+        ...(connection.lastError !== undefined && { lastError: connection.lastError }),
+      };
+    }
+    const started = performance.now();
+    try {
+      await connection.client.ping({ timeout: probeTimeoutMs });
+      return {
+        serverKey,
+        status: "Connected",
+        ok: true,
+        latencyMs: Math.round(performance.now() - started),
+      };
+    } catch (err: unknown) {
+      return {
+        serverKey,
+        status: "Connected",
+        ok: false,
+        lastError: err instanceof Error ? err.message : String(err),
+      };
+    }
   }
 
   // 工具面 ------------------------------------------------------------------

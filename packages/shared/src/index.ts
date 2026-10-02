@@ -112,12 +112,16 @@ import {
   buildMcpServerStatusChangedEvent,
   mcpServersAddParamsSchema,
   mcpServersAddResultSchema,
+  mcpServersHealthParamsSchema,
+  mcpServersHealthResultSchema,
   mcpServersListParamsSchema,
   mcpServersListResultSchema,
   mcpServersRemoveParamsSchema,
   mcpServersRemoveResultSchema,
   mcpServersRetryParamsSchema,
   mcpServersRetryResultSchema,
+  mcpServersSetEnabledParamsSchema,
+  mcpServersSetEnabledResultSchema,
   mcpToolsCallParamsSchema,
   mcpToolsCallResultSchema,
   mcpToolsListParamsSchema,
@@ -169,7 +173,7 @@ export interface MethodSchemas {
  * 方法 schema 注册表（06 §5 index.ts）：方法未登记 schema 即无法在 server 暴露（04 ADR-07 强制机制）。
  * 当前覆盖（07 §2.1 M1 P0 22 方法全集 + P1 permission.rules.* 3 方法 + T2.3 subagent 4 方法
  * + T2.4 memory 域 5 方法 + T2.6 session.rename/fork/usage 与 config.providers.switch 4 方法
- * + T3.4 skills 域 2 方法）：
+ * + T3.4 skills 域 2 方法 + T3.7 mcp.servers.setEnabled/health 2 方法）：
  * system.ping/version/shutdown；session.create/send/steer/cancel/list/resume/archive/setMode/rename/fork/usage；
  * config.get/set/providers.list/add/remove/switch；tool.tools.list + 后台任务三方法；permission 5 方法；
  * subagent.spawn/stop/list/profiles.list；memory.read/write/search/entries.list/promote；skills.list/invoke。
@@ -245,6 +249,12 @@ export const METHOD_SCHEMAS: Readonly<Record<string, MethodSchemas>> = {
   "mcp.servers.add": { request: mcpServersAddParamsSchema, response: mcpServersAddResultSchema },
   "mcp.servers.remove": { request: mcpServersRemoveParamsSchema, response: mcpServersRemoveResultSchema },
   "mcp.servers.retry": { request: mcpServersRetryParamsSchema, response: mcpServersRetryResultSchema },
+  // T3.7 MCP 服务器管理（06 §2.5）：运行时启停（enabled 持久化）+ 健康检查（Connected 主动 ping）
+  "mcp.servers.setEnabled": {
+    request: mcpServersSetEnabledParamsSchema,
+    response: mcpServersSetEnabledResultSchema,
+  },
+  "mcp.servers.health": { request: mcpServersHealthParamsSchema, response: mcpServersHealthResultSchema },
   "mcp.tools.list": { request: mcpToolsListParamsSchema, response: mcpToolsListResultSchema },
   "mcp.tools.call": { request: mcpToolsCallParamsSchema, response: mcpToolsCallResultSchema },
   "subagent.spawn": { request: subagentSpawnParamsSchema, response: subagentSpawnResultSchema },

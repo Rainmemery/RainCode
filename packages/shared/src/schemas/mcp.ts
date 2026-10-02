@@ -142,6 +142,46 @@ export const mcpServersRetryResultSchema = z.object({
 });
 export type McpServersRetryResult = z.infer<typeof mcpServersRetryResultSchema>;
 
+// ---------------------------------------------------------------------------
+// 运行时启停 + 健康检查（T3.7 / 06 §2.5 MCP 域 8 方法）
+// ---------------------------------------------------------------------------
+
+/** setEnabled(false) = 停（断连 + 工具注销 + mcp.json enabled 持久化）；true = 启（受理即返重连）。 */
+export const mcpServersSetEnabledParamsSchema = z.strictObject({
+  serverKey: z.string(),
+  enabled: z.boolean(),
+});
+export type McpServersSetEnabledParams = z.infer<typeof mcpServersSetEnabledParamsSchema>;
+
+export const mcpServersSetEnabledResultSchema = z.object({
+  serverKey: z.string(),
+  enabled: z.boolean(),
+  /** 受理时点状态快照；启动路径的最终状态以 mcp.server_status_changed 事件为准。 */
+  status: mcpServerStatusSchema,
+});
+export type McpServersSetEnabledResult = z.infer<typeof mcpServersSetEnabledResultSchema>;
+
+/** 健康检查报告：Connected server 主动 ping（RTT 实测）；其余状态只读投影不触连接。 */
+export const mcpHealthReportSchema = z.object({
+  serverKey: z.string(),
+  status: mcpServerStatusSchema,
+  /** false = 非 Connected，或 ping 超时/失败（lastError 注明；探测不改状态机）。 */
+  ok: z.boolean(),
+  latencyMs: z.number().nonnegative().optional(),
+  lastError: z.string().optional(),
+});
+export type McpHealthReport = z.infer<typeof mcpHealthReportSchema>;
+
+export const mcpServersHealthParamsSchema = z.strictObject({
+  serverKey: z.string().optional(),
+});
+export type McpServersHealthParams = z.infer<typeof mcpServersHealthParamsSchema>;
+
+export const mcpServersHealthResultSchema = z.object({
+  items: z.array(mcpHealthReportSchema),
+});
+export type McpServersHealthResult = z.infer<typeof mcpServersHealthResultSchema>;
+
 export const mcpToolsListParamsSchema = z.strictObject({
   serverKey: z.string().optional(),
 });

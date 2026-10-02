@@ -15,7 +15,7 @@ import type { RpcServiceBinding } from "@raincode/rpc";
 import {
   buildMcpServerStatusChangedEvent,
 } from "@raincode/shared";
-import type { McpServerConfig, McpServersAddParams, McpToolsCallParams, McpToolsListParams } from "@raincode/shared";
+import type { McpServerConfig, McpServersAddParams, McpServersHealthParams, McpServersSetEnabledParams, McpToolsCallParams, McpToolsListParams } from "@raincode/shared";
 import { ToolExecutor } from "@raincode/tools";
 import type { BackgroundTaskRegistry, ToolRegistry } from "@raincode/tools";
 import { McpConfigError, McpError, McpManager, loadMcpConfig, persistMcpConfig, toMcpToolName } from "@raincode/mcp";
@@ -94,7 +94,7 @@ export class McpRuntime {
   }
 
   // ---------------------------------------------------------------------------
-  // 方法表（06 §2.5：mcp.servers.list/add/remove/retry + mcp.tools.list/call）
+  // 方法表（06 §2.5：mcp.servers.list/add/remove/retry/setEnabled/health + mcp.tools.list/call）
   // ---------------------------------------------------------------------------
 
   methods(register: (method: string, handler: (params: unknown) => Promise<unknown>) => unknown): Record<string, unknown> {
@@ -129,6 +129,43 @@ export class McpRuntime {
         await this.requireServer(serverKey).retry(serverKey);
         const snapshot = this.manager.status().find((s) => s.serverKey === serverKey);
         return { status: snapshot?.status ?? "Disconnected" };
+      }),
+      // T3.7 运行时启停：停 = 断连 + 工具注销 + mcp.json enabled:false 持久化（配置保留，可再启）；
+      // 启 = enabled:true 持久化 + 受理即返重连（Disconnected/Failed 均可，最终状态经事件）
+      "mcp.servers.setEnabled": register("mcp.servers.setEnabled", async (params) => {
+        const { serverKey, enabled } = params as McpServersSetEnabledParams;
+        if (!this.manager.has(serverKey)) {
+          throw new RpcCallError("MCP_SERVER_NOT_FOUND", `mcp server not found: ${serverKey}`);
+        }
+        this.manager.setEnabled(serverKey, enabled);
+        const level = this.levelOf(serverKey) ?? "global";
+        await persistMcpConfig(this.pathOf(level), (servers) => {
+          const server = servers[serverKey];
+          if (server !== undefined) server.enabled = enabled;
+        });
+        if (enabled) {
+          void this.manager.connect(serverKey).catch(() => undefined); // 失败经事件
+        } else {
+          await this.manager.disconnect(serverKey);
+          this.unregisterTools(serverKey);
+        }
+        const snapshot = this.manager.status().find((s) => s.serverKey === serverKey);
+        return { serverKey, enabled, status: snapshot?.status ?? "Disconnected" };
+      }),
+      // T3.7 健康检查：Connected 主动 ping 实测 RTT（探测不改状态机）；其余状态只读投影
+      "mcp.servers.health": register("mcp.servers.health", async (params) => {
+        const { serverKey } = params as McpServersHealthParams;
+        const keys = serverKey !== undefined ? [this.requireKey(serverKey)] : this.manager.keys();
+        const reports = await Promise.all(keys.map((key) => this.manager.health(key)));
+        return {
+          items: reports.map((report) => ({
+            serverKey: report.serverKey,
+            status: report.status,
+            ok: report.ok,
+            ...(report.latencyMs !== undefined && { latencyMs: report.latencyMs }),
+            ...(report.lastError !== undefined && { lastError: report.lastError }),
+          })),
+        };
       }),
       "mcp.tools.list": register("mcp.tools.list", async (params) => {
         const { serverKey } = params as McpToolsListParams;

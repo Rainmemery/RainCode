@@ -199,6 +199,8 @@ MCP 域管理外部 server 的配置与连接生命周期，并把远端工具�
 | `mcp.servers.add` | `{ config: McpServerConfig, level?: "project"\|"global" }` | `{ serverKey, status }` | `MCP_CONFIG_INVALID` `MCP_SERVER_CONFLICT` | 加载期校验：serverKey 冲突、与内置工具重名即拒绝（02 §3.4）；持久化到对应层级 mcp.json；连接异步建立，状态经 `mcp.server_status_changed` 事件 |
 | `mcp.servers.remove` | `{ serverKey }` | `{ removed }` | `MCP_SERVER_NOT_FOUND` | 断连（清理子进程树）+ 注销命名空间工具 + 持久化删除（02 M8） |
 | `mcp.servers.retry` | `{ serverKey }` | `{ status }` | `MCP_SERVER_NOT_FOUND` `MCP_CONFIG_INVALID` | Failed → Connecting 的手动重试入口（02 M7；认证类错误不自动重试，02 §3.4） |
+| `mcp.servers.setEnabled` | `{ serverKey, enabled }` | `{ serverKey, enabled, status }` | `MCP_SERVER_NOT_FOUND` | 运行时启停（T3.7）：停 = 断连（M8 语义）+ 命名空间工具注销 + mcp.json `enabled: false` 持久化（**配置保留 ≠ remove**，再启不重配）；启 = `enabled: true` 持久化 + 受理即返重连（Disconnected/Failed 均可受理，最终状态经事件） |
+| `mcp.servers.health` | `{ serverKey? }` | `{ items: McpHealthReport[] }` | `MCP_SERVER_NOT_FOUND` | 健康检查（T3.7）：Connected server 发 MCP `ping` 实测 RTT（`ok: true` + `latencyMs`）；其余状态只读投影（`ok: false` + status/lastError），**探测不建连、不改状态机**——自动恢复仍由调用超时与 M4 重连链路承担；缺省 `serverKey` 检查全部已注册 server |
 | `mcp.tools.list` | `{ serverKey? }` | `{ tools: McpToolDescriptor[] }` | `MCP_SERVER_NOT_FOUND` | 每项含 `{ name: "mcp__<serverKey>__<toolName>", serverKey, description, inputSchema(JSON Schema), available }`；命名规则见 02 §3.3；`available: false` 来自失败隔离标记（M6） |
 | `mcp.tools.call` | `{ serverKey, toolName, args, timeoutMs? }` | `{ result: ToolResult }` | `MCP_SERVER_NOT_FOUND` `MCP_TOOL_UNKNOWN` `MCP_UNAVAILABLE` | 与 `tool.call` 同一 ToolExecutor 链路（权限/沙箱语义一致）；默认 60s 超时，超时不杀连接仅本调用报错（02 §3.2） |
 
@@ -717,6 +719,7 @@ capability 命名约定：`<domain>.<feature>`（小写点分），登记于 `sy
 | 1.2 | 2026-09-29 | T2.7 P1 工具（minor+1）：`permission.respond` 增可选请求字段 `answerText`（ask_user_question 通道应答文本；需探测级，登记 capability `permission.respond.answer`）+ `permission.resolved` 事件增可选 `answerText`；tool 域新增错误码 `TOOL_SSRF_BLOCKED`（web_fetch SSRF 黑名单拒绝，02 §2.4）；内置工具清单新增 `web_fetch` / `ask_user_question`（02 §2.3 P1，经 tool.tools.list 可见） |
 | 1.3 | 2026-09-29 | 桌面端走查修复（minor+1，只增不改）：`SessionSnapshotPayload` 增可选 `history`（全量消息数组）——冷重建专用（桌面端首次打开 / renderer 刷新时端层无本地历史可拼，`messages` 尾部增量口径对已收束会话为空会导致恢复视图空白）；`session.resume` 幂等路径（Active 会话）与冷恢复路径均填充该字段，`session.snapshot` 事件投影可省略。协议规模不变（45 方法 / 18 事件） |
 | 1.4 | 2026-09-29 | T3.4 技能与斜杠命令（minor+1）：新增 skills 域 2 方法 `skills.list` / `skills.invoke`（§2.9，装配期缺省不启用；CLI 与 stdio 宿主默认装配）——技能 = markdown+frontmatter 提示词模板双源加载（workspace 优先），展开在 server 侧（`$ARGUMENTS` 替换/无占位符追加），turn 事件流与 `session.send` 复用；错误码新增段 9：`SKILL_NOT_FOUND` / `SKILL_INVALID`。协议规模 47 方法 / 18 事件 |
+| 1.5 | 2026-09-29 | T3.7 MCP 服务器管理（minor+1）：mcp 域新增 2 方法 `mcp.servers.setEnabled`（运行时启停——停 = 断连 + 工具注销 + mcp.json `enabled` 持久化，配置保留可再启；启 = 受理即返重连）与 `mcp.servers.health`（Connected server 主动 MCP ping 实测 RTT，其余状态只读投影，探测不改状态机）。协议规模 49 方法 / 18 事件 |
 
 ---
 

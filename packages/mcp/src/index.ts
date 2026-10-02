@@ -18,6 +18,6 @@ export {
 export type { LoadedMcpConfig, McpConfigSource, McpServerConfigLevel } from "./config.js";
 
 export { McpError, McpManager } from "./manager.js";
-export type { McpManagerOptions, McpStatusSnapshot } from "./manager.js";
+export type { McpHealthReport, McpManagerOptions, McpStatusSnapshot } from "./manager.js";
 
 export { createMcpTool, projectCallResultContent } from "./adapter.js";
