@@ -1,0 +1,62 @@
+# RainCode CI（07-dev-plan §10.2 T4.1 / legacy-items L-07）
+#
+# 门禁集与本地完全一致（docs/testing.md §2.4）：typecheck / lint / architecture:check / test / smoke:p0。
+# windows-latest 为验收基准平台（01-PRD §6.1：开发机即验收基准机）。
+#
+# electron 二进制按需跳过：desktop 单测与 smoke 全程走 node/tsx agent 路径，
+# 不依赖 electron 运行时（apps/desktop/test/agent-host.test.ts 头注同证）；electron@33 的
+# install.js 首行检查该变量即退出（node_modules 锁定版本源码核验），省去 ~100MB 平台二进制
+# 下载与解压。electron-builder 完整 dist 打包属 T4.7 批次 A，不入本工作流。
+#
+# better-sqlite3 预编译二进制：GitHub 托管 runner 可直连 GitHub release（prebuild-install
+# 默认主机），无需本机网络环境所需的 npmmirror 镜像变量（仓库 .npmrc 头注口径）；预编译
+# 不可用时回退 node-gyp，windows runner 自带 VS 工具链兜底。
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    name: 五门禁（windows-latest）
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        # 版本读 package.json packageManager（pnpm@11.24.0），不在此重复声明
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install（frozen lockfile）
+        run: pnpm install --frozen-lockfile
+
+      - name: Gate 1/5 Typecheck
+        run: pnpm typecheck
+
+      - name: Gate 2/5 Lint
+        run: pnpm lint
+
+      - name: Gate 3/5 Architecture check
+        run: pnpm architecture:check
+
+      - name: Gate 4/5 Unit tests
+        run: pnpm test
+
+      - name: Gate 5/5 Smoke p0
+        run: pnpm smoke:p0
