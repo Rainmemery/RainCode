@@ -2,7 +2,8 @@
 
 > 个人本地 AI 编程工作台 —— 单机优先、数据全本地、自带 API Key 接入任意 OpenAI 兼容模型。
 
-[![Status](https://img.shields.io/badge/status-M2%20%E9%AA%8C%E6%94%B6%E5%AE%8C%E6%88%90-brightgreen)](PROGRESS.md)
+[![CI](https://github.com/Rainmemery/RainCode/actions/workflows/ci.yml/badge.svg)](https://github.com/Rainmemery/RainCode/actions/workflows/ci.yml)
+[![Status](https://img.shields.io/badge/status-M3%20%E9%AA%8C%E6%94%B6%E5%AE%8C%E6%88%90-brightgreen)](PROGRESS.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 ![vibecoding](https://img.shields.io/badge/%E6%9C%AC%E9%A1%B9%E7%9B%AE%E4%B8%BA-vibecoding%20%E4%BA%A7%E7%89%A9-ff69b4)
 
@@ -12,7 +13,7 @@ RainCode 的功能定位与 Claude Code / Codex 对齐：整合**代码生成、
 
 ## 当前状态
 
-**M3（七模块全量对齐）验收完成** ✅（T3.1~T3.9，NFR-1~7 全量重测与 4.2 对比矩阵核对见 [docs/benchmarks/m3-2026-10-02.md](docs/benchmarks/m3-2026-10-02.md)；M2 基准见 [docs/benchmarks/m2-2026-09-29.md](docs/benchmarks/m2-2026-09-29.md)）。**M4（工程加固与遗留收口）已排期**：CI 落地 / 内核收尾竞态修复 / 生成式协议目录 / 技能模型侧可发现性 / Web 管理面板对齐 / 防御式模式文档 / 遗留项收口，见 [docs/07-dev-plan.md §10](docs/07-dev-plan.md)（参照 [deepseek-harness 调研报告](docs/research/2026-10-03-deepseek-harness.md)，遗留项全量登记于 [docs/legacy-items.md](docs/legacy-items.md)）。
+**M3（七模块全量对齐）验收完成** ✅（T3.1~T3.9，NFR-1~7 全量重测与 4.2 对比矩阵核对见 [docs/benchmarks/m3-2026-10-02.md](docs/benchmarks/m3-2026-10-02.md)；M2 基准见 [docs/benchmarks/m2-2026-09-29.md](docs/benchmarks/m2-2026-09-29.md)）。**M4（工程加固与遗留收口）进行中**：T4.1 CI 已落地（[Actions](https://github.com/Rainmemery/RainCode/actions/workflows/ci.yml) windows-latest 五门禁与本地同集，首次运行全绿）；待做：内核收尾竞态修复 / 生成式协议目录 / 技能模型侧可发现性 / Web 管理面板对齐 / 防御式模式文档 / 遗留项收口，见 [docs/07-dev-plan.md §10](docs/07-dev-plan.md)（参照 [deepseek-harness 调研报告](docs/research/2026-10-03-deepseek-harness.md)，遗留项全量登记于 [docs/legacy-items.md](docs/legacy-items.md)）。
 
 | 能力 | 状态 |
 | --- | --- |

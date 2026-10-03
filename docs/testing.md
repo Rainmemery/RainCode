@@ -82,8 +82,9 @@ NFR-4（桌面端空载内存）、NFR-6（压缩异步不阻塞）属 M2 验收
 | `pnpm typecheck` | tsc --noEmit strict（逐 workspace 项目） | 全仓类型正确性 |
 | `pnpm lint` | oxlint | Lint 规则（当前基线：0 错误，12 条既有 warning——rpc/stdio/desktop/legacy smoke 等历史条目，刻意快照不修） |
 | `pnpm architecture:check` | [scripts/architecture-check.mjs](../scripts/architecture-check.mjs) | 五项架构策略（依据 [architecture/policy.yaml](../architecture/policy.yaml)）：跨包依赖白名单、Tarjan 循环依赖、单文件 ≤ 500 行、深导入禁令（跨包只能从 `index.ts` 导入）、managedOnly |
+| **CI** | GitHub Actions [.github/workflows/ci.yml](../.github/workflows/ci.yml) | 上述五门禁原样入 CI（windows-latest + pnpm@11.24.0 + Node 24 + frozen lockfile + pnpm store 缓存），push(master)/PR 触发——与本地门禁集一致；electron 二进制按需跳过（`ELECTRON_SKIP_BINARY_DOWNLOAD=1`，desktop 测试与 smoke 全程 node/tsx 路径零 electron 运行时依赖）；2026-10-03 首次运行全绿（07 §10.2 T4.1） |
 
-**提交前必须全绿**。`architecture:check` 含 gate 自测（注入越权 import 可被拦截）。
+**提交前必须全绿**。`architecture:check` 含 gate 自测（注入越权 import 可被拦截）。CI 在 push/PR 时复跑同一门禁集——本地绿为提交习惯，CI 绿为准入事实。
 
 ## 6. 已知边界与注意事项
 
