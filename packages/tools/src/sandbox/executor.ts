@@ -61,6 +61,18 @@ function toPosixPath(p: string): string {
   return p.replace(/\\/g, "/");
 }
 
+/**
+ * shell 单引号字面量包装（T4.8/L-02 真实连通时发现的缺陷修复：argv 数组 join 成 shell
+ * 命令串后，未加引号的 Windows 反斜杠路径被 bash 当转义吃掉、远端命令里的 `&&` 被本地
+ * shell 截断——argv 断言验证的是 argv 世界，执行走的是 shell 字符串世界，两层必须显式换算）。
+ * bash 与 PowerShell 的单引号均为字面语义（反斜杠/双引号原样保留），覆盖两类回退 shell；
+ * 单引号本身的转义习语两 shell 不同（bash `'\''` vs PS `''`），按 bash 习语处理（PS 回退
+ * shell 属 local-executor 头注已申报的交付限制）。
+ */
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`;
+}
+
 function joinPosix(...parts: string[]): string {
   return parts.join("/").replace(/\/+/g, "/");
 }
@@ -262,17 +274,17 @@ export class SshExecutor implements Executor {
 
   display(req: ExecRequest): string {
     const { args } = this.buildArgv(req);
-    return `ssh ${args.slice(0, -1).join(" ")} ${args.at(-1)}`;
+    return `ssh ${args.map(shellQuote).join(" ")}`;
   }
 
   run(req: ExecRequest): Promise<ExecResult> {
     const { file, args } = this.buildArgv(req);
-    return this.transport.exec({ ...req, command: [file, ...args].join(" ") });
+    return this.transport.exec({ ...req, command: [file, ...args.map(shellQuote)].join(" ") });
   }
 
   spawn(req: ExecRequest): SpawnHandle {
     const { file, args } = this.buildArgv(req);
-    return this.transport.spawn({ ...req, command: [file, ...args].join(" ") });
+    return this.transport.spawn({ ...req, command: [file, ...args.map(shellQuote)].join(" ") });
   }
 }
 

@@ -8,3 +8,7 @@ allowBuilds:
   better-sqlite3: true
   esbuild: true
   electron: true
+  # ssh2 仅 scripts/smoke-ssh.mts 冒烟用（纯 JS 模式已验证可用）；cpu-features 是其可选
+  # 加速依赖（需 node-gyp 编译），跳过构建不影响功能
+  cpu-features: false
+  ssh2: false

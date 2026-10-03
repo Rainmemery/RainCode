@@ -288,7 +288,7 @@ describe("SshExecutor（T3.2 / ES-5 远程工作区）", () => {
     );
     assert.equal(out.data.sandbox, "ssh");
     assert.ok(out.content!.startsWith("sandbox: ssh\nexit code: 0"));
-    assert.ok(execed[0]!.command.startsWith("ssh -o"));
+    assert.ok(execed[0]!.command.startsWith("ssh '"), 'run/spawn 命令串应经 shell 单引号包装（argv 世界 → shell 字符串世界）');
     assert.ok(execed[0]!.command.includes("make all"));
   });
 });

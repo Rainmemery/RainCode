@@ -179,8 +179,9 @@ PROGRESS §4 的记录行按此格式撰写：
 - **winCodeSign 7z 内 darwin 符号链接**：普通权限解包即失败（「客户端没有所需的特权」），且两项 darwin 签名工具对 Windows 未签名构建毫无用处——dist.mjs 预填充 electron-builder 缓存（容忍该两项失败 + Windows 侧关键文件在位校验 + 删除 darwin 残目录）。
 - **asar 虚拟路径作 spawn cwd**：`desktopRoot()` 的 `__dirname/../..` 算术在打包态解析进 app.asar（文件非目录）→ spawn ENOENT 且报错只指向 exe 本身。处置：agent 目录 asarUnpack 成真实文件，打包态入口/migrations 取 `app.asar.unpacked` 孪生路径、cwd 取安装根（`dirname(process.execPath)`）。
 - **github 直连受限**：electron zip、electron-builder-binaries（nsis/winCodeSign）、better-sqlite3 prebuild 三条下载线全部经 gh-proxy 前缀镜像——dist.mjs / prepare-native.mjs 以 env 缺省注入（`ELECTRON_MIRROR` / `ELECTRON_BUILDER_BINARIES_MIRROR` / `RAINCODE_GH_PROXY`），显式声明、可覆盖、不散落。
+- **argv 世界 ≠ shell 字符串世界（T4.8 L-02 补充案例）**：`SshExecutor.run/spawn` 把 argv 数组裸 join 成 shell 命令串——Windows 反斜杠路径被 bash 当转义吃掉（`-i C:\Users\...` → `C:Users15045...`）、远端命令里的 `&&` 被本地 shell 截断为两条本地命令。m3 的 argv 级断言（`buildArgv`）全绿但从未真实执行（L-02 欠账）——首次真实连通（loopback 真 SSH2 协议 smoke）当场双缺陷齐发。处置：argv join 点统一 shell 单引号包装（bash/PS 单引号均字面语义）+ 既有测试断言同步新不变量；同族暴露面：DockerExecutor/WslExecutor 同为「字符串投递」契约（环境门控，已知风险随 L-01 保留）。教训：**对断言面与执行面是两个世界的契约，必须至少真实执行一次**——探针/argv 用例只能证明构造，不能证明送达。
 
-**检查点**：打包/发布脚本新增步骤时问「这一步对宿主环境做了哪些假设（ABI / 特权 / 路径语义 / 网络）」；自检探针先声明自己验证的是哪个世界（运行时、cwd、解析路径），与目标世界同构才算数。
+**检查点**：打包/发布脚本新增步骤时问「这一步对宿主环境做了哪些假设（ABI / 特权 / 路径语义 / 网络）」；自检探针先声明自己验证的是哪个世界（运行时、cwd、解析路径），与目标世界同构才算数；argv 数组转 shell 命令串必须显式换算（引号/转义），并至少一次走真实 shell 通路验证。
 
 ---
 
@@ -198,4 +199,4 @@ PROGRESS §4 的记录行按此格式撰写：
 | N-2 | 断言有区分力，测试走真实装配 | `>= 0` 恒真教训 / B2 手装域盲区 |
 | N-3 | 验证世界而非自述；guard 要能变红 | CDP 走查 / protocol:check 变红演示 |
 | N-4 | 基准测真实存活进程树 | NFR-4 口径申报 |
-| N-5 | 宿主环境假设显式化 + 探针声明自己的世界 | electron-ABI 暂存 / winCodeSign 特权 / asar 路径语义 / gh-proxy 镜像 |
+| N-5 | 宿主环境假设显式化 + 探针声明自己的世界 | electron-ABI 暂存 / winCodeSign 特权 / asar 路径语义 / gh-proxy 镜像 / argv→shell 引号换算 |
