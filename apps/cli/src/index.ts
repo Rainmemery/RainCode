@@ -12,6 +12,7 @@ import { runPing } from "./commands/ping.js";
 import { runCommand } from "./commands/run.js";
 import { chatCommand } from "./commands/chat.js";
 import { serveCommand } from "./commands/serve.js";
+import { webCommand } from "./commands/web.js";
 
 export async function main(argv: string[]): Promise<number> {
   const command = argv[0];
@@ -26,6 +27,8 @@ export async function main(argv: string[]): Promise<number> {
         return await chatCommand(rest);
       case "serve":
         return await serveCommand(rest);
+      case "web":
+        return await webCommand(rest);
       case "help":
       case "--help":
       case "-h":
@@ -57,6 +60,7 @@ function printHelp(stream: NodeJS.WriteStream): void {
       "                                 权限审批默认拒绝；--yes 自动允许（临时 session 规则）",
       "  raincode chat                  交互 REPL（/exit /sessions /resume /mode /archive /providers；交互审批）",
       "  raincode serve                 headless stdio 宿主（JSONL 帧协议；桌面端 agent 子进程同形态，供调试）",
+      "  raincode web                   Web 会话工作台宿主（ws://…/ws，ws.auth 鉴权；--static 服务工作台资源）",
       "",
       "Provider 选项（优先级: 参数 > RAINCODE_PROVIDER_* 环境变量 > config/providers.local.json）:",
       "  --base-url <url>               OpenAI 兼容 baseURL",

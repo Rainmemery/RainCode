@@ -1,6 +1,8 @@
 import { StringDecoder } from "node:string_decoder";
 import { SYSTEM_ERROR_CODES, rpcFrameSchema } from "@raincode/shared";
-import type { MessageDeltaEventPayload, RpcFrame } from "@raincode/shared";
+import type { RpcFrame } from "@raincode/shared";
+import { DeltaWindow } from "./delta-window.js";
+import type { DeltaFrame } from "./delta-window.js";
 import type { IMessageTransport, Unsubscribe } from "./transport.js";
 
 /**
@@ -8,60 +10,13 @@ import type { IMessageTransport, Unsubscribe } from "./transport.js";
  * stdin/stdout 每行一帧 JSONL（\n 分隔）；stdout 只承载协议帧，诊断日志走 stderr。
  *
  * - 畸形行按 06 §1.2 处理：可定位 id 则回 PARSE_ERROR response，否则丢弃 + stderr 告警，不断开；
- * - message.delta 走 50ms 批量窗口（06 §3.4）：同 turn 同 round 同类型合并（text/argsPartial 拼接，
- *   取最新 seq/ts）；其余帧发送前先 flush 窗口（边界事件不乱序于其前的 delta）；
+ * - message.delta 走 50ms 批量窗口（06 §3.4，批量合并逻辑在 delta-window.ts，与 websocket 绑定共用）；
  * - close：flush 待发帧后标记关闭；stdin end 经 onInputEnd 回调通知持有方（transport 保持可写，
  *   在途响应 flush 后由持有方 close，避免丢帧）。
  *
  * 流经构造参数注入（缺省 process.stdin/stdout），供单测以内存流驱动（ADR-08 可调试性：
  * 线上帧形态与人工 cat 调试完全一致）。
  */
-
-const DELTA_BATCH_WINDOW_MS = 50; // 06 §3.4：message.delta 批量窗口上限
-
-/** message.delta 事件的窄化帧形态（RpcFrame 事件臂 payload 为 unknown，此处以 shared schema 收窄）。 */
-type DeltaFrame = {
-  kind: "event";
-  name: "message.delta";
-  payload: MessageDeltaEventPayload;
-};
-
-/** delta 合并键：同 turn 同 round 同 delta 形态（tool_call 另按 index 分桶）。 */
-interface DeltaBucket {
-  frame: DeltaFrame;
-}
-
-/** 窗口合并（06 §3.4）：text/argsPartial 拼接，seq/ts 取最新，tool_call id/name 以最新非空为准。 */
-function mergeDeltaInto(target: DeltaFrame, incoming: DeltaFrame): void {
-  const da = target.payload.delta;
-  const db = incoming.payload.delta;
-  const mergedToolCall =
-    da.type === "tool_call" && db.type === "tool_call"
-      ? (() => {
-          const toolCallId = db.toolCallId ?? da.toolCallId;
-          const toolName = db.toolName ?? da.toolName;
-          return {
-            type: "tool_call" as const,
-            index: da.index,
-            ...(toolCallId !== undefined && { toolCallId }),
-            ...(toolName !== undefined && { toolName }),
-            argsPartial: (da.argsPartial ?? "") + (db.argsPartial ?? ""),
-          };
-        })()
-      : null;
-  const merged: MessageDeltaEventPayload = {
-    ...incoming.payload, // seq/ts 取最新到达
-    turnId: target.payload.turnId,
-    round: target.payload.round,
-    delta:
-      mergedToolCall ??
-      {
-        type: da.type as "text" | "reasoning",
-        text: (da as { text: string }).text + (db as { text: string }).text,
-      },
-  };
-  target.payload = merged;
-}
 
 export interface StdioTransportOptions {
   input?: NodeJS.ReadableStream;
@@ -77,19 +32,17 @@ export class StdioTransport implements IMessageTransport {
 
   private readonly input: NodeJS.ReadableStream;
   private readonly output: NodeJS.WritableStream;
-  private readonly deltaWindowMs: number;
   private readonly listeners = new Set<(frame: RpcFrame) => void>();
   private readonly decoder = new StringDecoder("utf8"); // 多字节字符跨 chunk 安全分帧
   private lineBuffer = "";
-  private readonly deltaQueue: DeltaBucket[] = [];
-  private deltaTimer: NodeJS.Timeout | null = null;
+  private readonly deltaWindow: DeltaWindow;
   private closed = false;
   private outputEnded = false;
 
   constructor(private readonly options: StdioTransportOptions = {}) {
     this.input = options.input ?? process.stdin;
     this.output = options.output ?? process.stdout;
-    this.deltaWindowMs = options.deltaWindowMs ?? DELTA_BATCH_WINDOW_MS;
+    this.deltaWindow = new DeltaWindow((frame) => this.writeFrame(frame), options.deltaWindowMs ?? 50);
     this.input.on("data", (chunk: Buffer | string) => this.onData(chunk));
     this.input.on("end", () => {
       this.dispatchLine(this.decoder.end()); // 半行残尾按畸形处置（06 §1.2 dangling）
@@ -113,11 +66,11 @@ export class StdioTransport implements IMessageTransport {
       throw new Error("TRANSPORT_CLOSED: cannot send on a closed stdio transport");
     }
     if (frame.kind === "event" && frame.name === "message.delta") {
-      this.enqueueDelta(frame as unknown as DeltaFrame);
+      this.deltaWindow.push(frame as unknown as DeltaFrame);
       return;
     }
     // 非 delta 帧（含边界事件/response）先 flush 窗口：边界事件不乱序于其前的 delta（06 §3.4）
-    this.flushDeltas();
+    this.deltaWindow.flush();
     this.writeFrame(frame);
   }
 
@@ -129,7 +82,7 @@ export class StdioTransport implements IMessageTransport {
   }
 
   async close(_reason?: string): Promise<void> {
-    this.flushDeltas();
+    this.deltaWindow.flush();
     if (!this.closed) {
       this.closed = true;
       this.lineBuffer = "";
@@ -198,46 +151,6 @@ export class StdioTransport implements IMessageTransport {
       ok: false,
       error: { code: SYSTEM_ERROR_CODES.PARSE_ERROR, message: `malformed frame: ${why}` },
     });
-  }
-
-  private enqueueDelta(frame: DeltaFrame): void {
-    const bucket = this.mergeableBucket(frame);
-    if (bucket !== null) {
-      mergeDeltaInto(bucket.frame, frame);
-      return;
-    }
-    this.deltaQueue.push({ frame });
-    if (this.deltaTimer === null) {
-      this.deltaTimer = setTimeout(() => {
-        this.deltaTimer = null;
-        this.flushDeltas();
-      }, this.deltaWindowMs);
-    }
-  }
-
-  /** 队尾桶同键可合并（06 §3.4：窗口合并同 turn 同类型 delta）；非同键返回 null。 */
-  private mergeableBucket(incoming: DeltaFrame): DeltaBucket | null {
-    const tail = this.deltaQueue[this.deltaQueue.length - 1];
-    if (tail === undefined) return null;
-    const a = tail.frame.payload;
-    const b = incoming.payload;
-    const da = a.delta;
-    const db = b.delta;
-    if (a.turnId !== b.turnId || a.round !== b.round) return null;
-    if (da.type !== db.type) return null;
-    if (da.type === "tool_call" && db.type === "tool_call" && da.index !== db.index) return null;
-    return tail;
-  }
-
-  private flushDeltas(): void {
-    if (this.deltaTimer !== null) {
-      clearTimeout(this.deltaTimer);
-      this.deltaTimer = null;
-    }
-    const queue = this.deltaQueue.splice(0, this.deltaQueue.length);
-    for (const bucket of queue) {
-      this.writeFrame(bucket.frame);
-    }
   }
 
   private writeFrame(frame: RpcFrame): void {

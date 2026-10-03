@@ -26,7 +26,7 @@ flowchart LR
         RC["RpcClient<br/>call(method, params) / onEvent(name, listener)"]
     end
     subgraph RPCL["接入层 · packages/rpc（传输无关）"]
-        TR["IMessageTransport<br/>in-memory / stdio / websocket(预留)"]
+        TR["IMessageTransport<br/>in-memory / stdio / websocket"]
     end
     subgraph SRV["服务层 · packages/server（Agent Service，唯一组装点）"]
         MT["方法表 method → {schema, handler}<br/>zod 入口单点校验（04 §4.3）"]
@@ -103,13 +103,13 @@ export type RpcFrame =
 | --- | --- | --- | --- |
 | in-memory | `"in-memory"` | 无序列化，进程内对象直传 | 仍执行 zod parse（产生结构副本），保证与跨进程绑定行为一致 |
 | stdio | `"stdio"` | 每行一帧 JSONL（`\n` 分隔） | stdout 只承载协议帧；agent 子进程诊断日志走 stderr，避免 02 §3.4 的「非协议输出混入」问题 |
-| websocket（预留） | `"websocket"` | 每条 WS 文本消息一帧 | 帧结构与 stdio 完全一致（04 §4.4），差异见 §6.3 |
+| websocket | `"websocket"` | 每条 WS 文本消息一帧 | 帧结构与 stdio 完全一致（04 §4.4）；连接级鉴权 / 心跳 / 重连补偿见 §6.3（T3.8，v1.9） |
 
 渲染进程 ↔ Electron main 的 `IpcBridgeTransport` + 帧桥组合**不是第四种绑定**：业务帧端到端透传（04 §3.2），逻辑上等价于一条到 agent 子进程的虚拟 stdio。
 
 ### 1.4 版本策略
 
-握手时序：连接建立后客户端首个请求必须是 `system.ping`；在 ping 成功前，服务端对其他方法一律回 `VERSION_MISMATCH`（防止版本错配的请求产生半执行副作用）。
+握手时序：连接建立后客户端首个请求必须是 `system.ping`；在 ping 成功前，服务端对其他方法一律回 `VERSION_MISMATCH`（防止版本错配的请求产生半执行副作用）。websocket 绑定（§6.3）另有连接级鉴权门：首请求必须是 `ws.auth`（鉴权前一切请求——含 system.ping——回 `UNAUTHORIZED`），成功后进入上述 ping 握手。
 
 | 项 | 策略 |
 | --- | --- |
@@ -271,7 +271,15 @@ system 域承载握手、版本发现与优雅停机，是唯一与业务无关�
 | `plugins.list` | `{}` | `{ plugins: PluginSummary[] }` | — | 插件摘要投影（按名排序）：`{ name, description, version?, dir, enabled, status: "active"\|"disabled"\|"failed", tools: 全名数组, lastError }`；就绪门语义——初次目录扫描完成前调用等待而非落空 |
 | `plugins.setEnabled` | `{ name, enabled }` | `{ name, enabled, status }` | `PLUGIN_NOT_FOUND` | 受理即返启停：disable = deactivate + 工具注销 + 停用名单落盘；enable = 名单移除 + 激活（失败 → failed，经 `plugin.status_changed` 与本方法可查）；同态重复请求幂等 |
 
-### 2.11 与 02 模块接口的映射与不暴露决策
+### 2.11 ws 域（Web 传输接入，M3 T3.8，v1.9）
+
+| 方法 | 参数 | 结果 | 错误码 | 说明 |
+| --- | --- | --- | --- | --- |
+| `ws.auth` | `{ token: string }` | `{ ok: true }` | 段 0 `UNAUTHORIZED` | 连接级鉴权（仅 websocket 绑定暴露；stdio / in-memory 同生共死不设门）。handler 由 Web 宿主提供（token 校验属端层，同传输选择权）；成功应答开启该连接的鉴权门，失败应答门保持关闭 |
+
+鉴权时序（06 §6.3）：`ws.auth` → `system.ping` → 业务方法；鉴权前一切请求（含 `system.ping`）回 `UNAUTHORIZED`，不泄露版本信息。capability `ws.auth` 经 `system.ping` 探测（§7.2）。
+
+### 2.12 与 02 模块接口的映射与不暴露决策
 
 控制面对 02 七大模块对外接口的覆盖逐条核对如下：
 
@@ -294,7 +302,7 @@ system 域承载握手、版本发现与优雅停机，是唯一与业务无关�
 | `ProjectMemoryService.extractFromSession` | （compact 内部自动触发，无独立方法） | 结果经 `memory.entries.list` 查询 |
 | `BashRuleEvaluator`、`ProcessTreeTerminator`、`Executor`（P2 容器扩展点） | **不暴露** | 内核/沙箱内部接口，无端层语义 |
 
-### 2.12 典型交互时序
+### 2.13 典型交互时序
 
 一次「发送 → 审批 → 完成」的完整协议时序（数字为帧到达顺序）：
 
@@ -497,6 +505,7 @@ flush 边界保证：`message.completed`、`tool_call.*`、`permission.*`、`tur
 | `VERSION_MISMATCH` | `system.ping` 协议主版本不兼容 | 双方 protocolVersion |
 | `CANCELLED` | 服务端处理被取消（shutdown / 会话取消） | reason |
 | `INTERNAL` | 未分类服务端错误 | 诊断 id（日志关联） |
+| `UNAUTHORIZED` | 连接级鉴权门未通过（websocket 绑定：`ws.auth` 成功前一切请求；v1.9） | — |
 
 ### 4.3 业务码（段 1–9，按域分段）
 
@@ -628,7 +637,7 @@ export function buildMessageDeltaEvent(input: MessageDeltaInput): MessageDeltaEv
 | --- | --- | --- | --- | --- | --- |
 | in-memory | `"in-memory"` | 进程内直调 + 事件回调 | 无序列化 | CLI 单进程内嵌 Agent Service（04 §3.1） | P0 |
 | stdio | `"stdio"` | stdin/stdout | 每行一帧 JSONL | 桌面 main ↔ agent 子进程（04 §3.2）；任意 headless 宿主 | P1 |
-| websocket | `"websocket"` | WS 文本消息 | 每条消息一帧（与 stdio 帧一致） | Web 界面 | P2 预留 |
+| websocket | `"websocket"` | WS 文本消息 | 每条消息一帧（与 stdio 帧一致） | Web 界面 | ✅ 已落地（T3.8） |
 
 ### 6.2 同一接口在 CLI 与桌面端的行为映射
 
@@ -661,17 +670,18 @@ CLI（in-memory）：RpcClient.call("session.cancel", { sessionId })
   ——main 全程只做字节转发，不解析 method 与 params。
 ```
 
-### 6.3 websocket 预留差异说明
+### 6.3 websocket 绑定（T3.8，v1.9）
 
-帧协议与方法表**零改动**（04 §4.4：验证「传输无关」的试金石），仅以下差异需要在 P2 落地时补充定义：
+帧协议与方法表**零改动**（04 §4.4：验证「传输无关」的试金石）。绑定落地后的差异定义：
 
-1. 连接生命周期由 WS 管理：无 JSONL 行概念，消息边界即帧边界；
-2. 心跳与空闲断开策略、重连退避参数（协议层已有 snapshot 补偿语义，无需新增方法）；
-3. 鉴权握手（跨网络必须增加 token 校验，P2 定义 capability `ws.auth`）；
-4. 客户端与 server 不再同生共死：端层**必须**完整实现 seq 缺口检测 → resume 补偿路径，不能假设进程内回调的可靠性；
-5. 批量窗口默认开启且可经环境变量调大，适配广域网带宽。
-
----
+1. **连接生命周期由 WS 管理**：无 JSONL 行概念，消息边界即帧边界；畸形帧按 §1.2 处置（server 角色可定位 id 回 `PARSE_ERROR`，client 角色丢弃 + 告警，均不断开）；
+2. **心跳与空闲断开**：宿主周期性 WS ping（缺省 30s）探活，下一周期 pong 未复位即判定空闲断开（terminate）；批量窗口缺省 50ms 且可经环境变量 `RAINCODE_WS_DELTA_WINDOW_MS` 调大（§3.4 广域网适配）；
+3. **鉴权握手**：连接级鉴权门——首请求必须是 `ws.auth { token }`（鉴权前一切请求含 `system.ping` 回 `UNAUTHORIZED`），成功（ok 应答）后进入 §1.4 ping 握手；失败应答门保持关闭，门随连接生存（§2.11）。token 解析归端层（`--token` / `RAINCODE_WEB_TOKEN` / 自动生成打印 stderr），服务端常数时间比较，token 绝不落盘落日志（04 §5.3）；
+4. **seq 缺口 → resume 补偿**：客户端与 server 不再同生共死，端层**必须**完整实现补偿路径——
+   - 重连恢复：断线后指数退避重连（1s 起步 ×2 封顶 10s，可注入），重连握手（`ws.auth` → `system.ping`）成功后对活跃会话执行 `session.resume`，快照全量重建（`history`）+ `pendingApprovals` 补推；
+   - seq 缺口检测：per-session `EventBase.seq` 单调（§3.1）；`message.delta` 帧可能合并多条（§3.4，seq 取最新一条）故**只推进基线不判定缺口**，其余会话事件逐帧投递、跳变即真实丢帧 → 对该会话执行 `session.resume` 补偿，完成后以 `snapshot.lastSeq` 回填基线；补偿窗口内该会话事件丢弃（防与补推重复应用）；
+   - 断线瞬间在途请求以 `TRANSPORT_CLOSED` 立即拒绝（fail-fast），一致性由补偿路径兜底；鉴权失败（token 失效）上报端层并停止重连；
+5. **事件扇出**：多连接各自独立绑定（每连接独立握手门与鉴权门），会话事件投递到全部活跃连接（fire-and-forget，§3.3）；连接断开即解绑，不影响其他连接。
 
 ## 7. 协议演进规则
 
@@ -694,11 +704,12 @@ capability 命名约定：`<domain>.<feature>`（小写点分），登记于 `sy
   "subagent.spawn",           // 子代理域可用（P1 落地前置位）
   "mcp.transport.http",       // MCP HTTP transport 可用（P1）
   "memory.promote",           // 记忆晋升接口可用
-  "permission.respond.answer" // permission.respond 支持可选 answerText（ask_user_question 通道，T2.7 P1）
+  "permission.respond.answer",// permission.respond 支持可选 answerText（ask_user_question 通道，T2.7 P1）
+  "ws.auth"                   // websocket 连接级鉴权可用（T3.8 P2；stdio/in-memory 绑定不暴露）
 ] }
 ```
 
-未列出的能力（如 P2 的 `ws.auth`、容器执行相关能力）在落地时追加；客户端对未知 capability 一律忽略。
+未列出的能力（如容器执行相关能力）在落地时追加；客户端对未知 capability 一律忽略。
 
 向后兼容四原则：
 
@@ -739,14 +750,15 @@ capability 命名约定：`<domain>.<feature>`（小写点分），登记于 `sy
 | 1.6 | 2026-09-29 | T3.6 子代理编排增强（minor+1，additive）：`SubagentProfileSummary.source` 枚举增 `"builtin"`——内置角色模板（researcher/reviewer/tester，代码常量不落盘）作为 profile 解析链 workspace → global → builtin 的最后一级（用户同名 profile 遮蔽内置）；`subagent.profiles.list` 与 `agent` 工具 description 均投影内置模板；并行编排汇聚语义不变（`agent` 工具 readOnly → 同轮多派发经 ToolExecutor 只读并行执行，各完成通知按批次合并回主循环，验收用例 smoke-subagent case H）。协议规模不变（49 方法 / 18 事件） |
 | 1.7 | 2026-10-02 | T3.3 记忆自动抽取 + 管理界面（minor+1，additive）：memory 域新增 2 方法 `memory.drafts.list` / `memory.drafts.resolve`——晋升草案待确认区（02 §7.2 第三层「记忆 Agent 循环」的用户确认入口）：抽取高置信（≥0.8）新条目自动生成草案（kind → 章节预填、todo/低置信排除），confirm 经 promote 链合入 MEMORY.md、reject 仅标记，直管 promote 自动收敛同条目 pending 草案；错误码段 6 增 `MEMORY_DRAFT_NOT_FOUND`。协议规模 51 方法 / 18 事件 |
 | 1.8 | 2026-10-02 | T3.5 插件化（minor+1，additive）：新增 plugins 域 2 方法 `plugins.list` / `plugins.setEnabled`（§2.10）与新事件 `plugin.status_changed`——插件 = `<dataRoot>/plugins/<name>/`（plugin.json 清单 + 入口 ES module `activate()/deactivate()` 契约），工具以 `plugin__<pluginName>__<toolName>` 注册（source="plugin"，registry 命名空间豁免）；启停经 plugins.json 停用名单持久化（目录即配置，停用 ≠ 卸载）；故障隔离：加载失败 → failed 状态、工具执行错误 → 数据级 ToolExecutionError，插件故障不拖垮内核。错误码新增段 10：`PLUGIN_NOT_FOUND` / `PLUGIN_INVALID`。协议规模 53 方法 / 19 事件 |
+| 1.9 | 2026-10-02 | T3.8 Web 界面（minor+1，additive）：新增 ws 域 1 方法 `ws.auth`（§2.11）与系统码 `UNAUTHORIZED`（段 0）——websocket 绑定连接级鉴权门（时序 `ws.auth` → `system.ping` → 业务方法，鉴权前一切请求拒绝），capability `ws.auth` 登记；§6.3 由预留差异说明重写为落地定义（心跳/退避重连/seq 缺口→resume 补偿路径/多连接扇出）；帧协议与方法表零改动（传输无关设计最终验证）。stdio / in-memory 绑定不暴露 `ws.auth`（同生共死不设门）。协议规模 54 方法 / 19 事件 |
 
 ---
 
 ## 8. 自检清单
 
-- [x] **控制面覆盖 02 模块接口全集**：§2.11 映射表逐条核对七大模块对外接口；`BashRuleEvaluator`/`ProcessTreeTerminator`/`Executor` 等内核内部接口的不暴露决策已注明。
+- [x] **控制面覆盖 02 模块接口全集**：§2.12 映射表逐条核对七大模块对外接口；`BashRuleEvaluator`/`ProcessTreeTerminator`/`Executor` 等内核内部接口的不暴露决策已注明。
 - [x] **数据面覆盖状态机与审批闭环关键节点**：TurnPhase 每次迁移（`turn.phase_changed`）、turn 终态（`done`/`error`）、审批闭环（`permission.requested` → `permission.respond` 单消费 → `permission.resolved`，含超时/离线兜底）、子代理镜像（02 §4.2 映射表同构）。
 - [x] **帧结构与 04 §4.1 一致**：RpcFrame 三种 kind 逐字段一致；唯一细化是 error 增加可选 `details`（兼容扩展，已在 §1.2 声明）。
-- [x] **绑定映射完整**：in-memory / stdio 逐维度对照（§6.2），方法/schema/错误码绑定无关；websocket 预留差异单列（§6.3）；renderer↔main 虚拟 stdio 已说明。
+- [x] **绑定映射完整**：in-memory / stdio 逐维度对照（§6.2），方法/schema/错误码绑定无关；websocket 绑定差异已落地定义（§6.3，v1.9）；renderer↔main 虚拟 stdio 已说明。
 - [x] **性能基线有协议层支撑**：NFR-2/3/5/6 分别落在受理即返、delta 批量+flush 边界、snapshot 增量补偿、压缩事件化（§3.5）。
 - [x] **schema 治理可执行**：11 个分域文件预估均 < 500 行，超限拆分规则明确（§5）；`METHOD_SCHEMAS`/`EVENT_SCHEMAS` 注册表呼应 04 §4.3 单点校验与 ADR-07 强制机制。

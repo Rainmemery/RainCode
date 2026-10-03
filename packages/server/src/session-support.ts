@@ -336,3 +336,26 @@ export function assertNoRunningBackgroundTasks(
     );
   }
 }
+
+/** system.shutdown 主流程（06 §2.8，T3.8 自 agent-service 下沉）：取消活动 turn → 等待收敛（flush）→ 级联停子代理/MCP/插件 → 存储回调。 */
+export async function shutdownService(input: {
+  sessions: Iterable<{ loop: { cancel(reason: string): unknown }; pending: Promise<unknown> | null }>;
+  subagent: { stopAll(reason: string): Promise<unknown> } | null;
+  mcp: { close(): Promise<unknown> } | null;
+  plugins: { dispose(): Promise<unknown> } | null;
+  onShutdown?: () => Promise<void>;
+  reason?: string;
+}): Promise<unknown> {
+  const reason = input.reason ?? "shutdown";
+  const pending: Array<Promise<unknown>> = [];
+  for (const entry of input.sessions) {
+    entry.loop.cancel(reason);
+    if (entry.pending !== null) pending.push(entry.pending.catch(() => undefined));
+  }
+  await Promise.all(pending);
+  await input.subagent?.stopAll(reason); // 子代理级联兜底（02 §4.4）
+  await input.mcp?.close();
+  await input.plugins?.dispose();
+  await input.onShutdown?.();
+  return { shuttingDown: true as const };
+}

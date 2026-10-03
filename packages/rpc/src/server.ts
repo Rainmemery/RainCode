@@ -38,6 +38,13 @@ export interface CreateServiceBindingOptions {
   methods?: Record<string, RpcMethodHandler>;
   /** 握手门禁开关，默认开启（06 §1.4）。 */
   requireHandshake?: boolean;
+  /**
+   * 连接级鉴权门（T3.8 ws.auth / 06 §6.3）：设置后，除鉴权方法本身外的一切请求须待其
+   * 成功应答一次后方被受理，否则回 UNAUTHORIZED（06 §4.2 段 0）。鉴权方法同时豁免握手门
+   * （时序 = ws.auth → system.ping → 业务方法）；失败应答不开启门，门随连接生存。
+   * stdio / in-memory 绑定同生共死，不设门。
+   */
+  authGate?: { method: string };
   /** 开发模式断言开关（帧结构校验）；缺省 = process.env.NODE_ENV !== "production"。 */
   devAssert?: boolean;
 }
@@ -48,10 +55,12 @@ export function createServiceBinding(
 ): RpcServiceBinding {
   const methods = options.methods ?? {};
   const requireHandshake = options.requireHandshake ?? true;
+  const authGate = options.authGate ?? null;
   const devAssert = isDevMode(options.devAssert);
 
   let closed = false;
   let handshaken = false;
+  let authed = false;
 
   function sendResponse(
     id: string,
@@ -67,7 +76,17 @@ export function createServiceBinding(
   }
 
   async function handleRequest(frame: RequestFrame): Promise<void> {
-    if (requireHandshake && !handshaken && frame.method !== "system.ping") {
+    // 鉴权门先于握手门：未鉴权客户端对任何方法（含 system.ping）只得到 UNAUTHORIZED，不泄露版本信息
+    if (authGate !== null && !authed && frame.method !== authGate.method) {
+      sendResponse(frame.id, false, undefined, {
+        code: SYSTEM_ERROR_CODES.UNAUTHORIZED,
+        message: `unauthorized: ${authGate.method} must succeed first`,
+      });
+      return;
+    }
+    const preHandshakeAllowed =
+      frame.method === "system.ping" || (authGate !== null && frame.method === authGate.method);
+    if (requireHandshake && !handshaken && !preHandshakeAllowed) {
       sendResponse(frame.id, false, undefined, {
         code: SYSTEM_ERROR_CODES.VERSION_MISMATCH,
         message: "handshake required: the first request must be system.ping",
@@ -95,6 +114,8 @@ export function createServiceBinding(
     try {
       const result = await method.handler(parsed.data, {});
       if (frame.method === "system.ping") handshaken = true;
+      // 鉴权方法成功应答才开门（失败应答——含 handler 抛 UNAUTHORIZED——门保持关闭）
+      if (authGate !== null && frame.method === authGate.method) authed = true;
       sendResponse(frame.id, true, result);
     } catch (err) {
       // 业务错误码传播（06 §4.3）：handler 抛 RpcCallError 时按其 code/message/details 应答，

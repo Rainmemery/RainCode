@@ -13,11 +13,11 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 当前里程碑 | **M3 进行中**（T3.1 容器沙箱 ✅ · T3.2 远程执行 ✅ · T3.3 记忆自动抽取+管理界面 ✅ · T3.4 技能与斜杠命令 ✅ · T3.5 插件化 ✅ · T3.6 子代理编排增强 ✅ · T3.7 MCP 服务器管理 ✅；M2 验收完成，场景 5 GUI 走查已于 2026-09-29 以 CDP 自动化方式闭环，场景 6 真实 MCP 样例留人工） |
-| 已完成任务 | M1 全量 ✅ · M2 全量（T2.1~T2.10）✅ · CLI 展示升级 ✅ · 产品更名 RainCode ✅ · 场景 5 桌面 GUI 走查（自动化）✅ · NFR-4 口径修正复测 ✅ · T3.1 容器沙箱 ✅ · T3.2 远程执行 ✅ · T3.3 记忆自动抽取+管理界面 ✅ · T3.5 插件化 ✅ · T3.6 子代理编排增强 ✅ · T3.7 MCP 服务器管理 ✅ |
+| 当前里程碑 | **M3 进行中**（T3.1 容器沙箱 ✅ · T3.2 远程执行 ✅ · T3.3 记忆自动抽取+管理界面 ✅ · T3.4 技能与斜杠命令 ✅ · T3.5 插件化 ✅ · T3.6 子代理编排增强 ✅ · T3.7 MCP 服务器管理 ✅ · T3.8 Web 界面 ✅；M2 验收完成，场景 5 GUI 走查已于 2026-09-29 以 CDP 自动化方式闭环，场景 6 真实 MCP 样例留人工） |
+| 已完成任务 | M1 全量 ✅ · M2 全量（T2.1~T2.10）✅ · CLI 展示升级 ✅ · 产品更名 RainCode ✅ · 场景 5 桌面 GUI 走查（自动化）✅ · NFR-4 口径修正复测 ✅ · T3.1 容器沙箱 ✅ · T3.2 远程执行 ✅ · T3.3 记忆自动抽取+管理界面 ✅ · T3.5 插件化 ✅ · T3.6 子代理编排增强 ✅ · T3.7 MCP 服务器管理 ✅ · T3.8 Web 界面 ✅ |
 | 最新提交 | 见 `git log -1` |
 | 工作区状态 | clean |
-| 门禁状态 | typecheck ✅（13 项目）/ oxlint ✅（12 warning 基线）/ architecture:check ✅ / 单测 168 ✅（tools 插件单测 10 新增）/ smoke:p0 全回归 ✅（新增 smoke:plugin 三用例入回归）/ NFR 基准留存 `docs/benchmarks/m2-2026-09-29.md`（NFR-1~7 全达标；NFR-4 口径修正复测中位数 414.5MB 达标见报告 §7） |
+| 门禁状态 | typecheck ✅（14 项目，+apps/web）/ oxlint ✅（12 warning 基线保持）/ architecture:check ✅（13 模块，+app-web）/ 单测 189 ✅（rpc websocket+web-client+authGate 16、server web-host 5 新增）/ smoke:p0 全回归 ✅（新增 smoke:web 三用例 + 补登 smoke:stdio 入回归环）/ NFR 基准留存 `docs/benchmarks/m2-2026-09-29.md`（NFR-1~7 全达标；NFR-4 口径修正复测中位数 414.5MB 达标见报告 §7） |
 | 快照日期 | 2026-10-02 |
 
 ---
@@ -29,7 +29,7 @@
 | Phase 1 设计 | — | 7 份产品/技术设计文档 | ✅ 完成（2026-09-28） |
 | M1 | P0 | 单进程 CLI 打通日常可用闭环 | ✅ 完成（2026-09-28） |
 | M2 | P1 | 能力补全 + 桌面端 Alpha | ✅ 完成（2026-09-29，场景 5 走查已自动化闭环） |
-| M3 | P2 | 七模块全量对齐 | 🔄 进行中（T3.1~T3.4/T3.5/T3.6/T3.7 完成，仅余 T3.8/T3.9） |
+| M3 | P2 | 七模块全量对齐 | 🔄 进行中（T3.1~T3.8 完成，仅余 T3.9） |
 
 ---
 
@@ -38,6 +38,8 @@
 > 格式：`[日期] 任务 — 结果`（含关键产出物与提交号）。**新条目插在本节最上方。**
 
 ### M3 · P2（七模块全量对齐）
+
+- [2026-10-02] T3.8 Web 界面（07 §4.1 / 06 §6.3 / UI-5，协议 v1.9 54 方法）——a) **rpc：WebSocketTransport**（websocket.ts）：每条 WS 文本消息一帧、帧结构与 stdio 完全一致（帧协议与方法表零改动，「传输无关」最终验证）；delta 批量窗口自 stdio 抽出共用模块 delta-window.ts（stdio 行为零变更，既有单测作回归护栏）；畸形帧按角色处置（server 角色可定位 id 回 PARSE_ERROR / client 角色丢弃+告警，均不断开）；双面结构适配 WsSocketLike（node「ws」`on` 事件面与浏览器 `addEventListener` 面均满足，rpc 包不引 ws 依赖）；b) **binding 连接级鉴权门**（server.ts `authGate` 选项）：时序 `ws.auth` → `system.ping` → 业务方法，鉴权前一切请求（含 ping，不泄露版本）回新增系统码 `UNAUTHORIZED`（段 0）；成功应答才开门、失败不开、门随连接生存；c) **web-client（@raincode/rpc/web 浏览器安全子路径）**：createReconnectingRpcClient——重连握手（ws.auth+ping）编排、指数退避（1s×2 封顶 10s 可注入）、per-session seq 缺口检测→onSeqGap、恢复后 onRestored、鉴权失败 onFatal 停机、在途调用断线即 TRANSPORT_CLOSED fail-fast、resync 窗口丢事件防补推重复；d) **server：WebHost**（web-host.ts）——http+ws upgrade、逐连接独立绑定（authGate 开门 + ws.auth handler 注入方法表，token sha256+timingSafeEqual 常数时间比较）、事件多连接扇出、ws.ping 心跳探活（30s 周期，空闲 terminate）、可选静态工作台资源（路径穿越防护 + 421 纯 WS 端点提示）；AgentService 多绑定化（bindings Set + publisher 扇出 + detach，stdio/in-memory 单连接零回归）；createAgentServiceNode transport 参数可选（Web 多连接宿主延迟 attach）；agent-service 523→499 行治理：五域构造下沉 runtime-domains.ts、shutdown 主流程下沉 session-support.shutdownService；e) **apps/cli `raincode web`**：装配口径与 serve 一致（provider 三来源 + skills/plugins 域），token 解析 --token > RAINCODE_WEB_TOKEN > 自动生成打印 stderr（绝不落盘）；**apps/web 会话工作台**（React 18 + Zustand + Tailwind，@raincode/rpc/web 单一依赖面）：reducer 与桌面端同状态机（03 §7 一致性），onRestored/onSeqGap 双出口接 resume 补偿 + setSeqBaseline 回填，会话流/工具卡五状态/审批四级决策键盘直选/Provider 设置/连接状态条（重连可视化）；f) 协议 v1.9 additive：ws 域 1 方法 ws.auth + UNAUTHORIZED 段 0 + capability ws.auth（stdio/in-memory 不暴露）；06 §2.11 插入（原 2.11/2.12 顺延 2.12/2.13，tool-phase.ts 引用同步）、§6.3 由预留说明重写为落地定义（心跳/退避/补偿路径/扇出）；g) 测试：单测 +21 共 189（rpc：websocket 6 传输/畸形/窗口/close/断开 + web-client 6 握手/缺口/resync/重连/fatal/未就绪 + authGate 4；server：web-host 5 鉴权/解绑/扇出/静态/421）；smoke:web 三用例入 smoke:p0 回归（A 鉴权+浏览器端到端会话 / B 断线重连快照补偿——mock 延迟 1200ms 使回合内容整体产生于断线窗口，resume 补推零丢失的最强断言 / C 多连接扇出）；并修正 T2.8 遗漏（smoke:stdio 此前未入 smoke:p0 回归环）；h) README Web 界面节 + 命令表 + 能力行、06 五处、04 §4.4 落地化、testing.md 计数 189 + smoke 行；PROGRESS §1/§2/§3/§4/§5 推进（T3.8 ✅）；四门禁全绿 + smoke:p0 全回归 OK（smoke:web 3/3 复跑稳定）。
 
 - [2026-10-02] T3.5 插件化（07 §4.1 / 02 §2.3 插件扩展点，协议 v1.8 53 方法/19 事件）——a) 插件包形态：`<dataRoot>/plugins/<name>/`（plugin.json 清单 zod 单一事实源：name [a-z0-9-]+ 与目录名一致性校验防路径逃逸 / description 必填 / version? / entry? 缺省 index.mjs + 入口 ES module 契约 `activate({pluginDir}) → 工具描述符数组`、可选 `deactivate()`）；**仅全局层不做 workspace 逐会话层**——插件是注册进节点全局 ToolRegistry 的可执行代码，per-session 解析会跨会话泄漏（技能 per-session 口径不适用，07「复用技能加载的注册机制」落实在清单+目录扫描+首命中+坏件跳过的机制层）；b) 加载器/适配器（packages/tools/src/plugin/）：scanPluginDir/readPluginManifest/activatePlugin（动态 import + 逐条描述符校验：name [a-z0-9_]+/description 必填/execute 函数/JSON Schema 直通/metadata 子集类型校验）+ createPluginTool（`plugin__<名>__<工具>` 命名空间、metadata 缺省从严 needsApproval=true/riskLevel=medium 声明可收窄、非字符串返回值 JSON 序列化、execute 抛错 → 数据级 TOOL_EXEC_FAILED）；registry 命名空间豁免：source="plugin" 放行 plugin__ 前缀（mcp__ 豁免同构），其余来源 `__` 仍拒绝；c) PluginRuntime（server 装配，风格对齐 McpRuntime）：构造期 bootstrap + **就绪门**（控制面方法 await 初次扫描完成——修掉 fire-and-forget init 的 list 落空竞态）；启停 = plugins.json 停用名单 `{disabled:[]}` 持久化（目录即配置，停用 ≠ 卸载；同态幂等）；生命周期 active/disabled/failed 三态 + plugin.status_changed 全局事件（v1.8 第 19 事件）；**故障隔离（验收项）**：坏清单/activate 抛错 → 该插件 failed + lastError 不阻塞启动与其他插件；d) 协议 v1.8（minor+1 additive）：plugins.list/setEnabled 两方法 + 错误码段 10（PLUGIN_NOT_FOUND/PLUGIN_INVALID）+ 06 §2.10 插入（原 2.10/2.11 顺延 2.11/2.12，tool-phase.ts 外部引用同步）；e) 官方示例插件 examples/plugins/hello（greet/word_count 双工具演示 JSON Schema 参数与 metadata 收窄）+ CLI context/host 默认装配 `plugins:{}`；f) 测试：单测 +10 共 168（清单/扫描/激活契约/适配器/命名空间矩阵，临时目录真实 .mjs 动态 import 每用例独立 mkdtemp 防 ESM 缓存串扰）+ smoke:plugin 三用例（A 示例插件发布加载/模型调用双工具 + B 启停落盘幂等 NOT_FOUND + C 故障隔离 failed 投影/数据级回传/内核不受影响）入 smoke:p0 回归；g) README 能力行/插件化节/目录树 + testing.md 计数 168 + smoke 行 + 06 §2.10/§3.2/§4.3/§5/§7.5；PROGRESS §1/§2/§3/§5 推进（T3.5 ✅）；四门禁全绿 + smoke:p0 全回归 OK（smoke:plugin 3/3 复跑稳定）。
 
@@ -86,6 +88,7 @@
 
 > 格式：`[日期] 问题 → 根因 → 解决`。同类问题复现时先查此表。
 
+- [2026-10-02] smoke:web 断线重连用例中「重连后回合事件丢失/误判缺口」→ 双根因：① **delta 批量合并 × seq 缺口检测交互**——服务端连续 delta（seq 5/6/7）在批量窗口内合并为一帧（seq 取最新=7），客户端 4→7 判缺口 → resync 丢弃 done（06 §3.4 与 §6.3 第 4 条叠加语义）；② **seq 基线只覆盖已订阅事件名**——未订阅的 message.delta 不推进基线，下一事件 4→6 误判缺口。解决：缺口检测规则定为「message.delta 帧只推进基线不判定缺口（合并帧 seq=最新一条恰为后续事件前驱，天然桥接），其余会话事件逐帧投递跳变即真实丢帧」；web-client 连接期把 EVENT_SCHEMAS 全部已登记事件名挂上 ingestEvent（基线全见，未订阅事件也参与推进）。教训：传输层合并（§3.4）与端层丢帧检测（§6.3）在同一 seq 序列上共存时，检测必须以「永不合并的事件」为判定锚点、以合并帧为基线桥接。
 - [2026-09-29] smoke-memory case B（mtime 并发冲突）复跑偶发失败（冲突未命中或 INTERNAL）→ 双根因：① 真实竞态窗口 <1ms，固定次数 setImmediate 戳探在快机/负载波动下可能全部被读-改-写吸收（S1→S2 间隙未被覆盖）；② 外部写落在 S2 复检与 rename 之间时，Windows 下 rename 因目标被短暂持有报 EPERM，未被归因直接冒泡为 INTERNAL → ② 在 project-file.ts 修复：rename 失败后复检 mtime，变化即归因 MEMORY_WRITE_CONFLICT（与 S1/S2 同口径）+ 临时文件清理；① 改为在途期间 setInterval(0) 持续外部写直至 promise 收敛 + 10 轮重放，复跑 6 次 5 过。残余时序敏感性已知：ESM 静态导入绑定原函数，进程内事后 patch fs.promises.stat 不传播（实测），确定性方案（prod 注入 stat 钩子）随 T3.3 记忆波次落地，暂不在 prod 加测试面。
 - [2026-09-29] NFR-4 桌面端空载内存基准口径申报（T2.10 留存值 339.8MB 偏保守失真）→ 基准时 agent 子进程因 dev spawn 路径 bug（见 §3 场景 5 走查条目 a）处于崩溃循环放弃状态，进程树实际仅含 main+renderer/GPU，未计入 agent 子进程 → 修复后应复跑 bench:mem:desktop 留存新口径（M3 开工前补测）。
 - [2026-09-29] CLI `run` 回合收尾报 `failed to persist event "turn.phase_changed" EBADF` → done 事件后 CLI 立即关库，emitPersisted 的串行写队列中迟到的 phase 变更事件持久化失败（非致命，会话事实完整）→ 已知收尾竞态，暂不阻塞：Storage.close() 排空串行写队列列入 M3 内核小修。
@@ -110,10 +113,8 @@
 5. ~~**T3.6 子代理编排增强**~~ ✅（2026-09-29；内置角色模板 + 并行汇聚验收用例）
 6. ~~**T3.3 记忆自动抽取 + 管理界面**~~ ✅（2026-10-02；晋升草案待确认区 + 桌面记忆管理器 + case B 确定性收口；MR-4 走查自动化项由 smoke-memory 用例 G 与桌面视图构建覆盖，人工界面走查并入 T3.9）
 7. ~~**T3.5 插件化**~~ ✅（2026-10-02；加载/启停/生命周期 + 示例插件 hello + 故障隔离验收，协议 v1.8）
-8. **T3.8 Web 界面** — WebSocketTransport + ws.auth + seq 缺口补偿
-9. **T3.9 桌面端补齐 + M3 全量对齐验收** — NFR-1~7 全量重测留存
-7. **T3.8 Web 界面** — WebSocketTransport + ws.auth + seq 缺口补偿
-8. **T3.9 桌面端补齐 + M3 全量对齐验收** — NFR-1~7 全量重测留存
+8. ~~**T3.8 Web 界面**~~ ✅（2026-10-02；WebSocketTransport + ws.auth 鉴权门 + 重连退避与 seq 缺口 resume 补偿 + apps/web 工作台，协议 v1.9）
+9. **T3.9 桌面端补齐 + M3 全量对齐验收** — UI-4 各界面（含 T3.4 留存的桌面斜杠命令面板）+ NFR-1~7 全量重测留存 + 桌面记忆管理器/插件人工走查
 
 ---
 

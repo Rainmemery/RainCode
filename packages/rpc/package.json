@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./client": "./src/client.ts"
+    "./client": "./src/client.ts",
+    "./web": "./src/web.ts"
   },
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -18,7 +19,9 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "typescript": "^5.6.0"
+    "@types/ws": "^8.18.2",
+    "typescript": "^5.6.0",
+    "ws": "^8.22.0"
   },
   "sideEffects": false
 }

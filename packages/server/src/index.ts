@@ -22,6 +22,8 @@ export type {
 
 export { createAgentServiceNode } from "./node.js";
 export type { AgentServiceNode, AgentServiceNodeOptions } from "./node.js";
+export { WebHost } from "./web-host.js";
+export type { WebHostOptions } from "./web-host.js";
 
 export { ConfigDomain } from "./config-domain.js";
 export { ConfigStore, ConfigStoreError, CONFIG_VERSION } from "./config-store.js";

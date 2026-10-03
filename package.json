@@ -32,10 +32,13 @@
     "smoke:kernel": "tsx scripts/smoke-kernel.mts",
     "smoke:skills": "tsx scripts/smoke-skills.mts",
     "smoke:stdio": "tsx scripts/smoke-stdio.mts",
-    "smoke:remote": "tsx scripts/smoke-remote.mts"
+    "smoke:remote": "tsx scripts/smoke-remote.mts",
+    "smoke:web": "tsx scripts/smoke-web.mts"
   },
   "devDependencies": {
+    "@types/ws": "^8.18.2",
     "oxlint": "^1.85.0",
-    "tsx": "^4.19.2"
+    "tsx": "^4.19.2",
+    "ws": "^8.22.0"
   }
 }

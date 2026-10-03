@@ -395,10 +395,10 @@ export interface RpcServiceBinding {
 | --- | --- | --- | --- | --- |
 | in-memory | `InMemoryTransport` | 进程内直调 + 事件回调，零序列化 | CLI 端内嵌 Agent Service（§3.1） | P0 |
 | stdio | `StdioTransport` | stdin/stdout，每行一帧 JSONL | 桌面 main ↔ agent 子进程（§3.2）；未来任意 headless 宿主 | P1 |
-| websocket | `WebSocketTransport` | WS 文本消息（帧协议与 stdio 完全一致） | Web 界面（预留，P2） | P2 预留 |
+| websocket | `WebSocketTransport` | WS 文本消息（帧协议与 stdio 完全一致） | Web 界面（raincode web / apps/web 工作台） | ✅ 已落地（T3.8） |
 
 - **renderer ↔ main 桥**不是第四种业务绑定：renderer 侧的 `IpcBridgeTransport` 与 main 的帧桥组合后，逻辑上等价于一条到 agent 子进程的虚拟 stdio——业务帧端到端透传（§3.2）。
-- **Web 预留的意义**：Agent Service 的方法表与会话事件协议不因传输改变；P2 增加一个 WebSocketTransport 绑定即可复用全部 server 能力，验证「传输无关」设计的有效性（02 §8 将其列为 ZCode 亮点的继承项）。
+- **传输无关的最终验证（T3.8 已落地）**：Agent Service 的方法表与会话事件协议不因传输改变——Web 宿主仅新增 WebSocketTransport 绑定 + 连接级鉴权门（ws.auth）即复用全部 server 能力，帧协议与方法表零改动（02 §8 将其列为 ZCode 亮点的继承项；差异定义见 06 §6.3）。
 
 ---
 

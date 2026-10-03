@@ -18,6 +18,8 @@ export const SYSTEM_ERROR_CODES = {
   VERSION_MISMATCH: "VERSION_MISMATCH",
   CANCELLED: "CANCELLED",
   INTERNAL: "INTERNAL",
+  // T3.8（v1.9）：连接级鉴权门未通过（06 §6.3 websocket 绑定：ws.auth 成功前一切请求拒绝）
+  UNAUTHORIZED: "UNAUTHORIZED",
 } as const;
 export type SystemErrorCode = (typeof SYSTEM_ERROR_CODES)[keyof typeof SYSTEM_ERROR_CODES];
 

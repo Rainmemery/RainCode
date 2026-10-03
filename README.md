@@ -19,7 +19,7 @@ RainCode 的功能定位与 Claude Code / Codex 对齐：整合**代码生成、
 | Agent 内核（turn 状态机 / 会话生命周期 / checkpoint 恢复 / epoch 守卫 / 受限重试） | ✅ M1 |
 | 工具调用（9 个内置工具 / 声明式权限元数据 / 只读并行 / 输出预算裁剪） | ✅ M1 |
 | 命令权限控制（五级判定链 / bash argv 求值 / grantId 审批闭环 / 三层规则 / 审计） | ✅ M1 |
-| 控制面协议（53 方法 / 19 事件 / 密钥引用制 / capability 协商） | ✅ M2/M3 |
+| 控制面协议（54 方法 / 19 事件 / 密钥引用制 / capability 协商） | ✅ M2/M3 |
 | 上下文压缩 compact（80% 阈值自动触发 / 异步不阻塞 / 记忆抽取钩子） | ✅ M2 |
 | MCP 接入（stdio / Streamable HTTP / SSE，`mcp__<server>__<tool>` 命名空间；运行时启停 / 健康检查 ping） | ✅ M2/M3 |
 | 子代理管理（profile 双源解析 / 并发槽排队 / 级联取消 / 事件镜像合并） | ✅ M2 |
@@ -32,7 +32,8 @@ RainCode 的功能定位与 Claude Code / Codex 对齐：整合**代码生成、
 | 远程执行（SSH 远程工作区，复用 Executor 抽象，本地审计保留） | ✅ M3 |
 | 技能与斜杠命令（技能包双源加载 / `$ARGUMENTS` 模板展开 / 3 个官方示例技能） | ✅ M3 |
 | 插件化（`plugins/<name>/` 清单+ES module 契约 / activate-deactivate 生命周期 / 启停持久化 / `plugin__<名>__<工具>` 命名空间 / 故障隔离不拖垮内核 / 官方示例插件 hello） | ✅ M3 |
-| 插件 / 编排增强 / MCP 服务器管理 / Web 界面 | ⬜ M3 |
+| 子代理编排增强（内置角色模板 researcher/reviewer/tester / 并行委派汇聚） | ✅ M3 |
+| Web 界面（`raincode web` 宿主 + WebSocket 绑定 / `ws.auth` 连接级鉴权 / 断线重连 + seq 缺口 resume 补偿 / 浏览器会话工作台） | ✅ M3 |
 
 ## 环境要求
 
@@ -71,6 +72,7 @@ pnpm --filter @raincode/cli raincode chat      # 交互 REPL（推荐日常使�
 | `raincode run "<prompt>"` | 非交互模式：创建会话 → 发送 → 流式打印 → 退出；`--yes` 自动允许工具审批（临时 session 规则，不落库） |
 | `raincode chat` | 交互 REPL（见下表），流式渲染 + 工具卡片 + 交互审批 |
 | `raincode serve` | headless stdio 宿主：stdin/stdout 承载 JSONL 协议帧（桌面端 agent 子进程同形态，可人工 cat 调试） |
+| `raincode web` | Web 会话工作台宿主：HTTP(+WS) 监听 `ws://127.0.0.1:8787/ws`（`--port` `--host` 可调）；`ws.auth` 连接级鉴权（`--token` / `RAINCODE_WEB_TOKEN` / 自动生成打印到 stderr）；`--static <dir>` 服务浏览器工作台资源（缺省探测 `apps/web/dist`） |
 | `raincode help` | 帮助 |
 
 通用选项（`run` / `chat` / `serve` 共用）：`--base-url` `--model` `--api-key` `--name` `--provider-config <path>` `--workspace <dir>` `--title <title>` `--yes`。
@@ -150,6 +152,31 @@ pnpm --filter @raincode/desktop dist
 ```
 
 Alpha 功能范围：三栏主界面（会话列表 + 会话流 + 输入区）、工具调用卡片（五状态：排队 / 运行中 / 成功 / 失败 / 已作废）、权限审批弹窗（风险徽章 + 键盘 `1-4` 直选 + `Esc` 拒绝）、Provider 设置（添加 / 切换 / 活跃徽章）、记忆管理器（MEMORY.md 预览 / 晋升草案确认 / 条目检索与晋升）、工作区目录选择、流式输出与光标、子进程崩溃自动重启提示。与 CLI 共享同一 `RAINCODE_HOME` 数据目录——CLI 里开始的会话，桌面端打开即续接。
+
+## Web 界面（浏览器会话工作台）
+
+WebSocket 绑定（T3.8，协议 v1.9）——**帧协议与方法表零改动**，是「传输无关 RPC」设计的最终验证：
+
+```bash
+# 1) 构建（或 pnpm --filter @raincode/web dev 走 Vite dev server）
+pnpm --filter @raincode/web build
+
+# 2) 启动 Web 宿主（HTTP + WS 同端口；装配口径与 raincode serve 一致）
+raincode web --port 8787
+# stderr 输出：
+#   [raincode/web] auth token (auto-generated): <TOKEN>
+#   [raincode/web] rpc endpoint: ws://127.0.0.1:8787/ws
+#   [raincode/web] workbench: http://127.0.0.1:8787/?token=<TOKEN>&ws=ws://127.0.0.1:8787/ws
+
+# 3) 浏览器打开 workbench URL；token 也可用 --token / RAINCODE_WEB_TOKEN 显式指定
+```
+
+- **连接级鉴权（`ws.auth`，capability 协商）**：websocket 绑定的首请求必须是 `ws.auth { token }`，成功前一切请求（含 `system.ping`）回 `UNAUTHORIZED`；token 服务端常数时间比较、绝不落盘落日志（04 §5.3）。stdio / in-memory 绑定同生共死，不设门也不暴露该方法。
+- **断线恢复**：浏览器端指数退避重连（1s ×2 封顶 10s），重连握手成功后对活跃会话 `session.resume` 快照补推（全量重建 + 未决审批）；会话事件 seq 跳变（真实丢帧）同样触发 resume 补偿（06 §6.3 第 4 条）。
+- **多连接扇出**：多个浏览器标签页可同时连接，会话事件投递到全部活跃连接；多标签审批弹窗互相同步（同一 `pendingApprovals` 投影）。
+- **心跳**：宿主 30s 周期 WS ping 探活，空闲连接自动断开；`RAINCODE_WS_DELTA_WINDOW_MS` 可调大流式批量窗口（广域网）。
+
+Alpha 功能范围：会话列表 / 新建 / 切换、工作区路径输入、会话流式渲染（markdown 轻渲染与工具卡五状态）、交互审批（四级决策 + 键盘直选）、Provider 设置、连接状态条（重连可视化）。记忆管理器等管理面板随桌面端 UI-4 补齐节奏对齐。
 
 ## Provider 配置
 
@@ -382,7 +409,7 @@ RainCode/
 │   ├── agent-core/   # turn 状态机 + 会话生命周期 + 子代理 + 压缩（内核）
 │   ├── tools/        # 工具注册中心 + 9 内置工具 + 执行器（并发/超时/输出预算/SSRF/路径守卫）
 │   ├── permission/   # 五级判定链 + bash argv 求值 + 审批闭环 + 规则持久化 + 审计
-│   ├── server/       # Agent Service 唯一组装点（双端共享；53 方法/19 事件装配）
+│   ├── server/       # Agent Service 唯一组装点（双端共享；54 方法/19 事件装配）
 │   ├── mcp/          # MCP 三 transport 接入 + 连接状态机 + 命名空间工具适配
 │   └── memory/       # MEMORY.md 管理 + FTS5 记忆检索 + 会话记忆抽取
 ├── architecture/     # policy.yaml（架构治理策略，门禁依据）

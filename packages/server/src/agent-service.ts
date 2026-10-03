@@ -3,7 +3,6 @@
  * 组装 Storage + LlmClient + SessionTurnLoop（agent-core），经 createServiceBinding 暴露控制面；
  * 方法表 schema 全部引用 @raincode/shared METHOD_SCHEMAS（04 ADR-07）；事件由 agent-core 构造 payload。
  */
-import {  } from "node:fs/promises";
 import {
   METHOD_SCHEMAS,
   PROTOCOL_VERSION,
@@ -44,21 +43,21 @@ import {
   buildCompactionOptions,
   compactSession,
   createSessionLoop,
-  eventPublisher,
   listSessions,
   assertExistingWorkspace,
   recordUsage,
   requireActiveSession,
   resumeSessionFlow,
+  shutdownService,
 } from "./session-support.js";
 import type { SessionEntry } from "./session-support.js";
-import { PermissionRuntime } from "./permission-runtime.js";
-import type { PermissionPolicy, PermissionRuntimeOptions } from "./permission-runtime.js";
-import { McpRuntime } from "./mcp-runtime.js";
-import { PluginRuntime } from "./plugin-runtime.js";
-import { SubagentRuntime } from "./subagent-runtime.js";
-import { SkillRuntime } from "./skill-runtime.js";
-import { MemoryRuntime, memoryLoopEnhancements } from "./memory-runtime.js";
+import { PermissionRuntime, type PermissionPolicy, type PermissionRuntimeOptions } from "./permission-runtime.js";
+import type { McpRuntime } from "./mcp-runtime.js";
+import type { PluginRuntime } from "./plugin-runtime.js";
+import type { SubagentRuntime } from "./subagent-runtime.js";
+import type { SkillRuntime } from "./skill-runtime.js";
+import { memoryLoopEnhancements, type MemoryRuntime } from "./memory-runtime.js";
+import { buildRuntimeDomains } from "./runtime-domains.js";
 import type { SectionEditHooks } from "@raincode/memory";
 
 /** Provider 运行时配置（apiKey 已由调用方解析为明文注入；绝不落日志）。 */
@@ -132,7 +131,8 @@ export class AgentService {
   private readonly memory: MemoryRuntime | null;
   /** skills 域（06 §2.9；缺省未装配）。 */
   private readonly skills: SkillRuntime | null;
-  private binding: RpcServiceBinding | null = null;
+  /** 活跃绑定集（T3.8：Web 多连接宿主逐连接 attach，事件扇出到全部绑定；stdio/in-memory 单连接）。 */
+  private readonly bindings = new Set<RpcServiceBinding>();
   private shuttingDown = false;
 
   readonly providerModel: string;
@@ -175,66 +175,56 @@ export class AgentService {
       ...(this.permission !== null && { askUser: (q: AskUserChannelRequest) => this.permission!.askUser(q) }), // T2.7 P1 ask_user_question 通道（ApprovalBroker 闭环复用；default-allow 无装配 → TOOL_UNAVAILABLE）
     };
     this.toolDomain = new ToolDomain({ registry, background: builtin.background });
-    // MCP 域（02 §3）：命名空间工具进同一 registry；连接异步建立，状态经全局事件
-    this.mcp =
-      options.mcp === undefined
-        ? null
-        : new McpRuntime({
-            registry,
-            background: builtin.background,
-            executor: this.toolDeps.executor,
-            dataRoot: options.storage.dataRoot,
-            workspaceRoot: options.mcp.workspaceRoot,
-            publish: (event) => this.binding?.publish(event),
-          });
-    void this.mcp?.init();
-    // 插件域（06 §2.10 v1.8）：目录扫描 + 激活异步进行，单插件故障隔离为 failed 状态
-    this.plugins =
-      options.plugins === undefined
-        ? null
-        : new PluginRuntime({
-            registry,
-            dataRoot: options.storage.dataRoot,
-            publish: (event) => this.binding?.publish(event),
-          }); // bootstrap 于构造期启动；控制面方法经就绪门等待初次扫描完成
-    // 子代理域（02 §4）：agent 工具进同一 registry；子会话宿主经 SubagentLoopHost 注入（ADR-06）
-    this.subagent =
-      options.subagent === undefined
-        ? null
-        : new SubagentRuntime({
-            storage: options.storage,
-            toolDeps: this.toolDeps,
-            llmFor: (model) => this.llmForModel(model),
-            dataRoot: options.storage.dataRoot,
-            workspaceRoot: options.subagent.workspaceRoot ?? null,
-            publish: (event) => this.binding?.publish(event),
-          });
-    // memory 域（02 §7 / 06 §2.6）：未配置 → 不注册方法/不注入 MEMORY.md/不挂抽取钩子
-    this.memory =
-      options.memory === undefined ? null
-        : new MemoryRuntime({ storage: options.storage, llmFor: () => this.llm,
-            ...(options.memory.workspaceRoot !== undefined && { workspaceRoot: options.memory.workspaceRoot }),
-            ...(options.memory.sectionEditHooks !== undefined && { sectionEditHooks: options.memory.sectionEditHooks }) });
-    // skills 域（T3.4 / 06 §2.9）：提交链注入（session.send / skills.invoke 共用）
-    this.skills =
-      options.skills === undefined ? null
-        : new SkillRuntime({
-            dataRoot: options.storage.dataRoot,
-            workspaceRootOf: (sessionId) => this.options.storage.workspaceRootOf(sessionId),
-            submitTurn: (sessionId, text) => this.submitTurn(sessionId, text),
-          });
+    // 五域装配（T3.8 下沉 runtime-domains.ts，单文件 ≤500 行治理）：构造与接线集中一处
+    const domains = buildRuntimeDomains(
+      {
+        mcp: options.mcp,
+        plugins: options.plugins,
+        subagent: options.subagent,
+        memory: options.memory,
+        skills: options.skills,
+      },
+      {
+        registry,
+        background: builtin.background,
+        toolExecutor: this.toolDeps.executor,
+        toolDeps: this.toolDeps,
+        storage: options.storage,
+        llm: this.llm,
+        llmForModel: (model) => this.llmForModel(model),
+        publish: (event) => this.publishEvent(event),
+        submitTurn: (sessionId, text) => this.submitTurn(sessionId, text),
+      },
+    );
+    this.mcp = domains.mcp;
+    this.plugins = domains.plugins;
+    this.subagent = domains.subagent;
+    this.memory = domains.memory;
+    this.skills = domains.skills;
   }
 
-  /** 绑定传输并暴露方法表（一次服务可多次 attach 到不同 transport）。 */
-  attach(transport: IMessageTransport): RpcServiceBinding {
-    const binding = createServiceBinding(transport, { methods: this.buildMethods() });
-    this.binding = binding;
+  /**
+   * 绑定传输并暴露方法表（可多次 attach：每次连接一个绑定，事件扇出到全部活跃绑定——
+   * Web 多连接语义；options.authGate 开启连接级鉴权门，见 06 §6.3）。
+   */
+  attach(transport: IMessageTransport, options?: { authGate?: { method: string } }): RpcServiceBinding {
+    const binding = createServiceBinding(transport, {
+      methods: this.buildMethods(),
+      ...(options?.authGate !== undefined && { authGate: options.authGate }),
+    });
+    this.bindings.add(binding);
     return binding;
   }
 
+  /** 解除一个绑定（Web 宿主在连接关闭时调用）：移出扇出集并停止受理。 */
+  detach(binding: RpcServiceBinding): void {
+    this.bindings.delete(binding);
+    binding.close();
+  }
+
   close(): void {
-    this.binding?.close();
-    this.binding = null;
+    for (const binding of this.bindings) binding.close();
+    this.bindings.clear();
     this.permission?.close();
     void this.mcp?.close(); // MCP 子进程/连接异步收敛
     void this.subagent?.dispose(); // 子代理级联停止 + agent 工具注销（异步收敛）
@@ -450,24 +440,34 @@ export class AgentService {
 
   // system 域（06 §2.8）
   /** 优雅停机：取消活动 turn → 等待收敛（flush）→ 断开 MCP → 关闭存储。 */
-  private async shutdown(params: SystemShutdownParams): Promise<unknown> {
+  private shutdown(params: SystemShutdownParams): Promise<unknown> {
     this.shuttingDown = true;
-    const pending: Array<Promise<unknown>> = [];
-    for (const entry of this.sessions.values()) {
-      entry.loop.cancel(params.reason ?? "shutdown");
-      if (entry.pending !== null) pending.push(entry.pending.catch(() => undefined));
-    }
-    await Promise.all(pending);
-    await this.subagent?.stopAll(params.reason ?? "shutdown"); // 子代理级联兜底（02 §4.4）
-    await this.mcp?.close();
-    await this.plugins?.dispose();
-    await this.options.onShutdown?.();
-    return { shuttingDown: true as const };
+    // 主流程在 session-support.shutdownService（方法族拆分）；本层只注入装配依赖
+    return shutdownService({
+      sessions: this.sessions.values(),
+      subagent: this.subagent,
+      mcp: this.mcp,
+      plugins: this.plugins,
+      onShutdown: this.options.onShutdown,
+      reason: params.reason,
+    });
   }
 
   // 内部
+  /** 事件扇出（06 §3.3 fire-and-forget）：投递到全部活跃绑定；无绑定时丢弃并告警（session-support 原口径）。 */
   private publisher(): SessionEventPublisher {
-    return eventPublisher(this.binding);
+    return (event) => {
+      if (this.bindings.size === 0) {
+        console.error("[raincode/server] event dropped: no transport attached", event.name);
+        return;
+      }
+      for (const binding of this.bindings) binding.publish(event);
+    };
+  }
+
+  /** 运行时域（mcp/plugins/subagent）事件出口：同 publisher 扇出，但不做空集告警（域事件可选）。 */
+  private publishEvent(event: { name: string; payload: unknown }): void {
+    for (const binding of this.bindings) binding.publish(event);
   }
 
   /** 解析依赖投影（llm-factory 下沉后的结构注入；providersList 每次现取反映 switch 后活跃项）。 */

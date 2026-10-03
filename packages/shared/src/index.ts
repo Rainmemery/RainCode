@@ -26,6 +26,8 @@ import {
   systemShutdownResultSchema,
   systemVersionParamsSchema,
   systemVersionResultSchema,
+  wsAuthParamsSchema,
+  wsAuthResultSchema,
 } from "./schemas/system.js";
 import {
   sessionCancelParamsSchema,
@@ -187,16 +189,18 @@ export interface MethodSchemas {
  * 当前覆盖（07 §2.1 M1 P0 22 方法全集 + P1 permission.rules.* 3 方法 + T2.3 subagent 4 方法
  * + T2.4 memory 域 5 方法 + T2.6 session.rename/fork/usage 与 config.providers.switch 4 方法
  * + T3.4 skills 域 2 方法 + T3.7 mcp.servers.setEnabled/health 2 方法 + T3.3 memory.drafts.* 2 方法
- * + T3.5 plugins 域 2 方法（协议 v1.8，51 → 53 方法 / 19 事件）：
+ * + T3.5 plugins 域 2 方法 + T3.8 ws.auth（协议 v1.9，53 → 54 方法 / 19 事件）：
  * system.ping/version/shutdown；session.create/send/steer/cancel/list/resume/archive/setMode/rename/fork/usage；
  * config.get/set/providers.list/add/remove/switch；tool.tools.list + 后台任务三方法；permission 5 方法；
  * subagent.spawn/stop/list/profiles.list；memory.read/write/search/entries.list/promote + drafts.list/resolve；
- * skills.list/invoke；plugins.list/setEnabled。
+ * skills.list/invoke；plugins.list/setEnabled；ws.auth。
  */
 export const METHOD_SCHEMAS: Readonly<Record<string, MethodSchemas>> = {
   "system.ping": { request: systemPingParamsSchema, response: systemPingResultSchema },
   "system.version": { request: systemVersionParamsSchema, response: systemVersionResultSchema },
   "system.shutdown": { request: systemShutdownParamsSchema, response: systemShutdownResultSchema },
+  // T3.8 ws 域（06 §2.11）：websocket 绑定连接级鉴权；handler 由 Web 宿主提供（stdio/in-memory 不暴露）
+  "ws.auth": { request: wsAuthParamsSchema, response: wsAuthResultSchema },
   "session.create": { request: sessionCreateParamsSchema, response: sessionCreateResultSchema },
   "session.send": { request: sessionSendParamsSchema, response: sessionSendResultSchema },
   "session.steer": { request: sessionSteerParamsSchema, response: sessionSteerResultSchema },

@@ -14,13 +14,15 @@
   "dependencies": {
     "@raincode/agent-core": "workspace:*",
     "@raincode/llm": "workspace:*",
+    "@raincode/mcp": "workspace:*",
+    "@raincode/memory": "workspace:*",
     "@raincode/permission": "workspace:*",
     "@raincode/rpc": "workspace:*",
     "@raincode/shared": "workspace:*",
     "@raincode/storage": "workspace:*",
     "@raincode/tools": "workspace:*",
-    "@raincode/mcp": "workspace:*",
-    "@raincode/memory": "workspace:*"
+    "@types/ws": "^8.18.2",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

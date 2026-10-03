@@ -49,7 +49,8 @@ export interface AgentServiceNodeOptions {
 
 export interface AgentServiceNode {
   readonly service: AgentService;
-  readonly binding: RpcServiceBinding;
+  /** transport 注入时的绑定；未注入（Web 多连接宿主，T3.8）为 null——逐连接经 service.attach。 */
+  readonly binding: RpcServiceBinding | null;
   readonly storage: Storage;
   /** 关闭方法表受理并关闭 Storage（幂等）。 */
   close(): Promise<void>;
@@ -73,7 +74,7 @@ async function resolveNodeSandbox(dataRoot: string, override: SandboxConfig | un
 }
 
 export async function createAgentServiceNode(
-  transport: IMessageTransport,
+  transport?: IMessageTransport,
   options: AgentServiceNodeOptions = {},
 ): Promise<AgentServiceNode> {
   const storage =
@@ -108,7 +109,9 @@ export async function createAgentServiceNode(
     ...(options.plugins !== undefined && { plugins: options.plugins }),
     onShutdown: closeStorage,
   });
-  const binding = service.attach(transport);
+  // transport 缺省 = 延迟 attach（Web 多连接宿主逐连接 service.attach；T3.8），
+  // 单连接端层（CLI / 桌面子进程 / in-memory）保持构造即绑定。
+  const binding = transport === undefined ? null : service.attach(transport);
   let closed = false;
   return {
     service,

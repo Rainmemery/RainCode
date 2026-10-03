@@ -26,6 +26,9 @@ export const V1_CAPABILITIES = [
   // T2.7 P1（06 §7.1 需探测级）：permission.respond 增可选请求字段 answerText
   // （ask_user_question 通道），客户端经 system.ping 探测后启用提问卡渲染。
   "permission.respond.answer",
+  // T3.8（v1.9，06 §6.3）：websocket 绑定连接级鉴权（ws.auth → system.ping → 业务方法时序）。
+  // stdio / in-memory 绑定同生共死不设门，不注册 ws.auth handler（能力声明对传输绑定无感）。
+  "ws.auth",
 ] as const satisfies readonly string[];
 
 // ---------------------------------------------------------------------------
@@ -56,3 +59,22 @@ export const systemShutdownResultSchema = z.object({
   shuttingDown: z.literal(true),
 });
 export type SystemShutdownResult = z.infer<typeof systemShutdownResultSchema>;
+
+// ---------------------------------------------------------------------------
+// ws.auth（06 §2.11，v1.9 T3.8：websocket 绑定连接级鉴权握手）
+// ---------------------------------------------------------------------------
+
+/**
+ * 连接级鉴权（06 §6.3）：websocket 绑定accept连接后首个请求必须为 ws.auth，
+ * 成功（ok 应答）后方受理 system.ping 与业务方法；失败（错误应答）门保持关闭。
+ * handler 由宿主提供（token 校验属端层，同传输选择权）；stdio / in-memory 不注册。
+ */
+export const wsAuthParamsSchema = z.strictObject({
+  token: z.string().min(1),
+});
+export type WsAuthParams = z.infer<typeof wsAuthParamsSchema>;
+
+export const wsAuthResultSchema = z.object({
+  ok: z.literal(true),
+});
+export type WsAuthResult = z.infer<typeof wsAuthResultSchema>;
