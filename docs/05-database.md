@@ -4,7 +4,7 @@
 | --- | --- |
 | 文档版本 | v0.1（设计稿） |
 | 发布日期 | 2026-09-28 |
-| 文档状态 | 设计稿，随 02-module-design / 04-architecture 评审同步更新 |
+| 文档状态 | 设计稿，随 02-module-design / 04-architecture 评审同步更新；**校准注记 2026-10-03**：已随 M1~M3 实现校准（迁移集演进为 001~003，JSONL/表形态以 `packages/storage` 实现为准，见 legacy-items L-13） |
 | 关联文档 | 01-PRD（AC-5、NFR-5/7）· 02-module-design（实体与字段语义的权威来源）· 04-architecture（§2 storage 包边界、§5 配置体系、§7 ADR） |
 | 读者 | `packages/storage` 实现者、各领域包消费方 |
 

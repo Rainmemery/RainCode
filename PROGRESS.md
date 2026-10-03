@@ -13,8 +13,8 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 当前里程碑 | **M3 全量完成**（T3.1 容器沙箱 ✅ · T3.2 远程执行 ✅ · T3.3 记忆自动抽取+管理界面 ✅ · T3.4 技能与斜杠命令 ✅ · T3.5 插件化 ✅ · T3.6 子代理编排增强 ✅ · T3.7 MCP 服务器管理 ✅ · T3.8 Web 界面 ✅ · T3.9 桌面端补齐+全量对齐验收 ✅；NFR-1~7 全量重测达标 + 4.2 对比矩阵逐项核对，见 docs/benchmarks/m3-2026-10-02.md） |
-| 已完成任务 | M1 全量 ✅ · M2 全量（T2.1~T2.10）✅ · M3 全量（T3.1~T3.9）✅ · 场景 5 桌面 GUI 走查（自动化）✅ · T3.9 桌面 GUI 走查（自动化，14 断言）✅ |
+| 当前里程碑 | **M3 全量完成 ✅**（T3.1~T3.9 全绿 + NFR-1~7 全量重测 + 4.2 对比矩阵核对，见 docs/benchmarks/m3-2026-10-02.md）· **M4 已排期待启动**（工程加固与遗留收口：07-dev-plan §10，T4.1~T4.8） |
+| 已完成任务 | M1 全量 ✅ · M2 全量（T2.1~T2.10）✅ · M3 全量（T3.1~T3.9）✅ · 场景 5 桌面 GUI 走查（自动化）✅ · T3.9 桌面 GUI 走查（自动化，14 断言）✅ · M4 规划轮（deepseek-harness 调研 + 遗留项台账 + 07 §10 排期 + 文档漂移修订）✅ |
 | 最新提交 | 见 `git log -1` |
 | 工作区状态 | clean |
 | 门禁状态 | typecheck ✅（14 项目）/ oxlint ✅（12 warning 基线）/ architecture:check ✅（13 模块）/ 单测 203 ✅（T3.9 +14：desktop session-view 6、mcp config 6、server mcp-degrade 2）/ smoke:p0 全回归 ✅（14 子冒烟）/ 桌面走查 walkthrough-desktop.mts ✅（14 断言）/ NFR 基准留存 docs/benchmarks/m3-2026-10-02.md（NFR-1~7 全达标；NFR-1 跨 Node 版本 -50% 申报、NFR-4 +8.7% 装配面扩大申报） |
@@ -30,12 +30,17 @@
 | M1 | P0 | 单进程 CLI 打通日常可用闭环 | ✅ 完成（2026-09-28） |
 | M2 | P1 | 能力补全 + 桌面端 Alpha | ✅ 完成（2026-09-29，场景 5 走查已自动化闭环） |
 | M3 | P2 | 七模块全量对齐 | ✅ 完成（2026-10-03，T3.1~T3.9 + NFR 全量重测 + 4.2 矩阵核对；环境不可得人工项见 m3 报告 §8） |
+| M4 | —（增补） | 工程加固与遗留收口（CI 落地 / 内核收尾竞态 / 生成式协议目录 / 技能模型侧可发现性 / Web 管理面板 / 防御式模式文档 / 遗留收口两批次） | 📋 已排期（2026-10-03，07-dev-plan §10，T4.1~T4.8；参照 deepseek-harness 调研） |
 
 ---
 
 ## 3. 已完成任务日志（倒序追加）
 
 > 格式：`[日期] 任务 — 结果`（含关键产出物与提交号）。**新条目插在本节最上方。**
+
+### 规划轮（M3 收官后）
+
+- [2026-10-03] M4 规划与文档补全 —— a) **deepseek-harness 只读调研**（DeepSeek 官方 agent harness，~319 包 / docs 60+ 主题双语，已克隆至工作区并加入 .gitignore 不入库）：报告 docs/research/2026-10-03-deepseek-harness.md——定位/架构（Cordis 全插件树、profile/bundle/patch 组合、model-visible⟺logged 等设计不变量）、与 RainCode 能力矩阵逐维对照、10 项设计思想与 10 项工程实践的采用决策（M4 采纳 4 / M5+ 候选 6 / 不采纳 5 并附理由）；b) **遗留项台账建立**：docs/legacy-items.md——三里程碑累积遗留 19 项全量登记（M4 待收口 5：electron-builder dist / Web 真浏览器走查 / Storage.close EBADF 竞态 / CI 缺失 / Web 管理面板；环境门控保留 5；申报性保留 9；规划轮就地收口 4），今后新遗留项先登记此处；c) **07-dev-plan v1.1 增补 §10 M4 排期**（工程加固与遗留收口，T4.1 CI 落地 / T4.2 close 竞态修复 / T4.3 生成式协议目录+防漂移门禁 / T4.4 技能模型侧可发现性——借鉴 dsh 技能目录注入与 modelInvocable / T4.5 Web 端管理面板对齐 / T4.6 防御式模式文档 / T4.7 遗留收口批次 A / T4.8 环境门控批次 B；8~14.5 人日；裁剪次序与验收清单；§10.5 M5+ 候选方向登记「P2 后再议」条目）；d) **文档漂移修订四处**：01-PRD 头部关联文档过时引用（仍写「02-技术架构设计（待撰写）」）+ AC-8 删除语义 archive 注记、04-architecture ADR-02 修订（Ink → readline REPL 中间形态落地事实）、02-module-design / 05-database 实现校准注记；e) README 里程碑行与文档表、docs/README 索引、.gitignore（deepseek-harness/）、PROGRESS §1/§2/§3/§5 收口。
 
 ### M3 · P2（七模块全量对齐）
 
@@ -108,19 +113,18 @@
 
 ---
 
-## 5. 下一步队列（M3 已全部完成；后续里程碑待 07-dev-plan 增补排期）
+## 5. 下一步队列（M4 已排期：工程加固与遗留收口，07-dev-plan §10；M3 队列 9 项已全部完成并移入 §3 日志）
 
-> 取任务时**必须**回读 `docs/07-dev-plan.md` §4 对应任务行获取完整验收标准；M2/M3 收尾人工项（真实 MCP 任务样例 / electron-builder dist 打包 / Docker·WSL 真实执行域运行时验证 / SSH 端到端样例）可随时穿插执行。
+> 取任务时**必须**回读 `docs/07-dev-plan.md` §10 对应任务行获取完整验收标准；遗留项全景见 `docs/legacy-items.md`。T4.8 环境门控批次（五 Provider 连通矩阵 / 真实仓库 Bug 修复样例 / 场景 6 真实 MCP 任务样例 / Docker·WSL·SSH 真实运行时验证）可随时穿插执行，环境不可得则按台账保留口径申报，不阻塞里程碑。
 
-1. ~~**T3.1 容器沙箱（SB-3/4）**~~ ✅（2026-09-29；Docker/WSL 真实运行时验证留人工——本机无 Docker、WSL 无发行版）
-2. ~~**T3.2 远程执行复用 Executor 抽象**~~ ✅（2026-09-29；SSH 端到端样例随 M3 全量对齐人工执行——本机无 SSH 服务端）
-3. ~~**T3.4 技能与斜杠命令**~~ ✅（2026-09-29；示例技能端到端与自定义加载均为自动化验收，桌面端斜杠面板 UI 留 T3.9）
-4. ~~**T3.7 MCP 服务器管理**~~ ✅（2026-09-29；启停/健康检查补齐，域验收闭环）
-5. ~~**T3.6 子代理编排增强**~~ ✅（2026-09-29；内置角色模板 + 并行汇聚验收用例）
-6. ~~**T3.3 记忆自动抽取 + 管理界面**~~ ✅（2026-10-02；晋升草案待确认区 + 桌面记忆管理器 + case B 确定性收口；MR-4 走查自动化项由 smoke-memory 用例 G 与桌面视图构建覆盖，人工界面走查并入 T3.9）
-7. ~~**T3.5 插件化**~~ ✅（2026-10-02；加载/启停/生命周期 + 示例插件 hello + 故障隔离验收，协议 v1.8）
-8. ~~**T3.8 Web 界面**~~ ✅（2026-10-02；WebSocketTransport + ws.auth 鉴权门 + 重连退避与 seq 缺口 resume 补偿 + apps/web 工作台，协议 v1.9）
-9. ~~**T3.9 桌面端补齐 + M3 全量对齐验收**~~ ✅（2026-10-03；UI-4 扩展面板/斜杠命令面板/用量统计 + MCP 域用户入口装配补齐 + 走查 14 断言修复 3 缺陷 + NFR-1~7 全量重测 + 4.2 矩阵 13 行核对，见 docs/benchmarks/m3-2026-10-02.md）
+1. **T4.1 CI 落地**（L-07 核销）——`.github/workflows/ci.yml` windows-latest 五门禁（typecheck / lint / architecture:check / test / smoke:p0），electron 二进制跳过验证，CI 首次全绿留存。
+2. **T4.2 内核收尾竞态修复**（L-06 核销）——Storage.close() 与 serialWrite 队列排空联动 + 复现回归测试。
+3. **T4.3 生成式协议目录**——METHOD_SCHEMAS/EVENT_SCHEMAS → docs/generated/protocol-catalog.md，gen/--check 双模式，--check 入 CI。
+4. **T4.4 技能模型侧可发现性**——技能目录注入系统提示 + digest 变更重发布 + `skill` 内置工具 + modelInvocable 开关。
+5. **T4.5 Web 端管理面板对齐**（L-08 核销）——apps/web 落地记忆管理器 / 扩展面板 / 斜杠面板 / 用量统计。
+6. **T4.6 防御式模式文档**——docs/defensive-patterns.md（dsh 六条适配 + RainCode M1~M3 实战沉淀）。
+7. **T4.7 遗留收口批次 A**（L-04/L-05 核销）——electron-builder dist 产物 + walkthrough-web.mts 真浏览器走查脚本。
+8. **T4.8 遗留收口批次 B**（L-01/02/03/14/15 承接，环境门控不计入门槛）——真实环境项穿插执行。
 
 ---
 

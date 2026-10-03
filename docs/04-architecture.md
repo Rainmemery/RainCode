@@ -568,7 +568,7 @@ exceptions: []               # 白名单外豁免必须显式登记并附理由�
 | 编号 | 决策 | 背景 / 动因 | 代价与缓解 |
 | --- | --- | --- | --- |
 | ADR-01 | 存储用 better-sqlite3 + JSONL，而非 Prisma 等 ORM | PRD 基线；个人单机场景：同步 API 免连接池、零抽象层、SQLite 单文件嵌入即用；JSONL 追加写是 NFR-7（崩溃 100% 可恢复）的唯一可靠载体——追加语义天然抗强杀 | 原生模块需按平台分发预编译产物（Windows 优先）；schema 演进需手写迁移脚本；缓解：storage 单包封装全部 SQL，其他包只见端口 |
-| ADR-02 | TUI 用 Ink（React for CLI），而非纯 readline | 会话流式渲染、工具卡片、审批交互是组件化问题，React 的声明式 diff 恰好匹配「事件流 → UI」模型；与桌面端 renderer 共享 React 心智 | React 运行时带来启动开销，威胁 NFR-1；缓解：按需加载 + TUI ready 后异步补齐（§3.1），预算实测为准 |
+| ADR-02 | TUI 用 Ink（React for CLI），而非纯 readline —— **修订（2026-09-29 实施，2026-10-03 注记）：CLI 实际落地为 readline REPL + ANSI 富文本渲染层（ADR-02 中间形态，见 PROGRESS 2026-09-29「CLI 展示升级」），Ink 降级为后续可选升级路径而非既定承诺** | 会话流式渲染、工具卡片、审批交互是组件化问题，React 的声明式 diff 恰好匹配「事件流 → UI」模型；与桌面端 renderer 共享 React 心智。修订动因：实测冷启动预算下不引入 TUI 框架即达 NFR-1，readline 中间形态已覆盖消息流/工具行/审批块全部交互 | React 运行时带来启动开销，威胁 NFR-1；缓解：按需加载 + TUI ready 后异步补齐（§3.1），预算实测为准。修订后缓解升级为：不引入 React 运行时直接消除该项开销；升级 Ink 前需重新评审 NFR-1 预算（legacy-items L-10 关闭此偏差） |
 | ADR-03 | CLI 单进程内嵌 Agent Service，不拆子进程 | NFR-1 冷启动 ≤ 2s 硬指标：子进程 spawn + stdio 握手是纯开销；CLI 无 renderer 刷新/崩溃问题、无 Node ABI 冲突；ZCode 教训「多泳道进程复杂度」——CLI 先单进程 | CLI 进程崩溃即全退；缓解：JSONL 追加写 + checkpoint 使重启恢复零丢失（NFR-7），故障面可控 |
 | ADR-04 | 桌面端拆 agent 子进程（main / renderer / agent 三泳道，stdio RPC） | renderer 刷新会杀死运行中的 turn；better-sqlite3 无法进 renderer，放 main 则绑死 Electron Node ABI 且阻塞窗口职责；拆出后 agent 子进程与 CLI 共用同一 server 组装 + stdio 绑定，零新增引擎 | 多一层的 spawn/守护/帧桥复杂度与 NFR-4 内存计量项；缓解：main 不解析业务帧（只转发），生命周期策略从简（§3.3） |
 | ADR-05 | 包归属收敛：沙箱并入 tools、子代理并入 agent-core，不设独立顶层包 | ZCode 教训：方法级碎片化包导致依赖图失控、上下文跳跃；沙箱是工具执行的约束层、子代理复用同一内核工厂，都不具备独立包的依赖独立性 | 单包内聚度要求变高；缓解：policy 行数上限 + 包内目录子域（02 §0.1 代码子域）保持可导航性 |

@@ -12,7 +12,7 @@ RainCode 的功能定位与 Claude Code / Codex 对齐：整合**代码生成、
 
 ## 当前状态
 
-**M3（七模块全量对齐）验收完成** ✅（T3.1~T3.9，NFR-1~7 全量重测与 4.2 对比矩阵核对见 [docs/benchmarks/m3-2026-10-02.md](docs/benchmarks/m3-2026-10-02.md)；M2 基准见 [docs/benchmarks/m2-2026-09-29.md](docs/benchmarks/m2-2026-09-29.md)）。
+**M3（七模块全量对齐）验收完成** ✅（T3.1~T3.9，NFR-1~7 全量重测与 4.2 对比矩阵核对见 [docs/benchmarks/m3-2026-10-02.md](docs/benchmarks/m3-2026-10-02.md)；M2 基准见 [docs/benchmarks/m2-2026-09-29.md](docs/benchmarks/m2-2026-09-29.md)）。**M4（工程加固与遗留收口）已排期**：CI 落地 / 内核收尾竞态修复 / 生成式协议目录 / 技能模型侧可发现性 / Web 管理面板对齐 / 防御式模式文档 / 遗留项收口，见 [docs/07-dev-plan.md §10](docs/07-dev-plan.md)（参照 [deepseek-harness 调研报告](docs/research/2026-10-03-deepseek-harness.md)，遗留项全量登记于 [docs/legacy-items.md](docs/legacy-items.md)）。
 
 | 能力 | 状态 |
 | --- | --- |
@@ -430,7 +430,9 @@ RainCode/
 | [docs/04-architecture.md](docs/04-architecture.md) | 包划分 / 进程模型 / RPC 抽象 / ADR 决策记录 |
 | [docs/05-database.md](docs/05-database.md) | SQLite 表结构 / JSONL 会话流 / 迁移策略 / 密钥引用制 |
 | [docs/06-api-spec.md](docs/06-api-spec.md) | RPC 协议全集（方法 / 事件 / 错误码 / 版本策略） |
-| [docs/07-dev-plan.md](docs/07-dev-plan.md) | 三里程碑排期 / 任务分解 / 风险清单 |
+| [docs/07-dev-plan.md](docs/07-dev-plan.md) | 里程碑排期（M1~M3 + §10 M4 增补）/ 任务分解 / 风险清单 |
+| [docs/legacy-items.md](docs/legacy-items.md) | 遗留项唯一台账（处置口径 / 收口路径 / 保留申报） |
+| [docs/research/2026-10-03-deepseek-harness.md](docs/research/2026-10-03-deepseek-harness.md) | deepseek-harness 调研报告（能力对照 / 借鉴决策，M4 规划输入） |
 | [docs/testing.md](docs/testing.md) | 测试体系：单测 / 冒烟 / 基准 / 门禁 |
 | [PROGRESS.md](PROGRESS.md) | 任务进度唯一事实来源（恢复开发第一步读它） |
 
