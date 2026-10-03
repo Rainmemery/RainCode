@@ -1,7 +1,7 @@
 # RainCode 防御式模式清单（defensive-patterns）
 
 > **定位**：把 [PROGRESS §4](../PROGRESS.md) 的问题流水账沉淀为可评审的原则清单——每条模式 = 陈述 + 违反症状 + RainCode 实战案例（含任务/日期锚点）+ 评审检查点。同类问题复现时先查此表归位；新问题按 §0 格式记录并标注模式编号。
-> **来源**：[deepseek-harness 调研报告](research/2026-10-03-deepseek-harness.md) §3 #3 借鉴其六条模式条目名（P-1~P-6），陈述与案例为 RainCode 语境的适配展开；N-1~N-4 为 RainCode 原生沉淀（含调研报告 §4 #3 的采纳落地）。
+> **来源**：[deepseek-harness 调研报告](research/2026-10-03-deepseek-harness.md) §3 #3 借鉴其六条模式条目名（P-1~P-6），陈述与案例为 RainCode 语境的适配展开；N-1~N-5 为 RainCode 原生沉淀（含调研报告 §4 #3 的采纳落地）。
 > **收录标准**：只收「复现两次以上、或一旦发生代价高昂」的模式；单发且自解释的问题留在 PROGRESS §4 即可。新沉淀路径：先在 PROGRESS §4 记录事实 → 归位到本清单既有条目，或提炼为新条目。
 > **关联**：[CONTRIBUTING §2](../CONTRIBUTING.md)（提交前自评审按附表速查）· [legacy-items](legacy-items.md) L-17 · [testing.md §7](testing.md)（护栏变红约定）。
 
@@ -49,6 +49,7 @@ PROGRESS §4 的记录行按此格式撰写：
 - **mcp.json 双形态**（T3.9 走查）：生态形态（serverKey 由 map 键承载）与方法面 schema（serverKey 必填字段）两侧都要被尊重——`loadFile` 按 map 键注入 + 显式字段一致性校验，写回向后兼容；smoke 一直写冗余字段，文档形态从未被真身文件暴露。
 - **stdin 单读方契约**（2026-09-28，d4090ac）：同一 stdin 只允许挂一个 readline interface——双 interface 时按键被双消费各自回绘。「单读方」是读方之间约定，写方（管道另一端）无法替你执行。
 - **畸形帧按角色处置**（06 §1.2，T2.8/T3.8）：同一帧协议两侧各自遵守处置规则（server 角色可定位 id 回 PARSE_ERROR、client 角色丢弃 + 告警，均不断开）；`WsSocketLike` 双面结构让 node/浏览器两侧满足同一结构面而 rpc 包零运行时依赖。
+- **/json/new 目标 URL 的 `&` 截断**（2026-10-04，T4.7 走查首跑）：DevTools HTTP 端点 `/json/new?<url>` 的 query 解析在第一个 `&` 处截断目标 URL（直拼与 `url=` 编码两种形态实测一致），带多参数的工作台 URL 被静默剥掉 `&ws=` → 页面回退默认端点、「永远重连」假象——对外部接口的契约以实测行为为准而非文档想象；走查 openTab 改为 `/json/new?about:blank` 建 tab + targetId 连接 + `Page.navigate` 导航（CDP 通道不经 query 解析）。
 
 **评审检查点**：
 
@@ -67,7 +68,7 @@ PROGRESS §4 的记录行按此格式撰写：
 - **审批快照执行**（T2.7/T2.8）：审批闭环中 UI 收到的 `pendingApprovals` 是脱敏投影（复用 `permission.requested` payload，`normalizedInput`）；决策以服务端 grantId 唯一仲裁，补推是投影重建、不产生第二个决策通道；越界升级链「批准 = 批准审查时看到的那个绝对路径」（获批后 `pathPolicy allowEscaped` 精确放行该路径）——决策绑定快照，不重放可变状态。
 - **delta 合并 × seq 缺口检测**（2026-10-02）：传输层合并帧 seq 取最新，端层若逐帧判缺口必然误报——规则定为「message.delta 只推进基线不判定缺口，其余事件跳变即真实丢帧」；web-client 连接期把全部已登记事件名挂上基线推进（未订阅事件也参与）。
 - **setSeqBaseline 基线防回退**（T4.9 B3）：resume 响应与在途事件竞态时，过期 lastSeq 不得回退已观察基线（单测锁定）。
-- **真浏览器 stale 分层判别**（T4.9 B3 / L-21）：第二窗口不更新时按序判别——node 第三连接探针 → 客户端路径完整模拟 → CDP 帧捕获——先证明服务端扇出与帧到达，再怀疑端侧（最可能：Edge 后台标签冻结 JS 挂起，唤醒后 resume 补偿拉平；未确定性复现，挂 T4.7 复核）。设计前提：端侧视图是缓存，必须允许它过期。
+- **真浏览器 stale 分层判别**（T4.9 B3 / L-21）：第二窗口不更新时按序判别——node 第三连接探针 → 客户端路径完整模拟 → CDP 帧捕获——先证明服务端扇出与帧到达，再怀疑端侧。T4.7 walkthrough-web E 场景以 `Page.setWebLifecycleState` 冻结/解冻确定性复现并收口（L-21 ✅）：冻结期回合不达 → 解冻零交互补偿拉平；假说成立（Edge 后台标签冻结），无需修码。设计前提：端侧视图是缓存，必须允许它过期。
 - **MCP Connected 事件 × listTools 竞态**（T2.2 教训）：状态事件先行 ≠ 工具清单就绪，refreshTools 重试兜底。
 
 **评审检查点**：
@@ -166,6 +167,21 @@ PROGRESS §4 的记录行按此格式撰写：
 
 **检查点**：性能基准前确认被测对象「真的活着且在跑真实路径」；读数异常乐观时先怀疑没测到。
 
+## N-5 宿主环境假设必须显式化，并就地自检（T4.7 打包链沉淀）
+
+**陈述**：构建产物要跨运行时世界与宿主环境交付——编译 ABI、OS 特权、路径语义、网络可达性都是「当前开发机恰好满足」的隐式假设。dev 树绿 ≠ 产物能用：每个环境假设要么消除，要么在打包/发布脚本中显式声明并就地自检（fail-fast 且报因），不得依赖「在我机器上能过」。同族四案发生在 T4.7 一次 dist 冒烟内，全部在关键交付路径上。
+
+**违反症状**：换机器或装成产物后才炸（ABI 失配、特权缺失、路径解析语义变化、下载失败）；构建在 A 机绿 B 机红且报错指向随机深处。
+
+**实战案例**（T4.7 L-04，修复锚点 apps/desktop/scripts/prepare-native.mjs · dist.mjs · src/main/main.ts）：
+
+- **better-sqlite3 双 ABI 世界**：dev 树副本为系统 node 编译（CI/dev agent 都走 node），packaged agent 以 ELECTRON_RUN_AS_NODE 运行（electron ABI）——NODE_MODULE_VERSION 失配即崩。处置：prepare-native.mjs 暂存 electron-ABI 副本（ABI 号经本机 electron 二进制 `process.versions.modules` 实测，不维护映射表）→ extraResources 随包分发 → packaged env 以 NODE_PATH 回退注入（正常路径找不到才命中，不遮蔽 dev 树）→ 探针自检。探针自身踩坑：cwd 在仓库内时 require 先命中 dev 树副本造成假红/假绿——**自检探针的解析世界必须与目标世界同构**（cwd 挪到仓库外中性目录）。
+- **winCodeSign 7z 内 darwin 符号链接**：普通权限解包即失败（「客户端没有所需的特权」），且两项 darwin 签名工具对 Windows 未签名构建毫无用处——dist.mjs 预填充 electron-builder 缓存（容忍该两项失败 + Windows 侧关键文件在位校验 + 删除 darwin 残目录）。
+- **asar 虚拟路径作 spawn cwd**：`desktopRoot()` 的 `__dirname/../..` 算术在打包态解析进 app.asar（文件非目录）→ spawn ENOENT 且报错只指向 exe 本身。处置：agent 目录 asarUnpack 成真实文件，打包态入口/migrations 取 `app.asar.unpacked` 孪生路径、cwd 取安装根（`dirname(process.execPath)`）。
+- **github 直连受限**：electron zip、electron-builder-binaries（nsis/winCodeSign）、better-sqlite3 prebuild 三条下载线全部经 gh-proxy 前缀镜像——dist.mjs / prepare-native.mjs 以 env 缺省注入（`ELECTRON_MIRROR` / `ELECTRON_BUILDER_BINARIES_MIRROR` / `RAINCODE_GH_PROXY`），显式声明、可覆盖、不散落。
+
+**检查点**：打包/发布脚本新增步骤时问「这一步对宿主环境做了哪些假设（ABI / 特权 / 路径语义 / 网络）」；自检探针先声明自己验证的是哪个世界（运行时、cwd、解析路径），与目标世界同构才算数。
+
 ---
 
 ## 附：速查表（提交前自评审用）
@@ -173,7 +189,7 @@ PROGRESS §4 的记录行按此格式撰写：
 | 编号 | 一句话 | 代表案例 |
 | --- | --- | --- |
 | P-1 | 正交结果独立上报，错误是数据 | MCP 失败隔离 / turns_count 逐列维护 |
-| P-2 | 公共契约两侧遵守，不依赖巧合 | executor ctx 手拷漏字段 / mcp.json 双形态 / stdin 单读方 |
+| P-2 | 公共契约两侧遵守，不依赖巧合 | executor ctx 手拷漏字段 / mcp.json 双形态 / stdin 单读方 / /json/new `&` 截断 |
 | P-3 | 异步状态不是同步状态 | 审批快照执行 / seq 缺口锚点 / 端侧视图是缓存 |
 | P-4 | dispose 必须达到静默（栅栏→排空→释放→幂等） | close 四步曲 / readline close 雷 / 孤儿进程收割 |
 | P-5 | 派发器收容回调异常 | 域 init 降级不崩溃 / 插件 failed 隔离 |
@@ -182,3 +198,4 @@ PROGRESS §4 的记录行按此格式撰写：
 | N-2 | 断言有区分力，测试走真实装配 | `>= 0` 恒真教训 / B2 手装域盲区 |
 | N-3 | 验证世界而非自述；guard 要能变红 | CDP 走查 / protocol:check 变红演示 |
 | N-4 | 基准测真实存活进程树 | NFR-4 口径申报 |
+| N-5 | 宿主环境假设显式化 + 探针声明自己的世界 | electron-ABI 暂存 / winCodeSign 特权 / asar 路径语义 / gh-proxy 镜像 |

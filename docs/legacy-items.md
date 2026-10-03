@@ -22,8 +22,8 @@
 | L-01 | Docker/WSL 真实执行域运行时验证（本机无 Docker、WSL 无发行版；T3.1 仅 argv 级隔离策略断言） | m3 报告 §8 | T4.8 环境门控 | 🔒 保留（环境不可得） |
 | L-02 | SSH 端到端样例（本机无 SSH 服务端；SshExecutor 仅探针/argv/路径映射用例） | m3 报告 §8 | T4.8 环境门控 | 🔒 保留（环境不可得） |
 | L-03 | 场景 6 真实 MCP 任务样例（真实 MCP server + 真实任务演示；smoke:mcp 仅 fixture 级互操作） | m2/m3 报告 §8 | T4.8 环境门控 | 🔒 保留（环境不可得） |
-| L-04 | electron-builder 完整 dist 打包（pnpm 符号链接 + 原生模块 rebuild 属打包机环节；现仅 verify-agent-bundle 验证 bundle 通路） | PROGRESS T2.9 / README 桌面端节 | **T4.7 批次 A** | 🟡 待收口（M4） |
-| L-05 | Web 工作台真实浏览器走查（smoke:web 为 node ws 客户端帧形态等价，从未真浏览器驱动） | m3 报告 §8 | **T4.7 批次 A**（CDP 自动化走查脚本） | 🟡 待收口（M4） |
+| L-04 | electron-builder 完整 dist 打包（pnpm 符号链接 + 原生模块 rebuild 属打包机环节；现仅 verify-agent-bundle 验证 bundle 通路） | PROGRESS T2.9 / README 桌面端节 | **T4.7 批次 A**（prepare-native.mjs electron-ABI 原生模块暂存 + dist.mjs 镜像/winCodeSign 缓存兜底 + agent 目录 asarUnpack） | ✅ 收口（2026-10-04，nsis 产物 RainCode-Setup-0.1.0.exe 落地 + 静默安装 + walkthrough-desktop 安装目标 14/14 含 mock 会话全链路；三问题现场解决见 PROGRESS §3 T4.7 与 §4 P-7） |
+| L-05 | Web 工作台真实浏览器走查（smoke:web 为 node ws 客户端帧形态等价，从未真浏览器驱动） | m3 报告 §8 | **T4.7 批次 A**（[walkthrough-web.mts](walkthrough-web.mts)：真实入口 raincode web + Edge headless CDP 五场景） | ✅ 收口（2026-10-04，19 断言两轮稳定：鉴权 fatal 语义 / 会话实时渲染 / 审批落盘验证 / 宿主重启冷重建 / 双标签扇出；testing.md §3 走查行） |
 | L-06 | Storage.close() 收尾竞态：run 回合收尾偶发 `failed to persist event "turn.phase_changed" EBADF`（close 逐流关句柄，与 agent-core serialWrite 队列无排空联动） | PROGRESS §4 2026-09-29 条目（原承诺「M3 内核小修」未见执行记录） | **T4.2**（四层：流内写链排空 / Storage 关闭栅栏 STORAGE_CLOSED / LoopEvents.flush / shutdownService 排空链 + node.close 复用收敛链） | ✅ 收口（2026-10-03，复现回归 9 用例入回归，PROGRESS §3 T4.2 条目） |
 | L-07 | CI 缺失：`.github/workflows/` 不存在，T1.1/07 §8.1.4 承诺的 GitHub Actions 骨架从未落地，四门禁只在本地执行 | 07 §8.1.4 | **T4.1**（ci.yml 五门禁 + pnpm store 缓存 + electron 二进制跳过） | ✅ 收口（2026-10-03，首次运行 run 37107475417 全绿，PROGRESS §3 T4.1 条目） |
 | L-08 | Web 端管理面板缺位：记忆管理器/扩展面板/斜杠面板/用量统计为桌面端独有（README「随后续节奏对齐」承诺） | README Web 节 | **T4.5**（四面板按端最小实现 + 复用策略登记 04 §2.3；smoke:web 用例 D 服务面验收） | ✅ 收口（2026-10-02，README 承诺核销；PROGRESS §3 T4.5 条目） |
@@ -39,10 +39,10 @@
 | L-18 | ask_user_question 未按 02 L322 的 T14 awaiting_user 状态机实现（同构最小简化，偏差已申报） | PROGRESS T2.7 偏差申报 | 保留（等价实现已覆盖交互闭环；T14 全状态机列 M5+ 候选） | 🔒 保留（申报） |
 | L-19 | NFR-7 基准默认单轮专项，07 要求的「强杀 ×20 全量口径」需 `--times 20` 手动扩展 | testing.md §6 | 保留（按需扩展；里程碑验收时建议跑一次全量口径） | 🔒 保留（申报） |
 | L-20 | 桌面/Web 端会话列表为数据根全量会话，不按工作区过滤（可视化测试 B12：选择工作区后列表仍混排，重启后回到未选态但列表有内容） | 可视化测试报告 B12（2026-10-03） | 保留（设计确认：跨端共享同一数据根的全量会话可见性是特性而非缺陷；README 已口径化；工作区过滤列 M5+ 候选，升格需先修订 PRD） | 🔒 保留（申报） |
-| L-21 | Web 多标签实时扇出（可视化测试 B3）协议层复验正常（smoke:web 用例 E 双重连客户端回合扇出 + setSeqBaseline 基线防回退加固），真浏览器环境未能确定性复现——疑似测试时序（双标签各自建会话 + 首载竞态）叠加表现 | 可视化测试报告 B3（2026-10-03） | 保留（协议层回归已锁定；真浏览器扇出复验挂 T4.7 CDP 走查批次 A，可确定性复现时再立项） | 🔒 保留（观察项） |
+| L-21 | Web 多标签实时扇出（可视化测试 B3）协议层复验正常（smoke:web 用例 E 双重连客户端回合扇出 + setSeqBaseline 基线防回退加固），真浏览器环境未能确定性复现——疑似测试时序（双标签各自建会话 + 首载竞态）叠加表现 | 可视化测试报告 B3（2026-10-03） | T4.7 复核收口（walkthrough-web E 场景以 `Page.setWebLifecycleState` 冻结/解冻确定性注入「Edge 后台标签冻结」假说：冻结期回合不达 → 解冻零交互补偿拉平 → 在线实时扇出零缺口；原 stale 观测与假说相容，无需立项修复） | ✅ 收口（2026-10-04，两轮 19/19 稳定；协议层用例 E 继续回归） |
 
 ## 3. 状态图例与统计（2026-10-04）
 
 - ✅ 收口 · 🟡 待收口（M4 任务承接）· 🔒 保留（环境门控 / 申报性遗留 / 运维注意项）
-- 当前：**待收口 2（L-04/05）· 环境门控保留 5（L-01/02/03/14/15）· 申报性保留 5（L-09/16/18/19/20）· 运维保留 1（L-17）· 规划轮收口 4（L-10/11/12/13）· M4 执行收口 3（L-06/07/08）· 观察项 1（L-21）**
+- 当前：**待收口 0 · 环境门控保留 5（L-01/02/03/14/15）· 申报性保留 5（L-09/16/18/19/20）· 运维保留 1（L-17）· 规划轮收口 4（L-10/11/12/13）· M4 执行收口 5（L-04/05/06/07/08）· 观察项复核收口 1（L-21）**
 - 新遗留项登记时按 §1 口径判定处置，并在 07-dev-plan 对应里程碑任务表中挂承接（如有）。

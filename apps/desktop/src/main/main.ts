@@ -2,7 +2,7 @@
  * Electron main（04-architecture §3.2 泳道 1）：窗口与原生能力、agent 子进程守护、帧转发。
  * 铁律：main 不承载业务状态——不解析业务帧、不保存会话/审批事实，只做字符串级转发。
  */
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { AgentHost } from "./agent-host.js";
 
@@ -23,19 +23,24 @@ function repoRoot(): string {
 function agentSpawnPlan(): { mode: AgentMode; command: string; args: string[]; env: NodeJS.ProcessEnv; cwd: string } {
   const env: NodeJS.ProcessEnv = { ...process.env };
   if (app.isPackaged) {
-    // 打包形态：electron.exe 以 ELECTRON_RUN_AS_NODE 运行 bundle 后的 headless 入口；
-    // 迁移脚本与版本号随包注入（bundle 内 import.meta.url shim 不可用，storage/server 约定 env 口径）
+    // 打包形态：electron.exe 以 ELECTRON_RUN_AS_NODE 运行 bundle 后的 headless 入口。
+    // 路径全部落在真实文件区（T4.7 L-04 安装冒烟发现：asar 虚拟路径不可作 spawn cwd，
+    // 子进程也不该依赖 asar 补丁读入口/迁移）——agent 目录已 asarUnpack，取 app.asar.unpacked
+    // 孪生路径；cwd 取安装根。better-sqlite3 为 electron-ABI 随包副本（prepare-native.mjs →
+    // resources/native），经 NODE_PATH 回退解析——正常路径找不到时才命中，不遮蔽 dev 树 node-ABI 副本。
+    const unpacked = (anchor: string): string => anchor.replace("app.asar", "app.asar.unpacked");
     return {
       mode: "packaged",
       command: process.execPath,
-      args: [join(__dirname, "..", "agent", "entry.cjs")],
+      args: [unpacked(join(__dirname, "..", "agent", "entry.cjs"))],
       env: {
         ...env,
         ELECTRON_RUN_AS_NODE: "1",
-        RAINCODE_MIGRATIONS_DIR: join(__dirname, "..", "agent", "migrations"),
+        RAINCODE_MIGRATIONS_DIR: unpacked(join(__dirname, "..", "agent", "migrations")),
         RAINCODE_APP_VERSION: app.getVersion(),
+        NODE_PATH: join(process.resourcesPath, "native", "node_modules"),
       },
-      cwd: desktopRoot(),
+      cwd: dirname(process.execPath),
     };
   }
   // dev 形态：与 CLI 完全同一入口（raincode serve），tsx 直跑

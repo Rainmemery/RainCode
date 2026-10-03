@@ -26,3 +26,4 @@ Thumbs.db
 
 # 外部参照仓库（调研用，不入库；见 docs/research/2026-10-03-deepseek-harness.md）
 deepseek-harness/
+apps/desktop/build/native/

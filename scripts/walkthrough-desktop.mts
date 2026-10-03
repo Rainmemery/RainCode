@@ -9,6 +9,8 @@
  *   C 用量统计：回合收束后侧栏 ↑/↓ token 行（done → refreshUsage）
  *   D 记忆管理器：视图可达与三栏渲染（MR-4 人工走查项自动化替代）
  * 运行：先 pnpm --filter @raincode/desktop build，再 tsx scripts/walkthrough-desktop.mts。
+ * 安装产物冒烟（T4.7 L-04）：设 RAINCODE_WALKTHROUGH_APP_PATH 指向安装后的 RainCode.exe
+ * （静默安装：installer /S /D=<dir>），即对 nsis 产物跑同一套断言。
  */
 import { spawn } from "node:child_process";
 import { cpSync, mkdirSync, writeFileSync } from "node:fs";
@@ -16,13 +18,15 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import WebSocket from "ws";
+import { bodyContains, Cdp, clickButtonExpr, clickInSection, sleep } from "./cdp-lib.mts";
 import { startMockLlmServer, textScript } from "./p0-lib.mts";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DESKTOP = join(REPO_ROOT, "apps", "desktop");
 const ELECTRON = join(DESKTOP, "node_modules", "electron", "dist", "electron.exe");
 const CDP_PORT = 9223;
+/** 安装产物冒烟目标（T4.7）：指向安装后的 RainCode.exe 时对 dist 产物跑同套断言。 */
+const INSTALLED_EXE = process.env["RAINCODE_WALKTHROUGH_APP_PATH"];
 
 let passCount = 0;
 let failCount = 0;
@@ -35,120 +39,13 @@ function check(name: string, ok: boolean, detail = ""): void {
     console.log(`  ✖ ${name}${detail !== "" ? ` —— ${detail}` : ""}`);
   }
 }
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 // ---------------------------------------------------------------------------
-// CDP 最小客户端（Runtime.evaluate / Input.*；ws 已在根 devDependencies）
+// CDP 最小客户端（Runtime.evaluate / Input.*）：共享实现见 scripts/cdp-lib.mts
 // ---------------------------------------------------------------------------
-
-class Cdp {
-  private ws: WebSocket;
-  private nextId = 1;
-  private pending = new Map<number, (value: unknown) => void>();
-
-  private constructor(url: string) {
-    this.ws = new WebSocket(url);
-    this.ws.on("message", (raw: WebSocket.RawData) => {
-      const msg = JSON.parse(String(raw)) as { id?: number; result?: unknown };
-      if (msg.id !== undefined && this.pending.has(msg.id)) {
-        this.pending.get(msg.id)!(msg.result);
-        this.pending.delete(msg.id);
-      }
-    });
-  }
-
-  static async connect(port: number): Promise<Cdp> {
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      try {
-        const list = (await (await fetch(`http://127.0.0.1:${String(port)}/json/list`)).json()) as Array<{
-          type: string;
-          url: string;
-          webSocketDebuggerUrl: string;
-        }>;
-        const page = list.find((t) => t.type === "page" && !t.url.startsWith("devtools"));
-        if (page !== undefined) {
-          const cdp = new Cdp(page.webSocketDebuggerUrl);
-          await new Promise<void>((res, rej) => {
-            cdp.ws.once("open", () => res());
-            cdp.ws.once("error", (err) => rej(err));
-          });
-          return cdp;
-        }
-      } catch {
-        // 端口未就绪，轮询
-      }
-      await sleep(500);
-    }
-    throw new Error("CDP 连接超时（electron 未启动或 --remote-debugging-port 失效）");
-  }
-
-  send<T = unknown>(method: string, params: Record<string, unknown> = {}): Promise<T> {
-    const id = this.nextId++;
-    return new Promise<T>((res, rej) => {
-      this.pending.set(id, res as (value: unknown) => void);
-      this.ws.send(JSON.stringify({ id, method, params }));
-      setTimeout(() => {
-        if (this.pending.has(id)) {
-          this.pending.delete(id);
-          rej(new Error(`CDP ${method} 超时`));
-        }
-      }, 30_000);
-    });
-  }
-
-  /** 页面内表达式求值（awaitPromise + returnByValue；异常抛出）。 */
-  async eval<T>(expression: string): Promise<T> {
-    const result = await this.send<{ result?: { value?: T }; exceptionDetails?: { exception?: { description?: string } } }>(
-      "Runtime.evaluate",
-      { expression, returnByValue: true, awaitPromise: true },
-    );
-    if (result.exceptionDetails !== undefined) {
-      throw new Error(`页面异常: ${String(result.exceptionDetails.exception?.description ?? "unknown")}`);
-    }
-    return result.result?.value as T;
-  }
-
-  /** 轮询等待页面内条件成立。 */
-  async waitFor(expr: string, label: string, timeoutMs = 15_000): Promise<void> {
-    const started = Date.now();
-    for (;;) {
-      const ok = await this.eval<boolean>(expr).catch(() => false);
-      if (ok === true) return;
-      if (Date.now() - started > timeoutMs) throw new Error(`等待超时: ${label}`);
-      await sleep(300);
-    }
-  }
-
-  /** 真实按键（windowsVirtualKeyCode 必须给，React onKeyDown 读 key 字段）。 */
-  async key(keyText: string, code: string, vk: number): Promise<void> {
-    const base = { key: keyText, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk };
-    await this.send("Input.dispatchKeyEvent", { type: "keyDown", ...base });
-    await this.send("Input.dispatchKeyEvent", { type: "keyUp", ...base });
-  }
-
-  async insertText(text: string): Promise<void> {
-    await this.send("Input.insertText", { text });
-  }
-
-  close(): void {
-    this.ws.close();
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 走查主体
-// ---------------------------------------------------------------------------
-
-const clickButtonExpr = (label: string): string =>
-  `(() => { const b = [...document.querySelectorAll("button")].find(x => x.textContent.trim().includes(${JSON.stringify(label)})); if (!b) return false; b.click(); return true; })()`;
-const bodyContains = (needle: string): string =>
-  `document.body.innerText.includes(${JSON.stringify(needle)})`;
-/** 点指定 section（按内容定位）下的精确文本按钮。 */
-const clickInSection = (sectionNeedle: string, buttonText: string): string =>
-  `(() => { const row = [...document.querySelectorAll("section")].find(s => s.innerText.includes(${JSON.stringify(sectionNeedle)})); if (!row) return false; const b = [...row.querySelectorAll("button")].find(x => x.textContent.trim() === ${JSON.stringify(buttonText)}); if (!b) return false; b.click(); return true; })()`;
 
 async function main(): Promise<number> {
-  console.log("T3.9 桌面端 GUI 走查启动（CDP；electron 窗口将弹出）");
+  console.log(`T3.9 桌面端 GUI 走查启动（CDP；目标=${INSTALLED_EXE ?? "dev electron"}，窗口将弹出）`);
   const mock = await startMockLlmServer();
   const home = await mkdtemp(join(tmpdir(), "raincode-walkthrough-"));
   const workspace = join(home, "ws");
@@ -182,8 +79,14 @@ async function main(): Promise<number> {
     cpSync(join(REPO_ROOT, "examples", "skills", skill), join(home, "skills", skill));
   }
 
-  const electron = spawn(ELECTRON, [DESKTOP, `--remote-debugging-port=${String(CDP_PORT)}`], {
-    cwd: DESKTOP,
+  const appDir = INSTALLED_EXE !== undefined ? dirname(INSTALLED_EXE) : DESKTOP;
+  // dev electron 需要显式 app 路径参数；安装产物 exe 自带 app（同 --remote-debugging-port 透传）
+  const spawnArgs =
+    INSTALLED_EXE !== undefined
+      ? [`--remote-debugging-port=${String(CDP_PORT)}`]
+      : [DESKTOP, `--remote-debugging-port=${String(CDP_PORT)}`];
+  const electron = spawn(INSTALLED_EXE ?? ELECTRON, spawnArgs, {
+    cwd: appDir,
     env: {
       ...process.env,
       RAINCODE_HOME: home,

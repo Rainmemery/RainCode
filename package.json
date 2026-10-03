@@ -35,7 +35,9 @@
     "smoke:skills": "tsx scripts/smoke-skills.mts",
     "smoke:stdio": "tsx scripts/smoke-stdio.mts",
     "smoke:remote": "tsx scripts/smoke-remote.mts",
-    "smoke:web": "tsx scripts/smoke-web.mts"
+    "smoke:web": "tsx scripts/smoke-web.mts",
+    "walkthrough:web": "tsx scripts/walkthrough-web.mts",
+    "walkthrough:desktop": "tsx scripts/walkthrough-desktop.mts"
   },
   "devDependencies": {
     "@types/ws": "^8.18.2",

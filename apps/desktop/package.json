@@ -11,7 +11,7 @@
     "build:main": "node scripts/build-main.mjs",
     "build:agent": "node scripts/build-agent.mjs",
     "build:renderer": "vite build",
-    "dist": "electron-builder --win --config electron-builder.yml"
+    "dist": "node scripts/prepare-native.mjs && node scripts/dist.mjs"
   },
   "devDependencies": {
     "@raincode/rpc": "workspace:*",

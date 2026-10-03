@@ -25,7 +25,7 @@
 | --- | --- |
 | [../PROGRESS.md](../PROGRESS.md) | **任务进度唯一事实来源**：状态快照、任务日志、问题记录、下一步队列 |
 | [testing.md](testing.md) | 测试说明：单元测试、冒烟脚本、基准测试、门禁体系、运行方法 |
-| [defensive-patterns.md](defensive-patterns.md) | **防御式模式清单**：dsh 六条适配（P-1~P-6）+ RainCode M1~M4 原生沉淀（N-1~N-4）+ 问题记录格式（§0）与提交前自评审速查表 |
+| [defensive-patterns.md](defensive-patterns.md) | **防御式模式清单**：dsh 六条适配（P-1~P-6）+ RainCode M1~M4 原生沉淀（N-1~N-5）+ 问题记录格式（§0）与提交前自评审速查表 |
 | [legacy-items.md](legacy-items.md) | **遗留项唯一台账**：处置口径（M4 收口 / 环境门控 / 保留申报）、21 项登记、收口路径 |
 | [generated/protocol-catalog.md](generated/protocol-catalog.md) | 生成式协议目录（勿手改）：55 方法 / 19 事件 / 错误码族的 schema 机械投影，`pnpm protocol:gen` 再生成、`pnpm protocol:check` 防漂移（CI 门禁 6） |
 | [research/2026-10-03-deepseek-harness.md](research/2026-10-03-deepseek-harness.md) | deepseek-harness 调研报告：项目定位/架构、与 RainCode 能力矩阵对照、设计思想与工程实践借鉴决策（M4 规划输入） |

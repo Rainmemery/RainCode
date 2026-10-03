@@ -9,10 +9,17 @@ files:
   - dist-electron/**/*
   - "!**/node_modules/**"
 asar: true
-# better-sqlite3 原生模块不进 asar（node ABI 加载要求）
+# bundle 自包含（better-sqlite3 保持 external），原生模块不进 asar：
+# electron-ABI 副本经 prepare-native.mjs 暂存 + extraResources 随包分发到
+# <install>/resources/native/node_modules/（main 以 NODE_PATH 注入 agent 子进程，
+# 正常路径找不到时才回退解析，不遮蔽既有模块——dev 树 node-ABI 副本与 CI 均不受影响）
+# agent 目录解包为真实文件：ELECTRON_RUN_AS_NODE 子进程以真实路径 spawn/读取（asar 虚拟 FS
+# 不可作 spawn cwd，入口与 migrations 也不依赖子进程侧 asar 补丁）
 asarUnpack:
-  - "**/better_sqlite3.node"
-  - "**/better-sqlite3/**"
+  - "dist-electron/agent/**"
+extraResources:
+  - from: build/native/node_modules
+    to: native/node_modules
 win:
   target:
     - nsis
