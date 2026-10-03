@@ -13,11 +13,11 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 当前里程碑 | **M3 全量完成 ✅**（T3.1~T3.9 全绿 + NFR-1~7 全量重测 + 4.2 对比矩阵核对，见 docs/benchmarks/m3-2026-10-02.md）· **M4 进行中**（工程加固与遗留收口：07-dev-plan §10，T4.1 CI 落地 ✅ · T4.2 内核收尾竞态修复 ✅，T4.3~T4.8 待做） |
-| 已完成任务 | M1 全量 ✅ · M2 全量（T2.1~T2.10）✅ · M3 全量（T3.1~T3.9）✅ · M4 T4.1 CI 落地 ✅ · M4 T4.2 内核收尾竞态修复 ✅ · 场景 5 桌面 GUI 走查（自动化）✅ · T3.9 桌面 GUI 走查（自动化，14 断言）✅ · M4 规划轮（deepseek-harness 调研 + 遗留项台账 + 07 §10 排期 + 文档漂移修订）✅ |
+| 当前里程碑 | **M3 全量完成 ✅**（T3.1~T3.9 全绿 + NFR-1~7 全量重测 + 4.2 对比矩阵核对，见 docs/benchmarks/m3-2026-10-02.md）· **M4 进行中**（工程加固与遗留收口：07-dev-plan §10，T4.1 CI 落地 ✅ · T4.2 内核收尾竞态修复 ✅ · T4.3 生成式协议目录 ✅，T4.4~T4.8 待做） |
+| 已完成任务 | M1 全量 ✅ · M2 全量（T2.1~T2.10）✅ · M3 全量（T3.1~T3.9）✅ · M4 T4.1 CI 落地 ✅ · M4 T4.2 内核收尾竞态修复 ✅ · M4 T4.3 生成式协议目录 ✅ · 场景 5 桌面 GUI 走查（自动化）✅ · T3.9 桌面 GUI 走查（自动化，14 断言）✅ · M4 规划轮（deepseek-harness 调研 + 遗留项台账 + 07 §10 排期 + 文档漂移修订）✅ |
 | 最新提交 | 见 `git log -1` |
 | 工作区状态 | clean |
-| 门禁状态 | typecheck ✅（14 项目）/ oxlint ✅（12 warning 基线）/ architecture:check ✅（13 模块）/ 单测 212 ✅（T4.2 +9：storage jsonl-stream close 排空与栅栏 6、agent-core loop-events-flush L-06 复现回归 3）/ smoke:p0 全回归 ✅（14 子冒烟）/ smoke:kernel ✅ / 桌面走查 walkthrough-desktop.mts ✅（14 断言）/ NFR 基准留存 docs/benchmarks/m3-2026-10-02.md（NFR-1~7 全达标；NFR-1 跨 Node 版本 -50% 申报、NFR-4 +8.7% 装配面扩大申报） · CI ✅（GitHub Actions windows-latest 五门禁与本地同集，首次运行全绿 run 37107475417 / job 104s） |
+| 门禁状态 | typecheck ✅（14 项目）/ oxlint ✅（12 warning 基线）/ architecture:check ✅（13 模块）/ protocol:check ✅（T4.3 防漂移：生成式协议目录与 schema 注册表逐字节一致）/ 单测 212 ✅（T4.2 +9：storage jsonl-stream close 排空与栅栏 6、agent-core loop-events-flush L-06 复现回归 3）/ smoke:p0 全回归 ✅（14 子冒烟）/ smoke:kernel ✅ / 桌面走查 walkthrough-desktop.mts ✅（14 断言）/ NFR 基准留存 docs/benchmarks/m3-2026-10-02.md（NFR-1~7 全达标；NFR-1 跨 Node 版本 -50% 申报、NFR-4 +8.7% 装配面扩大申报） · CI ✅（GitHub Actions windows-latest 六门禁与本地同集，T4.3 增补门禁 6 protocol:check） |
 | 快照日期 | 2026-10-03 |
 
 ---
@@ -39,6 +39,8 @@
 > 格式：`[日期] 任务 — 结果`（含关键产出物与提交号）。**新条目插在本节最上方。**
 
 ### M4 · 工程加固与遗留收口（07-dev-plan §10）
+
+- [2026-10-03] T4.3 生成式协议目录 + 防漂移门禁——a) `scripts/gen-protocol-catalog.mts`（gen / `--check` 双模式，package.json 增 `protocol:gen` / `protocol:check`）：从 shared `METHOD_SCHEMAS` / `EVENT_SCHEMAS` 注册表与五个 `*_ERROR_CODES` 常量生成 `docs/generated/protocol-catalog.md`（989 行）；zod 3 内省口径——`_def.typeName` 分派渲染、对象经 shape 展开（深度 ≥3 折叠为 object 防爆炸）、约束取 checks（int/min/max/regex/url/email）与 describe() 描述、ZodDefault 读 defaultValue 注记默认值；输出确定性（域与方法、事件排序，无时间戳）——同注册表必得同字节输出，--check 才可判漂移；不直接依赖 zod 类型（scripts 侧最小结构面 SchemaLike）。b) 生成物三节：方法表 54（11 域分节，每方法入参/出参顶层字段表：字段/类型/必填/约束说明）/ 事件表 19（EventBase 三基字段 seq·sessionId·ts 散文声明一次，各表只列特有字段）/ 错误码族 5（SYSTEM 段 0、PC 段 2、MEMORY 段 6、TOOL 段 7、PLUGIN 段 10 常量直读；session/config/mcp/subagent/skills 域为调用点字面量 → 注记 06 §4.3 手写表为权威）；**文档头声明职责边界**：生成物只承载字段/类型/必填/约束，语义、行为、时序、业务码含义仍以 06 手写章节为唯一权威，不一致时以注册表为准修正 06 而非手改生成物。c) CI 门禁 6：ci.yml 五门禁→六门禁（Gate 6/6 `pnpm protocol:check`），本地与 CI 门禁集保持一致。d) 验收达成（07 §10.2）：手改生成文件 → `--check` 变红（退出码 1 + 首个差异行定位）→ `protocol:gen` 一键再生成恢复绿；协议演进路径 = 改 schema 注册表 → gen 再生成 → 核对 06 手写表。e) 文档：06 §5 增生成式目录注记（演进顺序三步）、docs/README 过程资产索引、testing.md §5 六门禁行、README 当前状态；门禁：typecheck / oxlint 12 warning 基线 / architecture 222 文件 0 违规（+1 新脚本）/ 单测 212 / smoke:kernel ✅；本次无运行时代码改动（纯工具链/生成物/文档），smoke:p0 由 CI 门禁 5 复跑把关。
 
 - [2026-10-03] T4.2 内核收尾竞态修复（L-06 核销）——a) **根因**（§4 2026-09-29 条目的收口）：`emitPersisted` 入队即发布（事实先行=入队先行、完成不等人），`node.close()` 原先 `service.close()`（快速拆除，不等队列）后即 `storage.close()`；close 窗口内 serialWrite 队列迟到的持久化任务三条死路——撞在途句柄 EBADF（原报错）/ `streams` 清空后经 openSessionStream **重开文件句柄**（泄漏 + 写入落在关闭之后）/ db 已关则抛 SQLITE 错；b) **四层修复**（方案「close 感知 pending 写 + flush-then-close」并用）：① `SessionStream` 流内单写者链——seq 分配与句柄写入同链串行（并发 append 不重号不再依赖调用方自律），`close()` 先设拒绝栅栏再经同链排空在途写后才释放句柄，幂等（closePromise 复用）；② `Storage` 关闭栅栏——`closing` 标志使 close 后 `openSessionStream` 抛类型化 `STORAGE_CLOSED`（errors.ts 新码），不再重开句柄；`Storage.close()` 同样幂等化；③ `LoopEvents.flush()` + `SessionTurnLoop.flushEvents()`——排空单写者链（契约：生产方停发后调用，promise 永不 reject）；④ `shutdownService` 注入排空步——turn 终态（pending 收敛）后先排主会话写链，再 subagent 停止级联 + `SubagentRuntime.flushPersist()`（子会话循环登记表：终态→自排空→移除，flushPersist 对未终态循环等终态+兜底排空），全部排空后 `onShutdown` 才关存储；`AgentService.shutdown` 转公开，`node.close()` 复用 system.shutdown 同一条收敛链（零新增方法，域二次 close 幂等性逐一核验：broker 清空式 / mcp closeAll 断连 catch / plugins stopAll 幂等）；c) **复现回归 9 用例**：storage jsonl-stream 6（close 排空在途写不丢行且 seq 严格递增 / close 后 STORAGE_CLOSED 拒绝不重开句柄 / close 幂等 / 并发 append 不重号 / Storage 栅栏 / Storage.close 幂等）+ agent-core loop-events-flush 3（emit→flush→close 零告警零丢失含迟到 phase_changed / flush 幂等 / **未 flush 即 close 转类型化告警**——旧缺陷路径从 EBADF 竞态变为响亮可诊的 STORAGE_CLOSED）；storage 包首开 test 目录；d) 文档：05 §4.3 追加写协议第 1 条 close 排空语义、testing.md 单测 212 + 用例行；门禁：typecheck / oxlint 12 warning 基线 / architecture 221 文件 0 违规（turn-loop.ts 压缩导入块保住 500 行上限）/ 单测 212 / smoke:kernel ✅ / smoke:p0 全回归 ✅。
 
@@ -119,16 +121,15 @@
 
 ---
 
-## 5. 下一步队列（M4 进行中：T4.1/T4.2 已完成移入 §3 日志；队列 T4.3~T4.8，07-dev-plan §10）
+## 5. 下一步队列（M4 进行中：T4.1/T4.2/T4.3 已完成移入 §3 日志；队列 T4.4~T4.8，07-dev-plan §10）
 
 > 取任务时**必须**回读 `docs/07-dev-plan.md` §10 对应任务行获取完整验收标准；遗留项全景见 `docs/legacy-items.md`。T4.8 环境门控批次（五 Provider 连通矩阵 / 真实仓库 Bug 修复样例 / 场景 6 真实 MCP 任务样例 / Docker·WSL·SSH 真实运行时验证）可随时穿插执行，环境不可得则按台账保留口径申报，不阻塞里程碑。
 
-1. **T4.3 生成式协议目录**——METHOD_SCHEMAS/EVENT_SCHEMAS → docs/generated/protocol-catalog.md，gen/--check 双模式，--check 入 CI。
-2. **T4.4 技能模型侧可发现性**——技能目录注入系统提示 + digest 变更重发布 + `skill` 内置工具 + modelInvocable 开关。
-3. **T4.5 Web 端管理面板对齐**（L-08 核销）——apps/web 落地记忆管理器 / 扩展面板 / 斜杠面板 / 用量统计。
-4. **T4.6 防御式模式文档**——docs/defensive-patterns.md（dsh 六条适配 + RainCode M1~M3 实战沉淀）。
-5. **T4.7 遗留收口批次 A**（L-04/L-05 核销）——electron-builder dist 产物 + walkthrough-web.mts 真浏览器走查脚本。
-6. **T4.8 遗留收口批次 B**（L-01/02/03/14/15 承接，环境门控不计入门槛）——真实环境项穿插执行。
+1. **T4.4 技能模型侧可发现性**——技能目录注入系统提示 + digest 变更重发布 + `skill` 内置工具 + modelInvocable 开关。
+2. **T4.5 Web 端管理面板对齐**（L-08 核销）——apps/web 落地记忆管理器 / 扩展面板 / 斜杠面板 / 用量统计。
+3. **T4.6 防御式模式文档**——docs/defensive-patterns.md（dsh 六条适配 + RainCode M1~M3 实战沉淀）。
+4. **T4.7 遗留收口批次 A**（L-04/L-05 核销）——electron-builder dist 产物 + walkthrough-web.mts 真浏览器走查脚本。
+5. **T4.8 遗留收口批次 B**（L-01/02/03/14/15 承接，环境门控不计入门槛）——真实环境项穿插执行。
 
 ---
 

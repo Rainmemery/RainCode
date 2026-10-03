@@ -10,6 +10,8 @@
     "typecheck": "pnpm -r run typecheck",
     "test": "node --import tsx --test \"packages/*/test/**/*.test.ts\" \"apps/*/test/**/*.test.ts\"",
     "lint": "oxlint packages apps scripts",
+    "protocol:gen": "tsx scripts/gen-protocol-catalog.mts",
+    "protocol:check": "tsx scripts/gen-protocol-catalog.mts --check",
     "architecture:check": "node scripts/architecture-check.mjs",
     "bench:start": "tsx scripts/bench.mts start",
     "bench:send": "tsx scripts/bench.mts send",

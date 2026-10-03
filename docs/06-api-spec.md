@@ -573,6 +573,8 @@ schema 真源在 `packages/shared`（zod 单一事实源，04 §4.3 / PRD §6.2�
 | `system.ts` | system 域方法 + capabilities 列表 | `systemSchemas` | ~60 行 |
 | `index.ts` | `METHOD_SCHEMAS`（method → {request, response}）与 `EVENT_SCHEMAS`（name → payload）注册表；事件构造函数 re-export | `METHOD_SCHEMAS` `EVENT_SCHEMAS` | ~120 行 |
 
+> **生成式协议目录（T4.3）**：[docs/generated/protocol-catalog.md](generated/protocol-catalog.md) 由 `scripts/gen-protocol-catalog.mts` 从上述注册表与 `*_ERROR_CODES` 常量机械投影生成（54 方法 / 19 事件 / 5 错误码族），`pnpm protocol:gen` 再生成、`pnpm protocol:check` 逐字节防漂移（CI 门禁 6）。职责边界：生成物只承载字段/类型/必填/约束；本文件手写章节承载语义、行为、时序与业务码含义，仍为唯一权威——协议演进时先改 schema 注册表，再 `protocol:gen` 同步生成物，最后核对本文件手写表。
+
 命名与形态规范：
 
 | 规则 | 内容 |
