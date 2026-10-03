@@ -2,7 +2,7 @@
  * 权限审批弹窗（03 §6.1 第 5 条）：固定遮罩 + 520px 对话框；风险徽章、工具名与完整参数、
  * reason、四级决策按钮；键盘 1-4 直选、Esc = 拒绝（仅挂载于 approvals 非空时）。
  */
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useDesktop } from "../store.js";
 
 interface RiskStyle {
@@ -24,6 +24,13 @@ function riskStyle(riskLevel: string | undefined): RiskStyle {
 export default function ApprovalDialog() {
   const approval = useDesktop((s) => s.approvals[0]);
   const respondApproval = useDesktop((s) => s.respondApproval);
+  // B4 缺陷修复：弹窗出现时主动接管焦点。此前审批弹出时消息输入框保持焦点，keydown 守卫
+  // 「输入控件聚焦不响应」使快捷键 1-4/Esc 全部落入输入框（用户刚发完消息的常态场景必现）。
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const grantId = approval?.grantId;
+  useEffect(() => {
+    if (grantId !== undefined) dialogRef.current?.focus();
+  }, [grantId]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent): void {
@@ -57,7 +64,7 @@ export default function ApprovalDialog() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="w-[520px] rounded-xl border border-border-strong bg-popover p-5 shadow-2xl">
+      <div ref={dialogRef} tabIndex={-1} className="w-[520px] rounded-xl border border-border-strong bg-popover p-5 shadow-2xl outline-none">
         <div className="flex items-center gap-2">
           <span className={`shrink-0 rounded-sm border px-1.5 py-0.5 text-2xs ${risk.badge}`}>{risk.label}</span>
           <span className="mono min-w-0 truncate text-hi">{approval.toolName}</span>

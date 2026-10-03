@@ -189,6 +189,35 @@ test("web-client: seq 缺口 → onSeqGap + resync 丢弃 → setSeqBaseline 恢
   }
 });
 
+test("web-client: setSeqBaseline 基线防回退（B3 加固）——过期 resume 快照不得回退已观察基线", async () => {
+  const server = await startTestServer("good-token");
+  try {
+    const client = createReconnectingRpcClient({
+      url: server.url,
+      token: "good-token",
+      connectSocket: (url) => new WebSocket(url) as unknown as WsSocketLike,
+    });
+    await waitFor(() => (client.state === "ready" ? true : undefined));
+    const seen: Array<Record<string, unknown>> = [];
+    client.onEvent("message.completed", (payload) => seen.push(payload as Record<string, unknown>));
+    const gaps: Array<{ sessionId: string; lastSeen: number; incoming: number }> = [];
+    client.onSeqGap((info) => gaps.push(info));
+    const base = { ts: 1, sessionId: "s_nr", turnId: "t1", round: 0, message: { role: "assistant", content: "x" } };
+    // 已观察事件推进基线至 2；随后到达的过期 resume 快照（lastSeq=1）不得回退基线——
+    // 否则后续连续事件 seq 3 被误判缺口（B3 排查中识别的 resume 响应与在途事件竞态路径）
+    server.publish({ name: "message.completed", payload: { ...base, seq: 1 } });
+    server.publish({ name: "message.completed", payload: { ...base, seq: 2 } });
+    await waitFor(() => (seen.length >= 2 ? true : undefined));
+    client.setSeqBaseline("s_nr", 1); // 过期快照
+    server.publish({ name: "message.completed", payload: { ...base, seq: 3 } });
+    await waitFor(() => (seen.length >= 3 ? true : undefined));
+    assert.equal(gaps.length, 0, "过期快照不得造成 seq 缺口误判");
+    client.close();
+  } finally {
+    await server.close();
+  }
+});
+
 test("web-client: 断线重连（退避注入）→ onRestored + 事件重挂 + 调用恢复", async () => {
   const server = await startTestServer("good-token");
   try {

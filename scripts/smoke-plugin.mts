@@ -296,6 +296,59 @@ async function caseFaultIsolation(): Promise<void> {
   }
 }
 
+/** D：运行时重扫描（B10 缺陷回归 / 06 §2.10 v1.11 plugins.rescan）——目录拷入后免重启装载。 */
+async function caseRescan(scenario: Scenario): Promise<void> {
+  const { client, home } = scenario;
+  const statusEvents: string[] = [];
+  const offStatus = client.onEvent("plugin.status_changed", (payload) =>
+    statusEvents.push((payload as { name?: string }).name ?? ""));
+
+  // 装配后新拷入的插件目录（发布动作模拟）：运行时 rescan 前不可见
+  const lateDir = join(home, "plugins", "late");
+  await mkdir(lateDir, { recursive: true });
+  await writeFile(
+    join(lateDir, "plugin.json"),
+    JSON.stringify({ name: "late", description: "运行时拷入插件" }),
+    "utf8",
+  );
+  await writeFile(
+    join(lateDir, "index.mjs"),
+    "export function activate(){ return [{ name: 'ping_late', description: 'late 工具', execute: async () => 'late-ok' }]; }",
+    "utf8",
+  );
+  const before = (await client.call("plugins.list", {})) as PluginsListResult;
+  assert.ok(before.plugins.every((plugin) => plugin.name !== "late"), "重扫描前新目录不可见");
+
+  const rescanned = (await client.call("plugins.rescan", {})) as { added: string[] };
+  assert.deepEqual(rescanned.added, ["late"], "rescan 返回新装载插件名");
+  const after = (await client.call("plugins.list", {})) as PluginsListResult;
+  const late = after.plugins.find((plugin) => plugin.name === "late");
+  assert.ok(late !== undefined, "重扫描后 late 可见");
+  assert.equal(late.status, "active", "启用中的新插件经 rescan 激活");
+  assert.deepEqual(
+    (await listPluginTools(scenario)).filter((tool) => tool.name.startsWith("plugin__late")).map((tool) => tool.name),
+    ["plugin__late__ping_late"],
+    "late 工具已注册",
+  );
+  await waitForAsyncPlugin(() => statusEvents.includes("late"), "late 激活事件");
+
+  // 幂等：再次 rescan 无新增，已有记录（含 active）不重载
+  const again = (await client.call("plugins.rescan", {})) as { added: string[] };
+  assert.deepEqual(again.added, [], "重复 rescan 幂等（无新增）");
+  offStatus();
+  console.log("case D: 运行时重扫描（plugins.rescan 新目录装载 / 幂等 / 状态事件）OK");
+}
+
+/** 异步谓词轮询（rescan 激活事件经 publish 异步到达）。 */
+async function waitForAsyncPlugin(predicate: () => boolean, label: string): Promise<void> {
+  const started = Date.now();
+  for (;;) {
+    if (predicate()) return;
+    if (Date.now() - started > 10000) throw new Error(`waitFor timeout: ${label}`);
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
@@ -303,6 +356,7 @@ async function main(): Promise<void> {
   try {
     await caseExamplePlugin(scenario);
     await caseSetEnabled(scenario);
+    await caseRescan(scenario);
     await caseFaultIsolation();
   } finally {
     scenario.stopWatch();

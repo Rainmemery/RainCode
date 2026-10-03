@@ -11,6 +11,7 @@
  * TUI 演进点：本波按 04 ADR-02 不引入 Ink，readline REPL + ANSI 富文本渲染层（ui/theme）为中间形态。
  */
 import { createInterface } from "node:readline/promises";
+import type { Interface as ReadlineInterface } from "node:readline/promises";
 import { resolve } from "node:path";
 import { RpcCallError } from "@raincode/rpc";
 import type { RpcClient } from "@raincode/rpc";
@@ -34,6 +35,62 @@ import { out } from "../ui/theme.js";
 
 const MODES: readonly CollaborationMode[] = ["normal", "plan", "auto-accept"];
 
+/**
+ * 行缓冲通道（B5 缺陷修复）：readline/promises 的 question() 在无挂起读取时到达的行会被
+ * 直接丢弃——管道一次性输入「提示词 → 1 → /exit」的预置审批应答必现丢失，审批只能等 2 分钟
+ * 超时按拒绝收敛。改为常驻 'line' 监听 + 队列：先到行入队等待消费（先到先得），脚本化输入
+ * 全量可达；stdin 结束（EOF/Ctrl+D）以 null 收束等待方——主循环干净退出（exit 0）、挂起的
+ * 审批立即按 fail-safe deny 收敛，不再出现 ERR_USE_AFTER_CLOSE / readline was closed 噪音。
+ */
+class LineChannel {
+  private readonly queue: string[] = [];
+  private waiter: ((line: string | null) => void) | null = null;
+  private ended = false;
+
+  constructor(private readonly rl: ReadlineInterface) {
+    rl.on("line", (line) => {
+      const text = line.toString();
+      if (this.waiter !== null) {
+        const resolveLine = this.waiter;
+        this.waiter = null;
+        resolveLine(text);
+      } else {
+        this.queue.push(text);
+      }
+    });
+    rl.on("close", () => {
+      this.ended = true;
+      this.abandon();
+    });
+  }
+
+  /**
+   * 下一行；stdin 已结束返回 null。
+   * 顺序约束（首跑发现）：readline close 后 prompt() 内部 resume() 会抛 ERR_USE_AFTER_CLOSE
+   * ——必须先消费队列/判定 EOF，仅在实际需要挂起等待（接口仍开放）时才渲染提示。
+   */
+  async next(prompt: string): Promise<string | null> {
+    if (this.queue.length > 0) return this.queue.shift() ?? null;
+    if (this.ended) return null;
+    this.rl.setPrompt(prompt);
+    this.rl.prompt();
+    return new Promise<string | null>((resolveLine) => {
+      // 遗留挂起（前一个提问未被应答而回合已终态——grant 已由超时/决策收敛）按 EOF 处置
+      this.abandon();
+      this.waiter = resolveLine;
+    });
+  }
+
+  /** 解析当前挂起等待为 null（EOF 语义）；无挂起时为空操作。 */
+  private abandon(): void {
+    if (this.waiter !== null) {
+      const resolveLine = this.waiter;
+      this.waiter = null;
+      resolveLine(null);
+    }
+  }
+}
+
 export async function chatCommand(argv: string[]): Promise<number> {
   const parsed = parseCliArgs(argv);
   const workspaceRoot = resolve(parsed.workspace ?? process.cwd());
@@ -41,19 +98,44 @@ export async function chatCommand(argv: string[]): Promise<number> {
   // 同一 stdin 只允许挂一个 terminal=true 的 readline：interface 构造时常驻监听 keypress，
   // 双 interface 会导致每个按键被消费两次（双回显 eexxiitt）。
   const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const lines = new LineChannel(rl); // stdin 单读方（B5）：审批/提问应答经同一通道，预置行不丢失
   let currentSessionId: string | null = null;
 
   const promptApproval = async (): Promise<ApprovalChoice> => {
     for (;;) {
-      // 复用主 rl：审批发生在 sendAndStream 期间，主 question 已 resolve，不存在并发挂起。
-      const answer = (await rl.question(out.warn("choice> "))).trim();
-      if (answer === "1") return "allow";
-      if (answer === "2") return "allow-session";
-      if (answer === "3") return "allow-project";
-      if (answer === "4") return "deny";
+      const answer = await lines.next(out.warn("choice> "));
+      if (answer === null) return "deny"; // stdin 结束：用户不可达 → fail-safe deny（respond 即时收敛）
+      const trimmed = answer.trim();
+      if (trimmed === "1") return "allow";
+      if (trimmed === "2") return "allow-session";
+      if (trimmed === "3") return "allow-project";
+      if (trimmed === "4") return "deny";
       process.stdout.write(out.warn("无效选项；请输入 1/2/3/4\n"));
     }
   };
+
+  // ask_user_question 应答（B5）：与审批共用行通道；序号映射选项文本，空行/EOF = 放弃应答
+  const promptAnswer = async (question: { question: string; choices: string[] | null }): Promise<string | null> => {
+    for (;;) {
+      const line = await lines.next("answer> ");
+      if (line === null || line.trim().length === 0) return null;
+      const text = line.trim();
+      const numeric = /^\d+$/.exec(text);
+      if (numeric !== null && question.choices !== null) {
+        const index = Number.parseInt(text, 10) - 1;
+        if (index >= 0 && index < question.choices.length) return question.choices[index]!;
+        process.stdout.write(out.warn("无效序号；请输入选项序号或自由文本\n"));
+        continue;
+      }
+      return text;
+    }
+  };
+
+  const interactiveApproval = {
+    kind: "interactive",
+    prompt: promptApproval,
+    answer: promptAnswer,
+  } as const;
 
   try {
     await context.client.call("system.ping", {});
@@ -70,9 +152,10 @@ export async function chatCommand(argv: string[]): Promise<number> {
 
     for (;;) {
       // 显式注解：打断「question 模板引用 currentSessionId ↔ 循环内回填 currentSessionId」的推断环
-      const line: string = await rl.question(
+      const line: string | null = await lines.next(
         currentSessionId === null ? out.accent("you> ") : out.accent(`you·${currentSessionId.slice(-6)}> `),
       );
+      if (line === null) break; // stdin 结束（管道/Ctrl+D）：干净退出（B5，等价 /exit）
       const trimmed: string = line.trim();
       if (trimmed.length === 0) continue;
 
@@ -279,7 +362,7 @@ export async function chatCommand(argv: string[]): Promise<number> {
         try {
           await streamTurn(
             context.client,
-            { approval: { kind: "interactive", prompt: promptApproval } },
+            { approval: interactiveApproval },
             () =>
               context.client.call<SkillsInvokeResult>("skills.invoke", {
                 sessionId,
@@ -310,7 +393,7 @@ export async function chatCommand(argv: string[]): Promise<number> {
           process.stdout.write(`[session ${created.sessionId}]\n`);
         }
         await sendAndStream(context.client, currentSessionId, trimmed, {
-          approval: { kind: "interactive", prompt: promptApproval },
+          approval: interactiveApproval,
         });
       } catch (reason: unknown) {
         printRpcError(reason);

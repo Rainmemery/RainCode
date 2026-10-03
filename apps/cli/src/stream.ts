@@ -35,10 +35,25 @@ export type ApprovalChoice = "allow" | "allow-session" | "allow-project" | "deny
 export type ApprovalMode =
   | { kind: "auto-session" }
   | { kind: "deny" }
-  | { kind: "interactive"; prompt: (payload: PermissionRequestedPayload) => Promise<ApprovalChoice> };
+  | {
+      kind: "interactive";
+      prompt: (payload: PermissionRequestedPayload) => Promise<ApprovalChoice>;
+      /**
+       * ask_user_question 应答行读取（B5 缺陷修复：缺省自建 readline 在管道输入场景与主
+       * REPL 争抢 stdin 且预置行丢失；chat 传入共享行通道后脚本化输入可复现应答）。
+       * 返回 null = 未应答（空行/EOF → deny，fail-safe 不变）。
+       */
+      answer?: (question: { question: string; choices: string[] | null }) => Promise<string | null>;
+    };
 
 /** 单行摘要上限（多行内容折叠 + 截断）。 */
 const SUMMARY_MAX_CHARS = 120;
+
+/** B7：reasoning 展示开关（缺省省略；RAINCODE_CLI_SHOW_REASONING=1/true 恢复）。 */
+function showReasoning(): boolean {
+  const raw = process.env["RAINCODE_CLI_SHOW_REASONING"];
+  return raw === "1" || raw === "true";
+}
 
 /**
  * 发送一条输入并等待 turn 终态（done 事件）；流式 delta、工具过程与审批闭环实时打印。
@@ -65,6 +80,7 @@ export async function streamTurn(
 ): Promise<StreamOutcome> {
   const approval: ApprovalMode = options.approval ?? { kind: "deny" };
   const md = new StreamMarkdownRenderer(process.stdout, out);
+  let reasoningHinted = false; // B7：每 turn 一次的「思考已省略」提示
   let resolveOutcome!: (done: DoneEventPayload) => void;
   const donePromise = new Promise<DoneEventPayload>((resolvePromise) => {
     resolveOutcome = resolvePromise;
@@ -76,8 +92,15 @@ export async function streamTurn(
     if (event.delta.type === "text") {
       md.feed(event.delta.text);
     } else if (event.delta.type === "reasoning") {
-      // 思考块：stderr 通道 dim+斜体（stdout 纯净原则不动）；逐 delta 包裹，SGR 跨换行持续
-      process.stderr.write(err.italic(err.dim(event.delta.text)));
+      // 思考块（B7 缺陷修复）：缺省不再混入输出流（桌面/Web 端仅渲染 content，CLI 对齐）；
+      // 首个思考 delta 于 stderr 提示一次（stderr 通道，stdout 保持答案正文纯净），
+      // RAINCODE_CLI_SHOW_REASONING=1/true 恢复逐 delta 展示（dim+斜体）。
+      if (showReasoning()) {
+        process.stderr.write(err.italic(err.dim(event.delta.text)));
+      } else if (!reasoningHinted) {
+        reasoningHinted = true;
+        process.stderr.write(err.dim("…（思考中，输出已省略；RAINCODE_CLI_SHOW_REASONING=1 显示）\n"));
+      }
     }
     // delta.type === "tool_call"：流式占位片段已由 tool_call.started 表达，不重复打印
   });
@@ -197,6 +220,11 @@ async function handleApprovalRequest(
     await client.call("permission.respond", respond);
   } catch (reason: unknown) {
     const code = reason instanceof Error && "code" in reason ? String((reason as { code: unknown }).code) : "";
+    // B5 配套：grant 已被超时/并发决策收敛（PC_GRANT_NOT_FOUND）属良性竞态，降级为说明而非报错
+    if (code === "PC_GRANT_NOT_FOUND") {
+      process.stderr.write(`[permission] 审批单已失效（超时或已处置），跳过应答\n`);
+      return;
+    }
     process.stderr.write(`[permission] respond failed${code.length > 0 ? ` (${code})` : ""}\n`);
   }
 }
@@ -228,7 +256,10 @@ async function handleAskUserQuestion(
           `${out.dim("  输入选项序号，或直接输入自由文本（空行 = 放弃应答）")}\n`
         : `${out.dim("  自由文本应答（空行 = 放弃应答）")}\n`),
   );
-  const answerText = await readAnswerLine(question.choices);
+  // B5 缺陷修复：宿主传入共享行通道（chat REPL）时经其读取——管道预置行不丢失、stdin 收敛单读方；
+  // 缺省保留一次性 readline（run 等无主 REPL 场景）
+  const answerText =
+    mode.answer !== undefined ? await mode.answer(question) : await readAnswerLine(question.choices);
   if (answerText === null) {
     // 未应答（空行）→ deny：等待侧按 cancelled 收敛（工具侧 TOOL_PERMISSION_DENIED）
     await client.call("permission.respond", { grantId: payload.grantId, decision: "deny" });

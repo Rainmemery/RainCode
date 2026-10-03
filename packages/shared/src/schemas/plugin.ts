@@ -68,6 +68,18 @@ export const pluginsSetEnabledResultSchema = z.object({
 });
 export type PluginsSetEnabledResult = z.infer<typeof pluginsSetEnabledResultSchema>;
 
+// plugins.rescan（06 §2.10；v1.11 additive，B10 可视化测试缺陷修复）：
+// 运行时重扫描 plugins 目录装载新拷入插件——此前「发布 = 目录拷入」后只能重启应用（面板「刷新」
+// 仅重拉 list，语义不符）。仅新增目录：已有记录（含 failed）不重载不触碰，启用中的新插件激活。
+export const pluginsRescanParamsSchema = z.strictObject({});
+export type PluginsRescanParams = z.infer<typeof pluginsRescanParamsSchema>;
+
+export const pluginsRescanResultSchema = z.object({
+  /** 本次新装载的插件名（新目录按启用状态激活；已存在目录名不重复装载）。 */
+  added: z.array(z.string()),
+});
+export type PluginsRescanResult = z.infer<typeof pluginsRescanResultSchema>;
+
 // ---------------------------------------------------------------------------
 // 事件 plugin.status_changed（06 §3.2 v1.8；全局事件，sessionId 缺省）
 // ---------------------------------------------------------------------------

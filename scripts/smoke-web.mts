@@ -391,10 +391,61 @@ async function casePanelServices(scenario: Scenario): Promise<void> {
   }
 }
 
+/** E：多连接回合扇出（B3 缺陷回归，双 createReconnectingRpcClient 浏览器同构路径）。
+ * 用例 C 覆盖的是裸 RpcClient 的 session.created 扇出；本用例覆盖真浏览器工作台同构路径——
+ * 两个重连客户端（seq 缺口检测 + 基线门）各自完整时序，B 经 resume → setSeqBaseline 选中
+ * A 所建会话后，A 的回合事件（delta/completed/done）必须实时到达 B（第二连接扇出 + 基线
+ * 门零误拦）。基线防回退的单测断言在 packages/rpc/test/web-client.test.ts（setSeqBaseline
+ * 无 introspection，行为级断言在单测的受控事件流下更精确）。 */
+async function caseReconnectingFanout(scenario: Scenario): Promise<void> {
+  const { url, workspace, setScript } = scenario;
+  const a = createReconnectingRpcClient({
+    url: `${url}/ws`,
+    token: "smoke-token",
+    connectSocket: (socketUrl) => new WebSocket(socketUrl) as unknown as WsSocketLike,
+    backoffMs: () => 30,
+  });
+  const b = createReconnectingRpcClient({
+    url: `${url}/ws`,
+    token: "smoke-token",
+    connectSocket: (socketUrl) => new WebSocket(socketUrl) as unknown as WsSocketLike,
+    backoffMs: () => 30,
+  });
+  try {
+    await waitFor(() => a.state === "ready", 8000, "a ready");
+    const created = (await a.call("session.create", { workspaceRoot: workspace, title: "fanout-reconnecting" })) as { sessionId: string };
+    await waitFor(() => b.state === "ready", 8000, "b ready");
+    // B 模拟 web store selectSession：resume → setSeqBaseline（快照基线回填）
+    const resumed = (await b.call("session.resume", { sessionId: created.sessionId })) as {
+      snapshot: { lastSeq: number };
+    };
+    b.setSeqBaseline(created.sessionId, resumed.snapshot.lastSeq);
+    const gotB: string[] = [];
+    for (const name of ["message.delta", "message.completed", "done"]) {
+      b.onEvent(name, (payload) => {
+        if ((payload as { sessionId?: string }).sessionId === created.sessionId) gotB.push(name);
+      });
+    }
+    let gapFired = false;
+    b.onSeqGap(() => {
+      gapFired = true;
+    });
+    setScript([textScript("多连接回合扇出回归内容。")]);
+    await a.call("session.send", { sessionId: created.sessionId, input: { text: "hi" } });
+    await waitFor(() => gotB.includes("done"), 15000, "b done fanout");
+    assert.ok(gotB.includes("message.completed"), "B 应实时收到 message.completed（B3 回归断言）");
+    assert.ok(gotB.includes("message.delta"), "B 应实时收到 message.delta");
+    assert.equal(gapFired, false, "正常连续事件流不得触发 seq 缺口");
+  } finally {
+    a.close();
+    b.close();
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-  console.log("== smoke:web（T3.8 Web 界面 / 06 §6.3 v1.9；T4.5 四面板服务面）==");
+  console.log("== smoke:web（T3.8 Web 界面 / 06 §6.3 v1.9；T4.5 四面板服务面；B3 回归用例 E）==");
   const scenario = await startScenario();
   try {
     await caseAuthAndSession(scenario);
@@ -405,7 +456,9 @@ async function main(): Promise<void> {
     console.log("—— 用例 C 多连接扇出 OK");
     await casePanelServices(scenario);
     console.log("—— 用例 D 四面板服务面 OK（斜杠 / 用量 / 记忆 / 扩展）");
-    console.log("SMOKE OK: smoke-web 4/4");
+    await caseReconnectingFanout(scenario);
+    console.log("—— 用例 E 双重连客户端回合扇出 + 基线防回退 OK（B3 回归）");
+    console.log("SMOKE OK: smoke-web 5/5");
   } finally {
     await scenario.close();
   }

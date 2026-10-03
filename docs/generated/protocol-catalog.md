@@ -10,7 +10,7 @@
 
 ## 概览
 
-- 协议方法 **54**（域 11 个：config / mcp / memory / permission / plugins / session / skills / subagent / system / tool / ws）
+- 协议方法 **55**（域 11 个：config / mcp / memory / permission / plugins / session / skills / subagent / system / tool / ws）
 - 数据面事件 **19**
 - 代码侧错误码族 **5**（session / config / mcp / subagent / skills 域为调用点字面量，见 §3 注）
 
@@ -378,7 +378,7 @@
 | --- | --- | --- | --- |
 | `removed` | `boolean` | 是 |  |
 
-### 域 plugins（2 方法）
+### 域 plugins（3 方法）
 
 #### plugins.list
 
@@ -389,6 +389,16 @@
 | 字段 | 类型 | 必填 | 约束/说明 |
 | --- | --- | --- | --- |
 | `plugins` | `{ name: string, description: string, version: string?, dir: string, enabled: boolean, status: "active" \| "disabled" \| "failed", tools: string[], lastError: string \| null }[]` | 是 |  |
+
+#### plugins.rescan
+
+入参：
+无字段（空对象）。
+
+出参：
+| 字段 | 类型 | 必填 | 约束/说明 |
+| --- | --- | --- | --- |
+| `added` | `string[]` | 是 |  |
 
 #### plugins.setEnabled
 

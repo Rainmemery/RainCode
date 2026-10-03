@@ -2,6 +2,9 @@
 import { useEffect } from "react";
 import { useWeb } from "../state.js";
 
+/** 风险徽章中文文案（B8 缺陷修复：与桌面端同文案，此前直出英文 riskLevel）。 */
+const RISK_LABEL: Record<string, string> = { high: "高风险", medium: "中风险", low: "低风险" };
+
 export function ApprovalDialog(): JSX.Element {
   const approvals = useWeb((s) => s.approvals);
   const respondApproval = useWeb((s) => s.respondApproval);
@@ -33,7 +36,7 @@ export function ApprovalDialog(): JSX.Element {
               risk === "high" ? "bg-danger/20 text-danger" : risk === "low" ? "bg-ok/20 text-ok" : "bg-warn/20 text-warn"
             }`}
           >
-            {risk} risk
+            {RISK_LABEL[risk] ?? `${risk} risk`}
           </span>
           <span className="font-mono text-sm">{pending.toolName}</span>
         </div>

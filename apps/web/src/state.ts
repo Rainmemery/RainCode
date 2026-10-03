@@ -185,6 +185,8 @@ export const useWeb = create<WebStore>((set, get) => {
       rpc().onStateChange((connection) => {
         setState({ connection });
         if (connection === "ready") {
+          // B9 缺陷修复：重连成功即清除旧错误横幅（首载竞态 TRANSPORT_CLOSED 横幅此前会驻留）
+          setState({ error: null });
           void get().refreshLists();
         }
       });
@@ -223,6 +225,8 @@ export const useWeb = create<WebStore>((set, get) => {
         }
       } catch (err) {
         if (get().connection === "reconnecting") return; // 断线窗口内探测失败属预期，重连后再试
+        // B9 缺陷修复：首载竞态（ws 握手未完成即调用）不再落横幅——ready 后 refreshLists 会自动重试
+        if (err instanceof RpcCallError && err.code === "TRANSPORT_CLOSED") return;
         setState({ error: err instanceof RpcCallError ? `${err.code}: ${err.message}` : String(err) });
       }
     },

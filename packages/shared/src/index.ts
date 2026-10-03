@@ -135,6 +135,8 @@ import {
   buildPluginStatusChangedEvent,
   pluginsListParamsSchema,
   pluginsListResultSchema,
+  pluginsRescanParamsSchema,
+  pluginsRescanResultSchema,
   pluginsSetEnabledParamsSchema,
   pluginsSetEnabledResultSchema,
   pluginStatusChangedEventPayloadSchema,
@@ -189,11 +191,12 @@ export interface MethodSchemas {
  * 当前覆盖（07 §2.1 M1 P0 22 方法全集 + P1 permission.rules.* 3 方法 + T2.3 subagent 4 方法
  * + T2.4 memory 域 5 方法 + T2.6 session.rename/fork/usage 与 config.providers.switch 4 方法
  * + T3.4 skills 域 2 方法 + T3.7 mcp.servers.setEnabled/health 2 方法 + T3.3 memory.drafts.* 2 方法
- * + T3.5 plugins 域 2 方法 + T3.8 ws.auth（协议 v1.9，53 → 54 方法 / 19 事件）：
+ * + T3.5 plugins 域 2 方法 + T3.8 ws.auth（协议 v1.9，53 → 54 方法 / 19 事件）
+ * + B10 缺陷修复 plugins.rescan（协议 v1.11，54 → 55 方法）：
  * system.ping/version/shutdown；session.create/send/steer/cancel/list/resume/archive/setMode/rename/fork/usage；
  * config.get/set/providers.list/add/remove/switch；tool.tools.list + 后台任务三方法；permission 5 方法；
  * subagent.spawn/stop/list/profiles.list；memory.read/write/search/entries.list/promote + drafts.list/resolve；
- * skills.list/invoke；plugins.list/setEnabled；ws.auth。
+ * skills.list/invoke；plugins.list/setEnabled/rescan；ws.auth。
  */
 export const METHOD_SCHEMAS: Readonly<Record<string, MethodSchemas>> = {
   "system.ping": { request: systemPingParamsSchema, response: systemPingResultSchema },
@@ -304,6 +307,8 @@ export const METHOD_SCHEMAS: Readonly<Record<string, MethodSchemas>> = {
     request: pluginsSetEnabledParamsSchema,
     response: pluginsSetEnabledResultSchema,
   },
+  // plugins.rescan（06 §2.10 v1.11，B10 缺陷修复）：运行时重扫描插件目录装载新拷入插件
+  "plugins.rescan": { request: pluginsRescanParamsSchema, response: pluginsRescanResultSchema },
   // T3.4 skills 域（06 §2.9）：清单 + 斜杠命令展开受理（未装配不暴露 handler，调用期 method not found）
   "skills.list": { request: skillsListParamsSchema, response: skillsListResultSchema },
   "skills.invoke": { request: skillsInvokeParamsSchema, response: skillsInvokeResultSchema },

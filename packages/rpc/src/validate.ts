@@ -15,7 +15,13 @@ export function formatZodIssues(error: ZodError): SchemaIssue[] {
   }));
 }
 
-/** 开发模式断言开关（04 §4.3：NODE_ENV=development 开启，生产关闭以省渲染开销）。 */
+/**
+ * 开发模式断言开关（04 §4.3：NODE_ENV=development 开启，生产关闭以省渲染开销）。
+ * 浏览器安全（B1 可视化测试缺陷修复）：renderer 无 process 全局且 Vite dev 不做静态替换，
+ * 须经 typeof 守卫访问——undefined 视为开发模式（dev 断言开启，宁多勿漏）。
+ */
 export function isDevMode(explicit?: boolean): boolean {
-  return explicit ?? process.env["NODE_ENV"] !== "production";
+  if (explicit !== undefined) return explicit;
+  const nodeEnv = typeof process === "undefined" ? undefined : process.env?.["NODE_ENV"];
+  return nodeEnv !== "production";
 }

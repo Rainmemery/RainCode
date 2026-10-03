@@ -5,7 +5,7 @@
 | 文档版本 | v1.1 |
 | 发布日期 | 2026-09-28（v1.1 修订 2026-10-03） |
 | 文档状态 | 正式定稿（Phase 1 规划阶段收尾交付物）；v1.1 增补 §10 M4 排期（M3 收官后，见 §10.1 背景说明） |
-| 关联文档 | 01-PRD（范围/里程碑/NFR 权威）· 02-module-design（模块详设）· 03-ui-design（双端 UI 规范）· 04-architecture（包划分/进程/RPC/治理）· 05-database（存储设计）· 06-api-spec（协议全集，本计划基线 43 方法 / 17 事件，M3 收官演进至 54 方法 / 19 事件，见 06 §7.5）· [legacy-items](legacy-items.md)（遗留项台账） |
+| 关联文档 | 01-PRD（范围/里程碑/NFR 权威）· 02-module-design（模块详设）· 03-ui-design（双端 UI 规范）· 04-architecture（包划分/进程/RPC/治理）· 05-database（存储设计）· 06-api-spec（协议全集，本计划基线 43 方法 / 17 事件，M3 收官演进至 54 方法 / 19 事件，M4 缺陷修复批次增至 55 方法（v1.11），见 06 §7.5）· [legacy-items](legacy-items.md)（遗留项台账） |
 
 > 本文档是 Phase 1（规划）的收尾交付物：将六份设计文档的交付范围收敛为单人可执行的三里程碑开发计划，并给出 Phase 2（开发实施）的启动清单。**里程碑划分、P0/P1/P2 范围、NFR 验收口径均以 01-PRD 为唯一基线**；任务分解的包归属、依赖方向以 02 §0.1 / 04 §2 为准；协议接线范围以 06-api-spec 的 8 域 43 方法 / 17 事件为准（该口径为规划时点基线；M3 全量落地后演进为 54 方法 / 19 事件）。排期以「人日」计，不承诺绝对日期。
 
@@ -428,6 +428,7 @@ M1~M3 已完成 01-PRD 全量范围（P0/P1/P2），本节为 M3 收官后的**�
 | T4.6 防御式模式文档（调研借鉴 #3） | `docs/defensive-patterns.md`：dsh 六条模式适配 + RainCode M1~M3 实战沉淀（mtime 盲窗 / close 竞态 / 双 readline / 孤儿进程 / 域 init 降级不崩溃 / 审批快照执行）；CONTRIBUTING 评审清单引用 | — | 0.5~1 | 文档入 docs/README 索引；后续问题记录按此格式沉淀 |
 | T4.7 遗留收口批次 A（本机可自动化，L-04/L-05 核销） | ① electron-builder dist 产物落地（nsis 安装包 + 安装启动冒烟记录；rebuild/符号链接问题现场解决或申报）② `scripts/walkthrough-web.mts`：CDP 驱动真浏览器走查 Web 工作台（连接/鉴权/会话/审批/重连） | T4.1 | 1~2 | dist 产物留存 + 走查断言通过；legacy-items L-04/L-05 转 ✅ |
 | T4.8 遗留收口批次 B（真实环境门控，L-01/02/03/14/15 承接） | ① 五 Provider 连通矩阵（smoke:remote 矩阵化）② 真实仓库 Bug 修复端到端样例 ③ 场景 6 真实 MCP 任务样例 ④ Docker/WSL/SSH 真实运行时验证——**环境就绪即执行，不计入里程碑门槛** | 环境就绪 | 1~3（不计入门槛） | 各项执行记录留存；环境不可得项按 legacy-items 保留口径继续申报 |
+| T4.9 可视化测试缺陷修复批次（2026-10-03 增补，三端 13 项缺陷收口） | Computer Use 可视化测试报告（B1~B13）修复：**B1** rpc 包浏览器安全 process 访问（isDevMode typeof 守卫，dev 模式 renderer 全挂）· **B2** 四入口装配 memory 域（CLI context/stdio host/web 宿主/桌面 agent entry——memory.read METHOD_NOT_FOUND 与 MEMORY.md 注入/抽取/晋升全链路失效）· **B3** 回归加固（smoke:web 用例 E 双重连客户端回合扇出 + web-client setSeqBaseline 基线防回退单测——协议层扇出验证本就正常，真浏览器复验挂可视化批次）· **B4** 桌面审批弹窗焦点接管（输入框聚焦时快捷键 1-4 失效）· **B5** CLI 行缓冲通道 LineChannel（管道预置审批应答丢失 + close 后 prompt() 抛 ERR_USE_AFTER_CLOSE 的退出噪音）· **B6** 双端消息 markdown 块级渲染（标题/表格/列表）· **B7** CLI reasoning 缺省省略（RAINCODE_CLI_SHOW_REASONING=1 恢复）· **B8** Web 风险徽章中文文案对齐 · **B9** Web 首载竞态横幅 + 重连成功清横幅 · **B10** plugins.rescan 协议 v1.11（扩展面板「刷新」重扫描免重启）· **B11** README 快速开始 cwd 口径 · **B12** 会话列表全量口径文档化（设计确认，legacy-items L-20）· **B13** 随 B1 收口 | — | 1~1.5 | 六门禁全绿 + smoke:web 5/5（用例 E 回归）+ smoke:plugin 4 用例（case D 重扫描）+ 单测 220（web-client 基线防回退）+ CLI 管道真实 Provider 复测（预置审批通过/干净退出 exit 0）+ 桌面走查 + 可视化复验 |
 
 M4 小计：**8~14.5 人日**（不含环境门控的 T4.8）。
 

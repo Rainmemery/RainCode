@@ -69,9 +69,21 @@ export function ExtensionsPanel(): JSX.Element {
 
   const refresh = useCallback(async (): Promise<void> => {
     setError(null);
+    // B10 缺陷修复：刷新先重扫描插件目录（plugins.rescan，新拷入插件即时装载），再重拉投影
+    // ——此前仅重拉 list，「发布 = 插件目录拷入」后必须重启应用，按钮语义与实际行为不符
     const [mcpResult, pluginsResult] = await Promise.allSettled([
       rpcCall<{ servers: McpServerStatusEntry[] }>("mcp.servers.list", {}),
-      rpcCall<{ plugins: PluginSummary[] }>("plugins.list", {}),
+      (async () => {
+        try {
+          await rpcCall("plugins.rescan", {});
+        } catch (err) {
+          // 域未装配（METHOD_NOT_FOUND）时维持旧口径仅重拉；其余重扫描错误不阻塞重拉
+          if (!(err instanceof RpcCallError) || err.code !== "METHOD_NOT_FOUND") {
+            setError(reasonText(err));
+          }
+        }
+        return rpcCall<{ plugins: PluginSummary[] }>("plugins.list", {});
+      })(),
     ]);
     if (mcpResult.status === "fulfilled") {
       setMcpUnavailable(false);
@@ -245,7 +257,7 @@ export function ExtensionsPanel(): JSX.Element {
             <div className="flex items-center gap-2 pb-2">
               <span className="text-xs font-semibold text-white">插件</span>
               <span className="text-xs text-gray-500">
-                {plugins.length === 0 ? "无（发布 = 插件目录拷入 <dataRoot>/plugins/）" : `${plugins.length} 个`}
+                {plugins.length === 0 ? "无（发布 = 插件目录拷入 <dataRoot>/plugins/ 后点「刷新」装载）" : `${plugins.length} 个`}
               </span>
             </div>
             {pluginsUnavailable && (

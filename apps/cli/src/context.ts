@@ -90,6 +90,11 @@ export async function startServiceNode(args: ParsedCliArgs): Promise<CliContext>
     // mcp 域启用（T3.9 全量对齐补装配）：project 层 mcp.json 需装配期工作区，仅单工作区入口
     //（--workspace）生效；多工作区入口（chat 无 --workspace / serve / web）全局层 mcp.json 生效
     ...(args.workspace !== undefined ? { mcp: { workspaceRoot: resolve(args.workspace) } } : { mcp: {} }),
+    // memory 域启用（B2 可视化测试缺陷修复：三端入口此前均未装配 → memory.read METHOD_NOT_FOUND，
+    // MEMORY.md 注入/抽取/晋升全链路失效）：workspaceRoot 为 promote 反查兜底域，有 --workspace 时传入
+    ...(args.workspace !== undefined
+      ? { memory: { workspaceRoot: resolve(args.workspace) } }
+      : { memory: {} }),
   });
   const client = createRpcClient({ transport: transports[0] });
   return { client, node, transports, providerSource: resolved ? resolved.source : "none" };

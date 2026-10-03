@@ -305,6 +305,11 @@ export function createReconnectingRpcClient(
 
     setSeqBaseline(sessionId: string, seq: number): void {
       resyncing.delete(sessionId);
+      // 基线只进不退（B3 可视化测试排查加固）：resume 响应与在途事件竞态时，快照 lastSeq 可能
+      // 晚于客户端已观察到的事件 seq——盲目回退会让后续事件误判缺口触发多余补偿轮。
+      // 快照重建在回填前完成，已观察 seq 的事件必然包含在重建视图中，保留较大基线无损一致性。
+      const prev = lastSeqBySession.get(sessionId);
+      if (prev !== undefined && prev > seq) return;
       lastSeqBySession.set(sessionId, seq);
     },
 

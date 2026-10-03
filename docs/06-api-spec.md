@@ -272,6 +272,7 @@ system 域承载握手、版本发现与优雅停机，是唯一与业务无关�
 | --- | --- | --- | --- | --- |
 | `plugins.list` | `{}` | `{ plugins: PluginSummary[] }` | — | 插件摘要投影（按名排序）：`{ name, description, version?, dir, enabled, status: "active"\|"disabled"\|"failed", tools: 全名数组, lastError }`；就绪门语义——初次目录扫描完成前调用等待而非落空 |
 | `plugins.setEnabled` | `{ name, enabled }` | `{ name, enabled, status }` | `PLUGIN_NOT_FOUND` | 受理即返启停：disable = deactivate + 工具注销 + 停用名单落盘；enable = 名单移除 + 激活（失败 → failed，经 `plugin.status_changed` 与本方法可查）；同态重复请求幂等 |
+| `plugins.rescan` | `{}` | `{ added: string[] }` | — | 运行时重扫描插件目录（v1.11，B10 缺陷修复）：装载「发布 = 目录拷入」后的新插件免重启——仅新增目录（新记录按停用名单判定启用状态并激活，失败隔离 failed，经 `plugin.status_changed` 可查）；已有记录（含 failed/active）不重载不触碰；重复调用幂等（无新增返回空数组）。双端扩展面板「刷新」按钮经本方法实现重扫描语义 |
 
 ### 2.11 ws 域（Web 传输接入，M3 T3.8，v1.9）
 
@@ -575,7 +576,7 @@ schema 真源在 `packages/shared`（zod 单一事实源，04 §4.3 / PRD §6.2�
 | `system.ts` | system 域方法 + capabilities 列表 | `systemSchemas` | ~60 行 |
 | `index.ts` | `METHOD_SCHEMAS`（method → {request, response}）与 `EVENT_SCHEMAS`（name → payload）注册表；事件构造函数 re-export | `METHOD_SCHEMAS` `EVENT_SCHEMAS` | ~120 行 |
 
-> **生成式协议目录（T4.3）**：[docs/generated/protocol-catalog.md](generated/protocol-catalog.md) 由 `scripts/gen-protocol-catalog.mts` 从上述注册表与 `*_ERROR_CODES` 常量机械投影生成（54 方法 / 19 事件 / 5 错误码族），`pnpm protocol:gen` 再生成、`pnpm protocol:check` 逐字节防漂移（CI 门禁 6）。职责边界：生成物只承载字段/类型/必填/约束；本文件手写章节承载语义、行为、时序与业务码含义，仍为唯一权威——协议演进时先改 schema 注册表，再 `protocol:gen` 同步生成物，最后核对本文件手写表。
+> **生成式协议目录（T4.3）**：[docs/generated/protocol-catalog.md](generated/protocol-catalog.md) 由 `scripts/gen-protocol-catalog.mts` 从上述注册表与 `*_ERROR_CODES` 常量机械投影生成（55 方法 / 19 事件 / 5 错误码族），`pnpm protocol:gen` 再生成、`pnpm protocol:check` 逐字节防漂移（CI 门禁 6）。职责边界：生成物只承载字段/类型/必填/约束；本文件手写章节承载语义、行为、时序与业务码含义，仍为唯一权威——协议演进时先改 schema 注册表，再 `protocol:gen` 同步生成物，最后核对本文件手写表。
 
 命名与形态规范：
 
@@ -756,6 +757,7 @@ capability 命名约定：`<domain>.<feature>`（小写点分），登记于 `sy
 | 1.8 | 2026-10-02 | T3.5 插件化（minor+1，additive）：新增 plugins 域 2 方法 `plugins.list` / `plugins.setEnabled`（§2.10）与新事件 `plugin.status_changed`——插件 = `<dataRoot>/plugins/<name>/`（plugin.json 清单 + 入口 ES module `activate()/deactivate()` 契约），工具以 `plugin__<pluginName>__<toolName>` 注册（source="plugin"，registry 命名空间豁免）；启停经 plugins.json 停用名单持久化（目录即配置，停用 ≠ 卸载）；故障隔离：加载失败 → failed 状态、工具执行错误 → 数据级 ToolExecutionError，插件故障不拖垮内核。错误码新增段 10：`PLUGIN_NOT_FOUND` / `PLUGIN_INVALID`。协议规模 53 方法 / 19 事件 |
 | 1.9 | 2026-10-02 | T3.8 Web 界面（minor+1，additive）：新增 ws 域 1 方法 `ws.auth`（§2.11）与系统码 `UNAUTHORIZED`（段 0）——websocket 绑定连接级鉴权门（时序 `ws.auth` → `system.ping` → 业务方法，鉴权前一切请求拒绝），capability `ws.auth` 登记；§6.3 由预留差异说明重写为落地定义（心跳/退避重连/seq 缺口→resume 补偿路径/多连接扇出）；帧协议与方法表零改动（传输无关设计最终验证）。stdio / in-memory 绑定不暴露 `ws.auth`（同生共死不设门）。协议规模 54 方法 / 19 事件 |
 | 1.10 | 2026-10-03 | T4.4 技能模型侧可发现性（minor+1，additive）：`SkillSummary` 增 `modelInvocable`（boolean，缺省 true——仅约束模型经 `skill` 工具的调用，斜杠命令不受限）；内置工具清单新增 `skill`（`{ name, arguments? }`，readOnly）——展开复用 skills.invoke 链路（单点不变），模型经系统提示技能目录（逐 turn digest 重发布）自主发现并调用。方法/事件规模不变（54 方法 / 19 事件；生成式协议目录经 `protocol:gen` 同步） |
+| 1.11 | 2026-10-03 | 可视化测试缺陷修复批次（minor+1，additive）：plugins 域新增 `plugins.rescan`（§2.10，运行时重扫描插件目录，免重启装载新拷入插件——双端扩展面板「刷新」语义核销）。协议规模 55 方法 / 19 事件 |
 
 ---
 

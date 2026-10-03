@@ -193,6 +193,49 @@ export class PluginRuntime {
     return { status: record.status, toolCount: record.tools.length };
   }
 
+  /**
+   * plugins.rescan（B10 缺陷修复 / 06 §2.10 v1.11）：运行时重扫描插件目录装载新拷入插件。
+   * 仅新增目录：已有记录（含 failed）不重载不触碰（激活中插件的运行状态不可被扫描打断）；
+   * 新目录按停用名单判定启用状态，启用中的经 activateRecord 激活（失败隔离为 failed）。
+   * 返回本次新装载的插件名（已存在目录名不重复装载）。
+   */
+  async rescan(): Promise<{ added: string[] }> {
+    await this.ready;
+    const state = await loadPluginState(this.statePath);
+    const disabled = new Set(state.disabled);
+    const candidates = await scanPluginDir(this.pluginsPath);
+    const added: string[] = [];
+    for (const candidate of candidates) {
+      let manifest: PluginManifest | null = null;
+      let lastError: string | null = null;
+      try {
+        manifest = await readPluginManifest(candidate.dir);
+      } catch (reason: unknown) {
+        lastError = reason instanceof Error ? reason.message : String(reason);
+      }
+      const name = manifest?.name ?? candidate.name;
+      if (this.records.has(name)) {
+        continue; // 首命中生效（同技能/profile 口径）：已有记录不重载
+      }
+      const record: PluginRecord = {
+        name,
+        dir: candidate.dir,
+        manifest,
+        enabled: !disabled.has(name),
+        status: "disabled",
+        tools: [],
+        activation: null,
+        lastError,
+      };
+      this.records.set(name, record);
+      added.push(name);
+      if (record.enabled) {
+        await this.activateRecord(record).catch(() => undefined); // 错误已在 record.lastError 记录
+      }
+    }
+    return { added };
+  }
+
   /** 优雅停机：deactivate 全部 active 插件 + 注销工具（出错仅诊断；就绪门后收敛）。 */
   async dispose(): Promise<void> {
     await this.ready;
@@ -263,10 +306,11 @@ export class PluginRuntime {
     }
   }
 
-  /** 控制面方法表（06 §2.10 plugins 域 2 方法；形态对齐 mcp-runtime.methods）。 */
+  /** 控制面方法表（06 §2.10 plugins 域 3 方法；形态对齐 mcp-runtime.methods）。 */
   methods(register: (method: string, handler: (params: unknown) => Promise<unknown>) => unknown): Record<string, unknown> {
     return {
       "plugins.list": register("plugins.list", async () => ({ plugins: await this.list() })),
+      "plugins.rescan": register("plugins.rescan", async () => this.rescan()),
       "plugins.setEnabled": register("plugins.setEnabled", async (params) => {
         const { name, enabled } = params as { name: string; enabled: boolean };
         try {

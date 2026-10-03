@@ -4,7 +4,7 @@ import {
   SYSTEM_ERROR_CODES,
 } from "@raincode/shared";
 import type { ZodError } from "zod";
-import { formatZodIssues } from "./validate.js";
+import { formatZodIssues, isDevMode } from "./validate.js";
 import type { IMessageTransport, RpcFrame, Unsubscribe } from "./transport.js";
 
 /**
@@ -49,7 +49,7 @@ export interface RpcClientOptions {
   transport: IMessageTransport;
   /** 默认超时（毫秒），缺省 10s。 */
   defaultTimeoutMs?: number;
-  /** 开发模式断言开关；缺省 = process.env.NODE_ENV !== "production"（04 §4.3）。 */
+  /** 开发模式断言开关；缺省 = isDevMode()（NODE_ENV !== "production"，浏览器环境视为开发，04 §4.3）。 */
   devAssert?: boolean;
 }
 
@@ -63,7 +63,8 @@ interface PendingRequest {
 export function createRpcClient(options: RpcClientOptions): RpcClient {
   const { transport } = options;
   const defaultTimeoutMs = options.defaultTimeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const devAssert = options.devAssert ?? process.env["NODE_ENV"] !== "production";
+  // 浏览器安全（B1）：devAssert 缺省经 isDevMode 的 typeof process 守卫解析，renderer 无 process 不再崩溃
+  const devAssert = options.devAssert ?? isDevMode();
 
   let nextSeq = 0;
   let closed = false;

@@ -20,7 +20,7 @@ RainCode 的功能定位与 Claude Code / Codex 对齐：整合**代码生成、
 | Agent 内核（turn 状态机 / 会话生命周期 / checkpoint 恢复 / epoch 守卫 / 受限重试） | ✅ M1 |
 | 工具调用（11 个内置工具 / 声明式权限元数据 / 只读并行 / 输出预算裁剪） | ✅ M1~M4 |
 | 命令权限控制（五级判定链 / bash argv 求值 / grantId 审批闭环 / 三层规则 / 审计） | ✅ M1 |
-| 控制面协议（54 方法 / 19 事件 / 密钥引用制 / capability 协商） | ✅ M2/M3 |
+| 控制面协议（55 方法 / 19 事件 / 密钥引用制 / capability 协商） | ✅ M2/M3 |
 | 上下文压缩 compact（80% 阈值自动触发 / 异步不阻塞 / 记忆抽取钩子） | ✅ M2 |
 | MCP 接入（stdio / Streamable HTTP / SSE，`mcp__<server>__<tool>` 命名空间；运行时启停 / 健康检查 ping） | ✅ M2/M3 |
 | 子代理管理（profile 双源解析 / 并发槽排队 / 级联取消 / 事件镜像合并） | ✅ M2 |
@@ -56,11 +56,16 @@ pnpm typecheck && pnpm lint && pnpm architecture:check
 # 3. 配置模型 Provider（OpenAI 兼容协议，详见下文「Provider 配置」）
 #    最简方式：创建 config/providers.local.json（已被 .gitignore 隔离）
 #    { "baseURL": "https://your-endpoint/v1", "apiKey": "sk-...", "model": "your-model" }
+#    ⚠️ 位置注意：该文件按**进程启动 cwd** 解析（`<cwd>/config/providers.local.json`）。
+#    `pnpm --filter @raincode/cli raincode ...` 的 cwd 是 apps/cli——仓库根的配置不会被读到。
+#    二选一：把配置放到 apps/cli/config/providers.local.json，或显式
+#    --provider-config <仓库根>/config/providers.local.json（也可设 RAINCODE_PROVIDER_CONFIG）。
 
-# 4. 运行 CLI
-pnpm --filter @raincode/cli raincode ping      # 握手：打印协议版本与 capability 列表
-pnpm --filter @raincode/cli raincode run "解释这个仓库的目录结构"     # 非交互单轮
-pnpm --filter @raincode/cli raincode chat      # 交互 REPL（推荐日常使用）
+# 4. 运行 CLI（从仓库根以 tsx 直跑，cwd = 仓库根，config/providers.local.json 直接生效）
+node --import tsx apps/cli/src/index.ts ping        # 握手：打印协议版本与 capability 列表
+node --import tsx apps/cli/src/index.ts run "解释这个仓库的目录结构"     # 非交互单轮
+node --import tsx apps/cli/src/index.ts chat        # 交互 REPL（推荐日常使用）
+# 亦可 pnpm --filter @raincode/cli raincode <cmd>（注意上述 cwd 口径）
 ```
 
 > ⚠️ **密钥安全约束**：API Key 只存在于内存与本地配置文件，绝不写入任何被跟踪文件、日志、输出或审计（架构级约束，见 docs/04-architecture §5.3）。推荐 `apiKeyRef: "file:config/apikey.txt"` 引用制。
@@ -135,7 +140,7 @@ export function activate() {
 }
 ```
 
-发布 = 把插件目录拷入 plugins 目录；运行时启停经 `plugins.setEnabled`（停用名单持久化 `plugins.json`，目录即配置、停用 ≠ 卸载）。故障隔离：清单/入口/activate 失败 → 该插件 failed（其余插件与内核不受影响），工具执行错误 → 数据级错误回传模型自纠。仓库 `examples/plugins/hello` 为官方示例插件（greet + word_count 双工具）。
+发布 = 把插件目录拷入 plugins 目录后点扩展面板「**刷新**」（`plugins.rescan` 运行时重扫描，免重启装载；CLI 可直接调用该方法）——已有插件不重载不触碰，重复刷新幂等。运行时启停经 `plugins.setEnabled`（停用名单持久化 `plugins.json`，目录即配置、停用 ≠ 卸载）。故障隔离：清单/入口/activate 失败 → 该插件 failed（其余插件与内核不受影响），工具执行错误 → 数据级错误回传模型自纠。仓库 `examples/plugins/hello` 为官方示例插件（greet + word_count 双工具）。
 
 ## 桌面端（Windows Alpha）
 
@@ -152,7 +157,7 @@ pnpm --filter @raincode/desktop build
 pnpm --filter @raincode/desktop dist
 ```
 
-Alpha 功能范围：三栏主界面（会话列表 + 会话流 + 输入区）、工具调用卡片（五状态：排队 / 运行中 / 成功 / 失败 / 已作废）、权限审批弹窗（风险徽章 + 键盘 `1-4` 直选 + `Esc` 拒绝）、Provider 设置（添加 / 切换 / 活跃徽章）、记忆管理器（MEMORY.md 预览 / 晋升草案确认 / 条目检索与晋升）、**扩展面板（MCP 服务器启停 / 健康检查 / 重试 + 插件启停与状态，全局事件活更）**、**斜杠命令面板（`/` 唤起技能清单，↑↓ + Tab 补全，Enter 经 `skills.invoke` 端到端执行）**、**会话用量统计（↑/↓ tokens / 回合数 / 费用估算）**、工作区目录选择、流式输出与光标、子进程崩溃自动重启提示。与 CLI 共享同一 `RAINCODE_HOME` 数据目录——CLI 里开始的会话，桌面端打开即续接。GUI 回归走查：`node --import tsx scripts/walkthrough-desktop.mts`（CDP 驱动构建产物，14 断言）。
+Alpha 功能范围：三栏主界面（会话列表 + 会话流 + 输入区）、工具调用卡片（五状态：排队 / 运行中 / 成功 / 失败 / 已作废）、权限审批弹窗（风险徽章 + 键盘 `1-4` 直选 + `Esc` 拒绝，弹窗出现时自动接管焦点——消息输入框聚焦时快捷键同样生效）、Provider 设置（添加 / 切换 / 活跃徽章）、记忆管理器（MEMORY.md 预览 / 晋升草案确认 / 条目检索与晋升）、**扩展面板（MCP 服务器启停 / 健康检查 / 重试 + 插件启停与状态 + 「刷新」重扫描免重启装载新插件，全局事件活更）**、**斜杠命令面板（`/` 唤起技能清单，↑↓ + Tab 补全，Enter 经 `skills.invoke` 端到端执行）**、**会话用量统计（↑/↓ tokens / 回合数 / 费用估算）**、工作区目录选择、流式输出与光标、子进程崩溃自动重启提示。与 CLI 共享同一 `RAINCODE_HOME` 数据目录——CLI 里开始的会话，桌面端打开即续接。会话列表为数据根**全量会话**（跨工作区共享、跨端可见，不按工作区过滤——过滤属后续候选）。GUI 回归走查：`node --import tsx scripts/walkthrough-desktop.mts`（CDP 驱动构建产物，14 断言）。
 
 ## Web 界面（浏览器会话工作台）
 
@@ -375,6 +380,7 @@ bash 与后台任务的执行环境经 `Executor` 抽象投递（02 §5.3 扩展
 | `RAINCODE_MIGRATIONS_DIR` | 迁移脚本目录（仅打包形态内部使用） |
 | `RAINCODE_APP_VERSION` | 应用版本注入（仅打包形态内部使用） |
 | `RAINCODE_DESKTOP_VITE_URL` / `RAINCODE_DESKTOP_NODE` | 桌面端 dev 脚本内部使用 |
+| `RAINCODE_CLI_SHOW_REASONING` | CLI 思维链展示开关：`1`/`true` 时 reasoning delta 经 stderr 逐条输出（dim+斜体）；缺省省略（每 turn 一次 stderr 提示），答案正文 stdout 保持纯净 |
 
 ## 开发与测试
 
@@ -412,7 +418,7 @@ RainCode/
 │   ├── agent-core/   # turn 状态机 + 会话生命周期 + 子代理 + 压缩（内核）
 │   ├── tools/        # 工具注册中心 + 9 内置工具 + 执行器（并发/超时/输出预算/SSRF/路径守卫）
 │   ├── permission/   # 五级判定链 + bash argv 求值 + 审批闭环 + 规则持久化 + 审计
-│   ├── server/       # Agent Service 唯一组装点（双端共享；54 方法/19 事件装配）
+│   ├── server/       # Agent Service 唯一组装点（双端共享；55 方法/19 事件装配）
 │   ├── mcp/          # MCP 三 transport 接入 + 连接状态机 + 命名空间工具适配
 │   └── memory/       # MEMORY.md 管理 + FTS5 记忆检索 + 会话记忆抽取
 ├── architecture/     # policy.yaml（架构治理策略，门禁依据）
