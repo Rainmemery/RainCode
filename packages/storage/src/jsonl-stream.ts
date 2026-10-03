@@ -1,6 +1,10 @@
 /**
  * 会话 JSONL 追加流（05-database §4.1 / §4.3）。
- * - 写者唯一：句柄随单写者生命周期开启/关闭（finally 语义由 Storage.close 保证）；
+ * - 写者唯一：句柄随单写者生命周期开启/关闭；流内经单写者链串行，close 排空在途写后
+ *   才释放句柄（T4.2：close 感知 pending 写——在途 write 与 handle.close 并发会 EBADF，
+ *   甚至 fd 复用错写他文件）；
+ * - close 后到达的追加以 STORAGE_CLOSED 类型化错误拒绝（不再重开文件句柄——旧行为会在
+ *   close 窗口经 openSessionStream 重开流，句柄泄漏且写入落在关闭之后）；
  * - 普通行 write 即持久（不逐条 fsync，进程强杀下已 write 数据零丢失，NFR-7）；
  * - checkpoint 行 write 后追加 fsync，是唯一逐条同步的行（断电级持久点）；
  * - epoch 单调合并最小落地：append 拒绝 epoch 小于会话当前值的写入，被拒写入直接丢弃并计数。
@@ -8,6 +12,7 @@
 import { open, type FileHandle } from "node:fs/promises";
 import { messageRecordSchema } from "@raincode/shared";
 import type { MessageRecord } from "@raincode/shared";
+import { StorageError } from "./errors.js";
 import {
   JSONL_SCHEMA_VERSION,
   serializeLine,
@@ -54,6 +59,11 @@ export class SessionStream {
   /** 旧 epoch 被拒写入计数（05 §4.3 第 5 点：丢弃并计数）。 */
   rejectedWrites: number;
 
+  /** 流内单写者链：seq 分配与句柄写入同链串行，close 经同链排空（T4.2）。 */
+  private writeTail: Promise<unknown> = Promise.resolve();
+  private closed = false;
+  private closePromise: Promise<void> | null = null;
+
   get byteLength(): number {
     return this.size;
   }
@@ -66,28 +76,32 @@ export class SessionStream {
     return this.lastSeq;
   }
 
-  async appendMessage(message: MessageRecord, options: { epoch?: number } = {}): Promise<AppendResult> {
+  appendMessage(message: MessageRecord, options: { epoch?: number } = {}): Promise<AppendResult> {
     const validated = messageRecordSchema.parse(message); // 出口即合法（04 §4.3 同构约束）
-    const line: MessageLine = {
-      v: JSONL_SCHEMA_VERSION,
-      type: "message",
-      seq: this.lastSeq + 1,
-      ts: Date.now(),
-      message: validated,
-    };
-    return this.append(line, options.epoch);
+    return this.enqueue(() => {
+      const line: MessageLine = {
+        v: JSONL_SCHEMA_VERSION,
+        type: "message",
+        seq: this.lastSeq + 1,
+        ts: Date.now(),
+        message: validated,
+      };
+      return this.append(line, options.epoch);
+    });
   }
 
-  async appendEvent(name: string, payload: unknown, options: { epoch?: number } = {}): Promise<AppendResult> {
-    const line: EventLine = {
-      v: JSONL_SCHEMA_VERSION,
-      type: "event",
-      seq: this.lastSeq + 1,
-      ts: Date.now(),
-      name,
-      payload,
-    };
-    return this.append(line, options.epoch);
+  appendEvent(name: string, payload: unknown, options: { epoch?: number } = {}): Promise<AppendResult> {
+    return this.enqueue(() => {
+      const line: EventLine = {
+        v: JSONL_SCHEMA_VERSION,
+        type: "event",
+        seq: this.lastSeq + 1,
+        ts: Date.now(),
+        name,
+        payload,
+      };
+      return this.append(line, options.epoch);
+    });
   }
 
   /**
@@ -95,8 +109,39 @@ export class SessionStream {
    * pos = 本行写入后的文件字节数（含换行）；pos 自身位数影响行长，定点迭代至收敛。
    * epoch 缺省取当前代次；显式传入更高值（如 compact 提交 epoch+1）时提升当前代次。
    */
-  async writeCheckpoint(state: CheckpointState, options: { epoch?: number } = {}): Promise<CheckpointResult> {
-    const epoch = options.epoch ?? this.currentEpoch;
+  writeCheckpoint(state: CheckpointState, options: { epoch?: number } = {}): Promise<CheckpointResult> {
+    return this.enqueue(() => this.writeCheckpointLocked(state, options.epoch));
+  }
+
+  /** 关闭流：先设拒绝栅栏，再经单写者链排空在途写，最后释放句柄（幂等，重复调用复用同一 promise）。 */
+  close(): Promise<void> {
+    if (this.closePromise !== null) return this.closePromise;
+    this.closed = true;
+    this.closePromise = (async () => {
+      await this.writeTail;
+      await this.handle.close();
+    })();
+    return this.closePromise;
+  }
+
+  /** 全部句柄操作经单写者链；close 后到达的写入类型化拒绝（不重开句柄，T4.2）。 */
+  private enqueue<T>(task: () => Promise<T>): Promise<T> {
+    if (this.closed) {
+      return Promise.reject(new StorageError("STORAGE_CLOSED", "session stream is closed"));
+    }
+    const run = this.writeTail.then(task, task);
+    this.writeTail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  private async writeCheckpointLocked(
+    state: CheckpointState,
+    epochOverride: number | undefined,
+  ): Promise<CheckpointResult> {
+    const epoch = epochOverride ?? this.currentEpoch;
     if (epoch < this.currentEpoch) {
       this.rejectedWrites += 1;
       return { accepted: false, reason: "stale-epoch" };
@@ -126,10 +171,6 @@ export class SessionStream {
     }
     await this.handle.sync(); // 断电级持久点（05 §4.3 第 3 点）
     return { accepted: true, seq, lineStartOffset: lineStart, pos, epoch };
-  }
-
-  async close(): Promise<void> {
-    await this.handle.close();
   }
 
   private async append(line: MessageLine | EventLine, epoch: number | undefined): Promise<AppendResult> {

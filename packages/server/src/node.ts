@@ -120,8 +120,11 @@ export async function createAgentServiceNode(
     async close(): Promise<void> {
       if (closed) return;
       closed = true;
+      // T4.2 收敛序：复用 system.shutdown 同一条收敛链（AgentService.shutdown 公开）——
+      // 取消活动 turn → 等终态 → 排空持久化写链（主会话 + 子会话）→ 级联停域 → onShutdown 关存储
+      //（即下方 closeStorage，storageClosed 单次守卫）。service.close 只余绑定/扇出/权限拆除。
+      await service.shutdown({ reason: "close" });
       service.close();
-      await closeStorage();
     },
   };
 }

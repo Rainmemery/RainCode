@@ -36,6 +36,7 @@ import {
   resolveProfileFile,
 } from "@raincode/agent-core";
 import type {
+  SessionTurnLoop,
   SubagentEvent,
   SubagentProfile,
   SubagentProfileDir,
@@ -67,6 +68,8 @@ export class SubagentRuntime {
   private readonly manager: SubagentManager;
   private readonly unsubscribe: () => void;
   private globalSeq = 0;
+  /** 存活子会话循环 → 终态 promise（T4.2 flushPersist 数据源；终态并排空后移除，防长驻进程累积）。 */
+  private readonly childLoops = new Map<SessionTurnLoop, Promise<unknown>>();
 
   constructor(private readonly options: SubagentRuntimeOptions) {
     this.manager = new SubagentManager({
@@ -91,6 +94,17 @@ export class SubagentRuntime {
   /** 全量停止（02 §4.4：archive/shutdown 级联兜底；agent 工具 ctx.signal abort 已覆盖 turn 内路径）。 */
   async stopAll(reason?: string): Promise<void> {
     await this.manager.stopAll(reason);
+  }
+
+  /** 排空全部存活子会话的持久化写链（T4.2）：先等子 turn 终态（stopAll 级联取消后快速落定），再收写链队尾——shutdownService 在存储回调前调用。已终态循环在登记链上自排空，此处兜底汇合同一 writeTail（幂等）。 */
+  async flushPersist(): Promise<void> {
+    const snapshot = [...this.childLoops.entries()];
+    await Promise.all(
+      snapshot.map(async ([loop, done]) => {
+        await done.catch(() => undefined);
+        await loop.flushEvents();
+      }),
+    );
   }
 
   /** 优雅停机：停全部子代理 + 退订镜像事件 + 注销 agent 工具（agent-service.close 调用）。 */
@@ -237,6 +251,12 @@ export class SubagentRuntime {
       maxRoundsPerTurn: profile.maxTurns, // 子任务短命：不传 compaction
     });
     const admission = loop.submit({ text: task });
+    // T4.2 登记存活子循环：终态 → 自排空写链 → 移除（防长驻进程累积；flushPersist 对未终态循环兜底）
+    this.childLoops.set(loop, admission.done);
+    void admission.done
+      .catch(() => undefined)
+      .then(() => loop.flushEvents())
+      .finally(() => this.childLoops.delete(loop));
     return {
       sessionId: child.id,
       admission,

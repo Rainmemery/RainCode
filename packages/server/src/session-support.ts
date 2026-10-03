@@ -337,23 +337,30 @@ export function assertNoRunningBackgroundTasks(
   }
 }
 
-/** system.shutdown 主流程（06 §2.8，T3.8 自 agent-service 下沉）：取消活动 turn → 等待收敛（flush）→ 级联停子代理/MCP/插件 → 存储回调。 */
+/** system.shutdown 主流程（06 §2.8，T3.8 自 agent-service 下沉）：取消活动 turn → 等待终态 → 排空持久化写链（主会话 + 子会话，T4.2 flush-then-close）→ 级联停子代理/MCP/插件 → 存储回调。 */
 export async function shutdownService(input: {
-  sessions: Iterable<{ loop: { cancel(reason: string): unknown }; pending: Promise<unknown> | null }>;
-  subagent: { stopAll(reason: string): Promise<unknown> } | null;
+  sessions: Iterable<{
+    loop: { cancel(reason: string): unknown; flushEvents?(): Promise<void> };
+    pending: Promise<unknown> | null;
+  }>;
+  subagent: { stopAll(reason: string): Promise<unknown>; flushPersist?(): Promise<void> } | null;
   mcp: { close(): Promise<unknown> } | null;
   plugins: { dispose(): Promise<unknown> } | null;
   onShutdown?: () => Promise<void>;
   reason?: string;
 }): Promise<unknown> {
   const reason = input.reason ?? "shutdown";
+  const entries = [...input.sessions]; // 单次物化：cancel 与 flush 两趟共用（Iterable 可能是一次性迭代器）
   const pending: Array<Promise<unknown>> = [];
-  for (const entry of input.sessions) {
+  for (const entry of entries) {
     entry.loop.cancel(reason);
     if (entry.pending !== null) pending.push(entry.pending.catch(() => undefined));
   }
   await Promise.all(pending);
+  // T4.2：turn 已终态，此处只收写链队尾——主会话与子会话全部排空后，onShutdown 才允许关存储流
+  await Promise.all(entries.map((entry) => entry.loop.flushEvents?.() ?? Promise.resolve()));
   await input.subagent?.stopAll(reason); // 子代理级联兜底（02 §4.4）
+  await input.subagent?.flushPersist?.(); // 子会话先等终态再排空写链（SubagentRuntime 实现）
   await input.mcp?.close();
   await input.plugins?.dispose();
   await input.onShutdown?.();

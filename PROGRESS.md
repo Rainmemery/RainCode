@@ -13,11 +13,11 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 当前里程碑 | **M3 全量完成 ✅**（T3.1~T3.9 全绿 + NFR-1~7 全量重测 + 4.2 对比矩阵核对，见 docs/benchmarks/m3-2026-10-02.md）· **M4 进行中**（工程加固与遗留收口：07-dev-plan §10，T4.1 CI 落地 ✅，T4.2~T4.8 待做） |
-| 已完成任务 | M1 全量 ✅ · M2 全量（T2.1~T2.10）✅ · M3 全量（T3.1~T3.9）✅ · M4 T4.1 CI 落地 ✅ · 场景 5 桌面 GUI 走查（自动化）✅ · T3.9 桌面 GUI 走查（自动化，14 断言）✅ · M4 规划轮（deepseek-harness 调研 + 遗留项台账 + 07 §10 排期 + 文档漂移修订）✅ |
+| 当前里程碑 | **M3 全量完成 ✅**（T3.1~T3.9 全绿 + NFR-1~7 全量重测 + 4.2 对比矩阵核对，见 docs/benchmarks/m3-2026-10-02.md）· **M4 进行中**（工程加固与遗留收口：07-dev-plan §10，T4.1 CI 落地 ✅ · T4.2 内核收尾竞态修复 ✅，T4.3~T4.8 待做） |
+| 已完成任务 | M1 全量 ✅ · M2 全量（T2.1~T2.10）✅ · M3 全量（T3.1~T3.9）✅ · M4 T4.1 CI 落地 ✅ · M4 T4.2 内核收尾竞态修复 ✅ · 场景 5 桌面 GUI 走查（自动化）✅ · T3.9 桌面 GUI 走查（自动化，14 断言）✅ · M4 规划轮（deepseek-harness 调研 + 遗留项台账 + 07 §10 排期 + 文档漂移修订）✅ |
 | 最新提交 | 见 `git log -1` |
 | 工作区状态 | clean |
-| 门禁状态 | typecheck ✅（14 项目）/ oxlint ✅（12 warning 基线）/ architecture:check ✅（13 模块）/ 单测 203 ✅（T3.9 +14：desktop session-view 6、mcp config 6、server mcp-degrade 2）/ smoke:p0 全回归 ✅（14 子冒烟）/ 桌面走查 walkthrough-desktop.mts ✅（14 断言）/ NFR 基准留存 docs/benchmarks/m3-2026-10-02.md（NFR-1~7 全达标；NFR-1 跨 Node 版本 -50% 申报、NFR-4 +8.7% 装配面扩大申报） · CI ✅（GitHub Actions windows-latest 五门禁与本地同集，首次运行全绿 run 37107475417 / job 104s） |
+| 门禁状态 | typecheck ✅（14 项目）/ oxlint ✅（12 warning 基线）/ architecture:check ✅（13 模块）/ 单测 212 ✅（T4.2 +9：storage jsonl-stream close 排空与栅栏 6、agent-core loop-events-flush L-06 复现回归 3）/ smoke:p0 全回归 ✅（14 子冒烟）/ smoke:kernel ✅ / 桌面走查 walkthrough-desktop.mts ✅（14 断言）/ NFR 基准留存 docs/benchmarks/m3-2026-10-02.md（NFR-1~7 全达标；NFR-1 跨 Node 版本 -50% 申报、NFR-4 +8.7% 装配面扩大申报） · CI ✅（GitHub Actions windows-latest 五门禁与本地同集，首次运行全绿 run 37107475417 / job 104s） |
 | 快照日期 | 2026-10-03 |
 
 ---
@@ -39,6 +39,8 @@
 > 格式：`[日期] 任务 — 结果`（含关键产出物与提交号）。**新条目插在本节最上方。**
 
 ### M4 · 工程加固与遗留收口（07-dev-plan §10）
+
+- [2026-10-03] T4.2 内核收尾竞态修复（L-06 核销）——a) **根因**（§4 2026-09-29 条目的收口）：`emitPersisted` 入队即发布（事实先行=入队先行、完成不等人），`node.close()` 原先 `service.close()`（快速拆除，不等队列）后即 `storage.close()`；close 窗口内 serialWrite 队列迟到的持久化任务三条死路——撞在途句柄 EBADF（原报错）/ `streams` 清空后经 openSessionStream **重开文件句柄**（泄漏 + 写入落在关闭之后）/ db 已关则抛 SQLITE 错；b) **四层修复**（方案「close 感知 pending 写 + flush-then-close」并用）：① `SessionStream` 流内单写者链——seq 分配与句柄写入同链串行（并发 append 不重号不再依赖调用方自律），`close()` 先设拒绝栅栏再经同链排空在途写后才释放句柄，幂等（closePromise 复用）；② `Storage` 关闭栅栏——`closing` 标志使 close 后 `openSessionStream` 抛类型化 `STORAGE_CLOSED`（errors.ts 新码），不再重开句柄；`Storage.close()` 同样幂等化；③ `LoopEvents.flush()` + `SessionTurnLoop.flushEvents()`——排空单写者链（契约：生产方停发后调用，promise 永不 reject）；④ `shutdownService` 注入排空步——turn 终态（pending 收敛）后先排主会话写链，再 subagent 停止级联 + `SubagentRuntime.flushPersist()`（子会话循环登记表：终态→自排空→移除，flushPersist 对未终态循环等终态+兜底排空），全部排空后 `onShutdown` 才关存储；`AgentService.shutdown` 转公开，`node.close()` 复用 system.shutdown 同一条收敛链（零新增方法，域二次 close 幂等性逐一核验：broker 清空式 / mcp closeAll 断连 catch / plugins stopAll 幂等）；c) **复现回归 9 用例**：storage jsonl-stream 6（close 排空在途写不丢行且 seq 严格递增 / close 后 STORAGE_CLOSED 拒绝不重开句柄 / close 幂等 / 并发 append 不重号 / Storage 栅栏 / Storage.close 幂等）+ agent-core loop-events-flush 3（emit→flush→close 零告警零丢失含迟到 phase_changed / flush 幂等 / **未 flush 即 close 转类型化告警**——旧缺陷路径从 EBADF 竞态变为响亮可诊的 STORAGE_CLOSED）；storage 包首开 test 目录；d) 文档：05 §4.3 追加写协议第 1 条 close 排空语义、testing.md 单测 212 + 用例行；门禁：typecheck / oxlint 12 warning 基线 / architecture 221 文件 0 违规（turn-loop.ts 压缩导入块保住 500 行上限）/ 单测 212 / smoke:kernel ✅ / smoke:p0 全回归 ✅。
 
 - [2026-10-03] T4.1 CI 落地（L-07 核销）——a) `.github/workflows/ci.yml`（提交 2cf2cda）：windows-latest 主 lane 五门禁（typecheck / lint / architecture:check / test / smoke:p0，与本地门禁集一致）+ pnpm store 缓存（setup-node cache:pnpm）+ push(master)/PR 触发 + concurrency 同 ref 取消旧跑 + job timeout 45min；b) **electron 二进制跳过**：`ELECTRON_SKIP_BINARY_DOWNLOAD=1` 经锁文件精确版本 electron@33.4.11 install.js 源码核验（检查该变量即 exit(0)）；desktop 单测与 smoke 全程 node/tsx agent 路径零 electron 运行时依赖 → CI 免 ~100MB 平台二进制下载（完整 dist 打包属 T4.7 批次 A，不入 CI）；c) **better-sqlite3 预编译 CI 口径**：GitHub 托管 runner 直连 GitHub release（prebuild-install 默认主机），仓库 .npmrc 头注的 npmmirror 镜像变量为本机网络口径不适用 CI，预编译不可得时 node-gyp + runner 自带 VS 工具链兜底；allowBuilds（better-sqlite3/esbuild/electron）与 pnpm@11.24.0（packageManager 钉死）保证 CI 与本机装配行为一致；d) **首次运行全绿**：[run 37107475417](https://github.com/Rainmemery/RainCode/actions/runs/37107475417)（push 触发，head 2cf2cda），步骤级 install 11s / typecheck 32s / lint 1s / architecture:check 1s / 单测 8s（203）/ smoke:p0 23s（14 子冒烟），job 总时长 104s，五门禁步骤逐项 success；README 增 CI badge 常态可见；e) 验收达成（07 §10.2）：CI 首次全绿 + 本地与 CI 门禁集一致；本地绿色基线先行复跑（typecheck 14 项目 / oxlint 0 错误 12 warning 基线 / architecture 219 文件 0 违规 / 单测 203 / smoke:p0 全 OK）。环境注记：本机直连 github.com 与 api.github.com 被网络策略拦截（curl 000），push 走 git 通道正常，Actions 状态经 gh-proxy.org 镜像代理 REST API 轮询取证（run/jobs 端点，未动凭据）。
 
@@ -106,7 +108,7 @@
 - [2026-10-02] smoke:web 断线重连用例中「重连后回合事件丢失/误判缺口」→ 双根因：① **delta 批量合并 × seq 缺口检测交互**——服务端连续 delta（seq 5/6/7）在批量窗口内合并为一帧（seq 取最新=7），客户端 4→7 判缺口 → resync 丢弃 done（06 §3.4 与 §6.3 第 4 条叠加语义）；② **seq 基线只覆盖已订阅事件名**——未订阅的 message.delta 不推进基线，下一事件 4→6 误判缺口。解决：缺口检测规则定为「message.delta 帧只推进基线不判定缺口（合并帧 seq=最新一条恰为后续事件前驱，天然桥接），其余会话事件逐帧投递跳变即真实丢帧」；web-client 连接期把 EVENT_SCHEMAS 全部已登记事件名挂上 ingestEvent（基线全见，未订阅事件也参与推进）。教训：传输层合并（§3.4）与端层丢帧检测（§6.3）在同一 seq 序列上共存时，检测必须以「永不合并的事件」为判定锚点、以合并帧为基线桥接。
 - [2026-09-29] smoke-memory case B（mtime 并发冲突）复跑偶发失败（冲突未命中或 INTERNAL）→ 双根因：① 真实竞态窗口 <1ms，固定次数 setImmediate 戳探在快机/负载波动下可能全部被读-改-写吸收（S1→S2 间隙未被覆盖）；② 外部写落在 S2 复检与 rename 之间时，Windows 下 rename 因目标被短暂持有报 EPERM，未被归因直接冒泡为 INTERNAL → ② 在 project-file.ts 修复：rename 失败后复检 mtime，变化即归因 MEMORY_WRITE_CONFLICT（与 S1/S2 同口径）+ 临时文件清理；① 改为在途期间 setInterval(0) 持续外部写直至 promise 收敛 + 10 轮重放，复跑 6 次 5 过。残余时序敏感性已知：ESM 静态导入绑定原函数，进程内事后 patch fs.promises.stat 不传播（实测），确定性方案（prod 注入 stat 钩子）随 T3.3 记忆波次落地，暂不在 prod 加测试面。（2026-10-03 补注：T3.3 的注入缝方案在 Windows 同时钟刻下仍有 mtime 盲窗，最终修复见 2026-10-03 条目——FileSnapshot 增 size 判定。）
 - [2026-09-29] NFR-4 桌面端空载内存基准口径申报（T2.10 留存值 339.8MB 偏保守失真）→ 基准时 agent 子进程因 dev spawn 路径 bug（见 §3 场景 5 走查条目 a）处于崩溃循环放弃状态，进程树实际仅含 main+renderer/GPU，未计入 agent 子进程 → 修复后应复跑 bench:mem:desktop 留存新口径（M3 开工前补测）。
-- [2026-09-29] CLI `run` 回合收尾报 `failed to persist event "turn.phase_changed" EBADF` → done 事件后 CLI 立即关库，emitPersisted 的串行写队列中迟到的 phase 变更事件持久化失败（非致命，会话事实完整）→ 已知收尾竞态，暂不阻塞：Storage.close() 排空串行写队列列入 M3 内核小修。
+- [2026-09-29] CLI `run` 回合收尾报 `failed to persist event "turn.phase_changed" EBADF` → done 事件后 CLI 立即关库，emitPersisted 的串行写队列中迟到的 phase 变更事件持久化失败（非致命，会话事实完整）→ 已知收尾竞态，暂不阻塞：Storage.close() 排空串行写队列列入 M3 内核小修。（2026-10-03 收口：T4.2 四层修复——流内写链排空 / Storage 关闭栅栏 / LoopEvents.flush / shutdownService 排空链，见 §3 T4.2 条目；legacy-items L-06 核销。）
 - [2026-09-29] 电脑控制（computer-use）broker 在当前 ZCode 会话不可用（node_repl 桥 assertAvailable 报 unavailable）→ CUA 权限 broker 未随会话开通 → 以「electron --remote-debugging-port + CDP 真实输入事件 + PowerShell SendKeys 驱动原生对话框」等价替代完成 GUI 走查；原生对话框截图不可用 CDP（仅含页面栅格），以全屏 CopyFromScreen 兜底。
 
 - [2026-09-28] chat REPL 键盘输入双回显（键入 exit 显示 eexxiitt、退格只生效一次）→ `rl` 与 `approvalRl` 两个 terminal=true 的 readline interface 挂同一 stdin，keypress 监听构造时常驻、按键被双消费各自回绘 → 删除 approvalRl，审批 prompt 复用主 rl（审批时主 question 已 resolve，无并发挂起）。教训：**同一 stdin 只允许挂一个 readline interface**（提交 d4090ac）。
@@ -117,17 +119,16 @@
 
 ---
 
-## 5. 下一步队列（M4 进行中：T4.1 已完成移入 §3 日志；队列 T4.2~T4.8，07-dev-plan §10）
+## 5. 下一步队列（M4 进行中：T4.1/T4.2 已完成移入 §3 日志；队列 T4.3~T4.8，07-dev-plan §10）
 
 > 取任务时**必须**回读 `docs/07-dev-plan.md` §10 对应任务行获取完整验收标准；遗留项全景见 `docs/legacy-items.md`。T4.8 环境门控批次（五 Provider 连通矩阵 / 真实仓库 Bug 修复样例 / 场景 6 真实 MCP 任务样例 / Docker·WSL·SSH 真实运行时验证）可随时穿插执行，环境不可得则按台账保留口径申报，不阻塞里程碑。
 
-1. **T4.2 内核收尾竞态修复**（L-06 核销）——Storage.close() 与 serialWrite 队列排空联动 + 复现回归测试。
-2. **T4.3 生成式协议目录**——METHOD_SCHEMAS/EVENT_SCHEMAS → docs/generated/protocol-catalog.md，gen/--check 双模式，--check 入 CI。
-3. **T4.4 技能模型侧可发现性**——技能目录注入系统提示 + digest 变更重发布 + `skill` 内置工具 + modelInvocable 开关。
-4. **T4.5 Web 端管理面板对齐**（L-08 核销）——apps/web 落地记忆管理器 / 扩展面板 / 斜杠面板 / 用量统计。
-5. **T4.6 防御式模式文档**——docs/defensive-patterns.md（dsh 六条适配 + RainCode M1~M3 实战沉淀）。
-6. **T4.7 遗留收口批次 A**（L-04/L-05 核销）——electron-builder dist 产物 + walkthrough-web.mts 真浏览器走查脚本。
-7. **T4.8 遗留收口批次 B**（L-01/02/03/14/15 承接，环境门控不计入门槛）——真实环境项穿插执行。
+1. **T4.3 生成式协议目录**——METHOD_SCHEMAS/EVENT_SCHEMAS → docs/generated/protocol-catalog.md，gen/--check 双模式，--check 入 CI。
+2. **T4.4 技能模型侧可发现性**——技能目录注入系统提示 + digest 变更重发布 + `skill` 内置工具 + modelInvocable 开关。
+3. **T4.5 Web 端管理面板对齐**（L-08 核销）——apps/web 落地记忆管理器 / 扩展面板 / 斜杠面板 / 用量统计。
+4. **T4.6 防御式模式文档**——docs/defensive-patterns.md（dsh 六条适配 + RainCode M1~M3 实战沉淀）。
+5. **T4.7 遗留收口批次 A**（L-04/L-05 核销）——electron-builder dist 产物 + walkthrough-web.mts 真浏览器走查脚本。
+6. **T4.8 遗留收口批次 B**（L-01/02/03/14/15 承接，环境门控不计入门槛）——真实环境项穿插执行。
 
 ---
 

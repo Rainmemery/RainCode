@@ -417,7 +417,7 @@ CREATE TABLE settings (
 
 ### 4.3 追加写协议
 
-1. 打开会话即以追加模式持有文件句柄，句柄随单写者生命周期关闭（finally 语义释放）。
+1. 打开会话即以追加模式持有文件句柄，句柄随单写者生命周期关闭；关闭前经流内单写者链**排空在途写**（T4.2：close 感知 pending 写，防 write 与 handle.close 并发 EBADF），close 后到达的写入以 `STORAGE_CLOSED` 类型化拒绝、不重开句柄。
 2. 每条记录：序列化 → `write(行 + '\n')` → flush，写入返回即记 `seq`。**不逐条 fsync**：进程强杀（NFR-7 测试口径）下内核缓冲依旧持久，已 write 数据零丢失。
 3. checkpoint 行在 write 后追加 `fsync`，作为**断电级**持久点——这是唯一逐条同步的行。
 4. 大附件不进 JSONL：落 `attachments/`，行内只存相对路径与元信息；工具结果按 02 §2.3 预算裁剪后的 `content` 全文落盘（进程 stdout 的溢出部分磁盘不落地，02 §5.4）。

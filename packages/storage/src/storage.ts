@@ -64,6 +64,9 @@ export class Storage {
 
   private readonly db: SqliteDatabase;
   private readonly streams = new Map<string, SessionStream>();
+  /** 关闭栅栏（T4.2）：close 发起后 openSessionStream 不再开新流，迟到写入类型化拒绝。 */
+  private closing = false;
+  private closePromise: Promise<void> | null = null;
 
   private constructor(db: SqliteDatabase, dataRoot: string) {
     this.db = db;
@@ -134,6 +137,9 @@ export class Storage {
 
   /** 打开（或复用）会话追加流：残尾修复 → 尾部扫描续写位 → epoch 守卫取 max(库内, 文件内)。 */
   async openSessionStream(sessionId: string): Promise<SessionStream> {
+    if (this.closing) {
+      throw new StorageError("STORAGE_CLOSED", `storage is closing; session stream unavailable: ${sessionId}`);
+    }
     const existing = this.streams.get(sessionId);
     if (existing) {
       return existing;
@@ -246,13 +252,20 @@ export class Storage {
     }
   }
 
-  /** 关闭全部追加流与数据库（单写者句柄随生命周期释放，05 §4.3 第 1 点）。 */
-  async close(): Promise<void> {
-    for (const stream of this.streams.values()) {
-      await stream.close();
-    }
-    this.streams.clear();
-    this.db.close();
+  /** 关闭全部追加流与数据库（单写者句柄随生命周期释放，05 §4.3 第 1 点）。
+   * T4.2：先设关闭栅栏（openSessionStream 不再开新流——旧行为会在 close 窗口重开句柄泄漏），
+   * 再逐流排空在途写后释放句柄（SessionStream.close 联动），幂等（重复调用复用同一 promise）。 */
+  close(): Promise<void> {
+    if (this.closePromise !== null) return this.closePromise;
+    this.closing = true;
+    this.closePromise = (async () => {
+      for (const stream of this.streams.values()) {
+        await stream.close();
+      }
+      this.streams.clear();
+      this.db.close();
+    })();
+    return this.closePromise;
   }
 
   private async getExistingSession(sessionId: string): Promise<SessionMeta> {

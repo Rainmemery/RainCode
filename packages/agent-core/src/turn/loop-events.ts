@@ -71,6 +71,15 @@ export class LoopEvents {
     return run;
   }
 
+  /**
+   * 排空单写者链（T4.2 flush-then-close）：resolve 时「调用 flush 前入队」的持久化任务已全部落盘。
+   * 契约：生产方停发后调用（turn 终态/已取消）——运行中 turn 会持续入队，flush 不构成静止点。
+   * 返回的 promise 永不 reject（链内失败已在各任务出口消化为 diag 告警）。
+   */
+  flush(): Promise<void> {
+    return this.writeTail.then(() => undefined);
+  }
+
   /** 持久事件：先落 JSONL 再发布（事实先行）。 */
   emitPersisted(name: PersistedEventName, build: (seq: number, ts: number) => unknown): void {
     const seq = this.nextSeq();

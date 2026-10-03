@@ -24,7 +24,7 @@
 | L-03 | 场景 6 真实 MCP 任务样例（真实 MCP server + 真实任务演示；smoke:mcp 仅 fixture 级互操作） | m2/m3 报告 §8 | T4.8 环境门控 | 🔒 保留（环境不可得） |
 | L-04 | electron-builder 完整 dist 打包（pnpm 符号链接 + 原生模块 rebuild 属打包机环节；现仅 verify-agent-bundle 验证 bundle 通路） | PROGRESS T2.9 / README 桌面端节 | **T4.7 批次 A** | 🟡 待收口（M4） |
 | L-05 | Web 工作台真实浏览器走查（smoke:web 为 node ws 客户端帧形态等价，从未真浏览器驱动） | m3 报告 §8 | **T4.7 批次 A**（CDP 自动化走查脚本） | 🟡 待收口（M4） |
-| L-06 | Storage.close() 收尾竞态：run 回合收尾偶发 `failed to persist event "turn.phase_changed" EBADF`（close 逐流关句柄，与 agent-core serialWrite 队列无排空联动） | PROGRESS §4 2026-09-29 条目（原承诺「M3 内核小修」未见执行记录） | **T4.2** | 🟡 待收口（M4） |
+| L-06 | Storage.close() 收尾竞态：run 回合收尾偶发 `failed to persist event "turn.phase_changed" EBADF`（close 逐流关句柄，与 agent-core serialWrite 队列无排空联动） | PROGRESS §4 2026-09-29 条目（原承诺「M3 内核小修」未见执行记录） | **T4.2**（四层：流内写链排空 / Storage 关闭栅栏 STORAGE_CLOSED / LoopEvents.flush / shutdownService 排空链 + node.close 复用收敛链） | ✅ 收口（2026-10-03，复现回归 9 用例入回归，PROGRESS §3 T4.2 条目） |
 | L-07 | CI 缺失：`.github/workflows/` 不存在，T1.1/07 §8.1.4 承诺的 GitHub Actions 骨架从未落地，四门禁只在本地执行 | 07 §8.1.4 | **T4.1**（ci.yml 五门禁 + pnpm store 缓存 + electron 二进制跳过） | ✅ 收口（2026-10-03，首次运行 run 37107475417 全绿，PROGRESS §3 T4.1 条目） |
 | L-08 | Web 端管理面板缺位：记忆管理器/扩展面板/斜杠面板/用量统计为桌面端独有（README「随后续节奏对齐」承诺） | README Web 节 | **T4.5** | 🟡 待收口（M4） |
 | L-09 | lint 12 条既有 warning 刻意保留 | testing.md §门禁 | 保留（申报基线；触碰相关文件时就近清零，不做专项清理） | 🔒 保留（申报） |
@@ -42,5 +42,5 @@
 ## 3. 状态图例与统计（2026-10-03）
 
 - ✅ 收口 · 🟡 待收口（M4 任务承接）· 🔒 保留（环境门控 / 申报性遗留 / 运维注意项）
-- 当前：**待收口 4（L-04/05/06/08）· 环境门控保留 5（L-01/02/03/14/15）· 申报性保留 4（L-09/16/18/19）· 运维保留 1（L-17）· 规划轮收口 4（L-10/11/12/13）· M4 执行收口 1（L-07）**
+- 当前：**待收口 3（L-04/05/08）· 环境门控保留 5（L-01/02/03/14/15）· 申报性保留 4（L-09/16/18/19）· 运维保留 1（L-17）· 规划轮收口 4（L-10/11/12/13）· M4 执行收口 2（L-07/L-06）**
 - 新遗留项登记时按 §1 口径判定处置，并在 07-dev-plan 对应里程碑任务表中挂承接（如有）。

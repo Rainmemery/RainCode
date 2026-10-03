@@ -439,8 +439,9 @@ export class AgentService {
   }
 
   // system 域（06 §2.8）
-  /** 优雅停机：取消活动 turn → 等待收敛（flush）→ 断开 MCP → 关闭存储。 */
-  private shutdown(params: SystemShutdownParams): Promise<unknown> {
+  /** 优雅停机：取消活动 turn → 等待收敛（flush）→ 断开 MCP → 关闭存储。
+   *  公开给 node.close 复用同一条收敛链（T4.2：排空持久化写链后才关存储）；幂等（级联各域 close 均可重入）。 */
+  shutdown(params: SystemShutdownParams): Promise<unknown> {
     this.shuttingDown = true;
     // 主流程在 session-support.shutdownService（方法族拆分）；本层只注入装配依赖
     return shutdownService({

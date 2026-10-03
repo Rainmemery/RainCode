@@ -10,25 +10,21 @@ import { LlmAbortedError, LlmError, type LlmStreamEvent } from "@raincode/llm";
 import { ulid, type CheckpointState } from "@raincode/storage";
 import type { CollaborationMode, MessageRecord, TokenUsage } from "@raincode/shared";
 import type { BackgroundTaskRegistry } from "@raincode/tools";
-import { estimateContextTokens, createCompactionService } from "../compact/service.js";
-import type { CompactionOptions, CompactionService, CompactionTicket } from "../compact/service.js";
+import { estimateContextTokens, createCompactionService, type CompactionOptions, type CompactionService, type CompactionTicket } from "../compact/service.js";
 import { CommandInbox } from "../inbox/command-inbox.js";
 import type { LlmPort, SessionEventPublisher, StoragePort, ToolPhaseDeps, TurnAdmission, TurnInput, TurnOutcome } from "../ports.js";
 import { assembleChatMessages } from "./context.js";
 import { DeltaBatcher } from "./delta-batcher.js";
 import { LoopEvents } from "./loop-events.js";
-import { transitionPhase } from "./phase.js";
-import type { TurnPhase, TurnTrigger } from "./phase.js";
+import { transitionPhase, type TurnPhase, type TurnTrigger } from "./phase.js";
 import { buildAssistantRecord, errorMessage, invalidInputStats, mergeUsage, toLlmFunctionTools } from "./round-helpers.js";
 import { TurnSettler } from "./settle.js";
-import { ToolPhaseRunner } from "./tool-phase.js";
-import type { PlannedToolCall } from "./tool-phase.js";
+import { ToolPhaseRunner, type PlannedToolCall } from "./tool-phase.js";
 export type { TurnAdmission, TurnInput, TurnOutcome } from "../ports.js";
 
 const DEFAULT_DELTA_FLUSH_MS = 50; // message.delta 批量节流窗口（06 §3.4：≤50ms）
 const DEFAULT_MAX_ROUNDS = 32; // turn 内模型↔工具往返轮次上限（02 §1.2.1）
-// AC-12 受限重试上限：单 turn 内工具参数校验失败（TOOL_INVALID_INPUT）次数，达上限强制收束
-// （06 §4.3 段 7 TOOL_INPUT_RETRY_EXCEEDED；maxRoundsPerTurn 语义不变，仅收紧自纠循环）
+// AC-12 受限重试上限：单 turn 内 TOOL_INVALID_INPUT 达 3 次强制收束（06 §4.3 段 7；maxRoundsPerTurn 语义不变）
 const INVALID_INPUT_RETRY_LIMIT = 3;
 
 interface InboxEntry {
@@ -491,6 +487,11 @@ export class SessionTurnLoop {
 
   private serialWrite<T>(task: () => Promise<T>): Promise<T> {
     return this.events.serialWrite(task);
+  }
+
+  /** 排空本循环持久化写链（node.close / system.shutdown 收敛步，T4.2）；须在 turn 终态后调用。 */
+  flushEvents(): Promise<void> {
+    return this.events.flush();
   }
 
   private diag(message: string, err?: unknown): void {
