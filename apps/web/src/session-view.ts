@@ -59,7 +59,8 @@ export type ConnectionState = "connecting" | "ready" | "reconnecting" | "closed"
 export interface WebState {
   connection: ConnectionState;
   fatal: string | null; // 鉴权失败等不可恢复错误（停止重连）
-  view: "chat" | "settings";
+  /** 视图路由（T4.5 面板对齐：chat / settings / memory / extensions）。 */
+  view: "chat" | "settings" | "memory" | "extensions";
   workspace: string | null;
   sessions: Array<{ id: string; title: string; lastActiveAt: number }>;
   activeId: string | null;
@@ -70,6 +71,11 @@ export interface WebState {
   providers: ProviderRow[];
   activeProviderId: string | null;
   error: string | null;
+  /** 活跃会话用量（session.usage；done 后与切会话时刷新，UI-4 用量统计 T4.5 对齐）。 */
+  usage: { inputTokens: number; outputTokens: number; turnsCount: number; costEstimateUsd?: number } | null;
+  /** 扩展域全局事件通道：mcp.server_status_changed / plugin.status_changed 到达即自增，
+   * 面板监听 tick 重拉全量投影（桌面端 extensionsTick 同口径）。 */
+  extTick: number;
 }
 
 export function initialWebState(): WebState {
@@ -87,6 +93,8 @@ export function initialWebState(): WebState {
     providers: [],
     activeProviderId: null,
     error: null,
+    usage: null,
+    extTick: 0,
   };
 }
 
@@ -264,6 +272,18 @@ export function applySessionEvent(state: WebState, name: string, payload: Record
 function patchView(state: WebState, sessionId: string, patch: Partial<SessionView>): WebState {
   const current = state.views[sessionId] ?? { sessionId, title: sessionId, items: [] };
   return { ...state, views: { ...state.views, [sessionId]: { ...current, ...patch } } };
+}
+
+/**
+ * 斜杠命令解析（T4.5 对齐桌面端同语义）："/name args" → { name, args }；
+ * 名字域 [a-z0-9-]，无参时省略 args；非斜杠或非法名 → null（端层只做形态预判，
+ * SKILL_NOT_FOUND 等业务判定仍在服务端）。
+ */
+export function parseSlashInvocation(text: string): { name: string; args?: string } | null {
+  const match = /^\/([a-z0-9-]+)(?:\s+([\s\S]+))?$/.exec(text.trim());
+  if (match === null) return null;
+  const args = match[2];
+  return { name: match[1]!, ...(args !== undefined && { args }) };
 }
 
 /** 工具入参摘要（折叠头参数摘要，03 §6.4）。 */

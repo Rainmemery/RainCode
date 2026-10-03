@@ -248,7 +248,8 @@ async function caseUsage(scenario: Scenario): Promise<void> {
   const usage = await pollUsage(scenario, sessionId);
   assert.ok(usage.inputTokens > 0, "inputTokens > 0（usage 帧累计）");
   assert.ok(usage.outputTokens > 0, "outputTokens > 0");
-  assert.ok(Number.isInteger(usage.turnsCount) && usage.turnsCount >= 0, "turnsCount 读数为非负整数");
+  // T4.5 修复后语义：turns_count 随 completed turn 原子自增（此前恒为 0 的失真读数）
+  assert.ok(Number.isInteger(usage.turnsCount) && usage.turnsCount >= 1, "turnsCount 读数应为完成回合数（≥1）");
   assert.ok(
     usage.costEstimateUsd !== undefined && usage.costEstimateUsd > 0,
     "活跃 provider 带单价 → costEstimateUsd > 0",

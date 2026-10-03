@@ -26,7 +26,7 @@
 | L-05 | Web 工作台真实浏览器走查（smoke:web 为 node ws 客户端帧形态等价，从未真浏览器驱动） | m3 报告 §8 | **T4.7 批次 A**（CDP 自动化走查脚本） | 🟡 待收口（M4） |
 | L-06 | Storage.close() 收尾竞态：run 回合收尾偶发 `failed to persist event "turn.phase_changed" EBADF`（close 逐流关句柄，与 agent-core serialWrite 队列无排空联动） | PROGRESS §4 2026-09-29 条目（原承诺「M3 内核小修」未见执行记录） | **T4.2**（四层：流内写链排空 / Storage 关闭栅栏 STORAGE_CLOSED / LoopEvents.flush / shutdownService 排空链 + node.close 复用收敛链） | ✅ 收口（2026-10-03，复现回归 9 用例入回归，PROGRESS §3 T4.2 条目） |
 | L-07 | CI 缺失：`.github/workflows/` 不存在，T1.1/07 §8.1.4 承诺的 GitHub Actions 骨架从未落地，四门禁只在本地执行 | 07 §8.1.4 | **T4.1**（ci.yml 五门禁 + pnpm store 缓存 + electron 二进制跳过） | ✅ 收口（2026-10-03，首次运行 run 37107475417 全绿，PROGRESS §3 T4.1 条目） |
-| L-08 | Web 端管理面板缺位：记忆管理器/扩展面板/斜杠面板/用量统计为桌面端独有（README「随后续节奏对齐」承诺） | README Web 节 | **T4.5** | 🟡 待收口（M4） |
+| L-08 | Web 端管理面板缺位：记忆管理器/扩展面板/斜杠面板/用量统计为桌面端独有（README「随后续节奏对齐」承诺） | README Web 节 | **T4.5**（四面板按端最小实现 + 复用策略登记 04 §2.3；smoke:web 用例 D 服务面验收） | ✅ 收口（2026-10-02，README 承诺核销；PROGRESS §3 T4.5 条目） |
 | L-09 | lint 12 条既有 warning 刻意保留 | testing.md §门禁 | 保留（申报基线；触碰相关文件时就近清零，不做专项清理） | 🔒 保留（申报） |
 | L-10 | ADR-02 与 CLI 实现不一致（ADR 写 Ink，实现为 readline REPL + ANSI 富文本中间形态） | 04-architecture §7 | 规划轮修订（2026-10-03 ADR-02 注记） | ✅ 收口（2026-10-03） |
 | L-11 | AC-8「删除」语义降级为 archive（归档只读保留全部数据），未回写 PRD；物理删除未提供 | 01-PRD §5 AC-8 | 规划轮注记（2026-10-03 PRD 实现注记）；session.delete 物理删除列 M5+ 候选 | ✅ 收口（2026-10-03） |

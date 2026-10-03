@@ -123,6 +123,7 @@ pnpm monorepo，`apps/*` 为可执行端，`packages/*` 为库包。
 | --- | --- | --- | --- | --- |
 | `apps/cli` | 端层 | Ink TUI、命令行参数解析、审批交互、会话选择与恢复 | `server`、`rpc`、`shared` | 任何领域包 / storage 的直接 import（内核与工具只能经 server 组装、经 rpc 调用） |
 | `apps/desktop` | 端层 | Electron 壳：main（窗口 / 原生 / 子进程守护）、renderer（React UI）、agent 子进程宿主 | `server`（headless 入口）、`rpc`、`shared` | 领域包内部实现；renderer 侧严禁 import 任何 Node-only 包 |
+| `apps/web` | 端层 | 浏览器工作台（React18 + Vite）：会话流 / 审批 / Provider 设置 / 管理面板（记忆 / 扩展 / 斜杠 / 用量，T4.5 对齐桌面端） | `rpc`（web 客户端）、`shared`（schema 类型，dev 依赖仅类型） | `server`（经 `raincode web` 宿主 WS 接入）、任何 Node-only 包、`apps/*` |
 | `packages/server` | 服务层 | Agent Service 唯一组装点：装配内核与领域服务、方法表、会话事件流、headless 入口 | `agent-core`、`tools`、`permission`、`memory`、`mcp`、`llm`、`storage`、`shared` | `rpc`（传输绑定发生在端层）、任何 `apps/*` |
 | `packages/agent-core` | 领域层 | Turn 循环、TurnPhase 状态机、CommandInbox、会话生命周期、auto-compact、Sub-agent（02 §1 / §4） | `llm`、`tools`、`permission`、`memory`、`mcp`、`storage`、`shared` | `rpc`（内核对传输不可知）、`server`、`apps/*` |
 | `packages/tools` | 领域层 | 工具契约与注册表、执行器、内置工具集、进程级沙箱（02 §2 / §5） | `shared` | `permission`（经端口注入）、`agent-core`、`llm`、`mcp`、`storage`、`rpc`、`server`、`apps/*` |
@@ -133,6 +134,8 @@ pnpm monorepo，`apps/*` 为可执行端，`packages/*` 为库包。
 | `packages/storage` | 基础设施 | SQLite（better-sqlite3，WAL）元数据 / 规则 / 记忆条目 + JSONL 会话事件流 + checkpoint | `shared` | 一切领域包与上层 |
 | `packages/shared` | 基础设施 | zod schema 单一事实源、跨包契约类型、纯函数 | （无——底座，仅三方 zod） | 任何 RainCode 包 |
 | `packages/rpc` | 接入层 | 帧协议、`IMessageTransport` 抽象、三种绑定、请求-响应关联 | `shared` | 领域包、`storage`、`server`、`apps/*`（业务语义不可见） |
+
+**端层组件复用策略（T4.5 定，policy 先行）**：多端 UI 采用**按端最小实现**，不抽公共 renderer 子包——复用的正确粒度是**协议与方法表 + 会话状态机语义**（06 同一方法表；session-view 同构 reducer），而非组件树。理由：双端设计令牌不同（desktop 自有 tailwind 主题 `bg-panel/text-hi/dot` 等，web 为 `ink-*` 简化盘），统一令牌属设计系统立项且有回归已验收桌面 UI（UI-4）之险；新包还需 managedOnly 登记与双端构建接线。若未来出现第三端或令牌统一立项（M5+ 候选），再抽 `packages/renderer`——预留缝而非提前抽象。管理面板（记忆 / 扩展 / 斜杠 / 用量）双端同构消费同一服务面，验收口径：四面板服务面 smoke（smoke:web 用例 D）+ 桌面 GUI 走查（walkthrough-desktop）。
 
 ### 2.2 模块归属对应（与 02-module-design §0.1 逐条一致）
 

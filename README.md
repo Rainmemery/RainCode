@@ -13,7 +13,7 @@ RainCode 的功能定位与 Claude Code / Codex 对齐：整合**代码生成、
 
 ## 当前状态
 
-**M3（七模块全量对齐）验收完成** ✅（T3.1~T3.9，NFR-1~7 全量重测与 4.2 对比矩阵核对见 [docs/benchmarks/m3-2026-10-02.md](docs/benchmarks/m3-2026-10-02.md)；M2 基准见 [docs/benchmarks/m2-2026-09-29.md](docs/benchmarks/m2-2026-09-29.md)）。**M4（工程加固与遗留收口）进行中**：T4.1 CI 已落地（[Actions](https://github.com/Rainmemery/RainCode/actions/workflows/ci.yml) windows-latest 六门禁与本地同集）· T4.2 内核收尾竞态修复 ✅ · T4.3 生成式协议目录 ✅（[docs/generated/protocol-catalog.md](docs/generated/protocol-catalog.md)，`protocol:gen` 再生成 / `protocol:check` 防漂移入 CI）· T4.4 技能模型侧可发现性 ✅（系统提示目录 digest 重发布 + `skill` 工具 + `modelInvocable` 开关）；待做：Web 管理面板对齐 / 防御式模式文档 / 遗留项收口，见 [docs/07-dev-plan.md §10](docs/07-dev-plan.md)（参照 [deepseek-harness 调研报告](docs/research/2026-10-03-deepseek-harness.md)，遗留项全量登记于 [docs/legacy-items.md](docs/legacy-items.md)）。
+**M3（七模块全量对齐）验收完成** ✅（T3.1~T3.9，NFR-1~7 全量重测与 4.2 对比矩阵核对见 [docs/benchmarks/m3-2026-10-02.md](docs/benchmarks/m3-2026-10-02.md)；M2 基准见 [docs/benchmarks/m2-2026-09-29.md](docs/benchmarks/m2-2026-09-29.md)）。**M4（工程加固与遗留收口）进行中**：T4.1 CI 已落地（[Actions](https://github.com/Rainmemery/RainCode/actions/workflows/ci.yml) windows-latest 六门禁与本地同集）· T4.2 内核收尾竞态修复 ✅ · T4.3 生成式协议目录 ✅（[docs/generated/protocol-catalog.md](docs/generated/protocol-catalog.md)，`protocol:gen` 再生成 / `protocol:check` 防漂移入 CI）· T4.4 技能模型侧可发现性 ✅（系统提示目录 digest 重发布 + `skill` 工具 + `modelInvocable` 开关）· T4.5 Web 端管理面板对齐 ✅（记忆 / 扩展 / 斜杠 / 用量四面板，L-08 核销）；待做：防御式模式文档 / 遗留项收口，见 [docs/07-dev-plan.md §10](docs/07-dev-plan.md)（参照 [deepseek-harness 调研报告](docs/research/2026-10-03-deepseek-harness.md)，遗留项全量登记于 [docs/legacy-items.md](docs/legacy-items.md)）。
 
 | 能力 | 状态 |
 | --- | --- |
@@ -177,7 +177,7 @@ raincode web --port 8787
 - **多连接扇出**：多个浏览器标签页可同时连接，会话事件投递到全部活跃连接；多标签审批弹窗互相同步（同一 `pendingApprovals` 投影）。
 - **心跳**：宿主 30s 周期 WS ping 探活，空闲连接自动断开；`RAINCODE_WS_DELTA_WINDOW_MS` 可调大流式批量窗口（广域网）。
 
-Alpha 功能范围：会话列表 / 新建 / 切换、工作区路径输入、会话流式渲染（markdown 轻渲染与工具卡五状态）、交互审批（四级决策 + 键盘直选）、Provider 设置、连接状态条（重连可视化）。记忆 / 扩展等管理面板当前为桌面端独有（UI-4 已补齐），Web 端管理面板随后续节奏对齐。
+Alpha 功能范围：会话列表 / 新建 / 切换、工作区路径输入、会话流式渲染（markdown 轻渲染与工具卡五状态）、交互审批（四级决策 + 键盘直选）、Provider 设置、连接状态条（重连可视化）、管理面板四件套——记忆管理器（MEMORY.md 预览 / 草案确认 / 条目检索晋升）、扩展面板（MCP 状态启停与健康检查 + 插件启停）、斜杠命令面板（`/` 唤起技能清单，↑↓/Tab 补全）、用量统计（侧栏 ↑/↓ token 与回合数）——与桌面端同构消费同一服务面（T4.5，L-08 核销）。
 
 ## Provider 配置
 

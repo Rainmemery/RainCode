@@ -80,7 +80,8 @@ modules:
     managed: true
     # T3.8 Web 会话工作台（UI-5）：浏览器图只依赖 rpc/web 子路径（重连客户端 + websocket 绑定），
     # 不依赖 node 内建与 server（服务能力全部经 RPC 方法表暴露，04 §4.4 传输无关）。
-    requires: [rpc]
+    # T4.5 面板对齐：shared 仅类型依赖（schema 投影类型，dev 依赖；构建期擦除，浏览器图零运行时增量）。
+    requires: [rpc, shared]
   - id: memory
     roots: [packages/memory/src]
     managed: true

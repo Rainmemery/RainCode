@@ -1,4 +1,4 @@
-/** 侧栏：连接状态条（重连状态可视化）+ 工作区输入 + 会话列表（03 §6.2 Web 适配）。 */
+/** 侧栏：连接状态条（重连状态可视化）+ 工作区输入 + 会话列表 + 用量统计行 + 管理面板入口（03 §6.2 Web 适配；T4.5 对齐桌面端 UI-4）。 */
 import { useState } from "react";
 import { useWeb } from "../state.js";
 
@@ -9,12 +9,20 @@ const CONNECTION_LABEL: Record<string, { text: string; className: string }> = {
   closed: { text: "已断开", className: "bg-danger/20 text-danger" },
 };
 
+/** token 数三档缩写（用量统计行，UI-4）：1234 → 1.2k。 */
+function formatTokens(count: number): string {
+  if (count < 1000) return String(count);
+  if (count < 1_000_000) return `${(count / 1000).toFixed(1)}k`;
+  return `${(count / 1_000_000).toFixed(1)}m`;
+}
+
 export function Sidebar(): JSX.Element {
   const connection = useWeb((s) => s.connection);
   const sessions = useWeb((s) => s.sessions);
   const activeId = useWeb((s) => s.activeId);
   const workspace = useWeb((s) => s.workspace);
   const view = useWeb((s) => s.view);
+  const usage = useWeb((s) => s.usage);
   const setWorkspace = useWeb((s) => s.setWorkspace);
   const setView = useWeb((s) => s.setView);
   const selectSession = useWeb((s) => s.selectSession);
@@ -68,12 +76,32 @@ export function Sidebar(): JSX.Element {
         ))}
       </nav>
       <div className="border-t border-ink-700 p-2">
-        <button
-          className={`w-full rounded px-2 py-1.5 text-left text-sm ${view === "settings" ? "bg-ink-700" : "hover:bg-ink-800"}`}
-          onClick={() => setView(view === "settings" ? "chat" : "settings")}
-        >
-          ⚙ Provider 设置
-        </button>
+        {activeId !== null && usage !== null && (
+          <div
+            className="mb-2 flex items-center gap-2 px-1 text-xs text-gray-500"
+            title={`本会话累计：输入 ${usage.inputTokens} tokens / 输出 ${usage.outputTokens} tokens / ${usage.turnsCount} 回合${usage.costEstimateUsd !== undefined ? `（按活跃 Provider 单价估算 $${usage.costEstimateUsd.toFixed(4)}）` : ""}`}
+          >
+            <span>↑{formatTokens(usage.inputTokens)}</span>
+            <span>↓{formatTokens(usage.outputTokens)}</span>
+            <span>{usage.turnsCount} 轮</span>
+            {usage.costEstimateUsd !== undefined && <span>${usage.costEstimateUsd.toFixed(4)}</span>}
+          </div>
+        )}
+        <div className="flex flex-col gap-0.5">
+          {([
+            ["memory", "记忆管理器"],
+            ["extensions", "扩展面板（MCP / 插件）"],
+            ["settings", "⚙ Provider 设置"],
+          ] as const).map(([target, label]) => (
+            <button
+              key={target}
+              className={`w-full rounded px-2 py-1.5 text-left text-sm ${view === target ? "bg-ink-700" : "hover:bg-ink-800"}`}
+              onClick={() => setView(view === target ? "chat" : target)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
     </aside>
   );

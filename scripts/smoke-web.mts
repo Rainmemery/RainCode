@@ -1,5 +1,5 @@
 /**
- * Web 界面 smoke（M3 T3.8，07 §4.1 / 06-api-spec §6.3 v1.9）。
+ * Web 界面 smoke（M3 T3.8，07 §4.1 / 06-api-spec §6.3 v1.9；T4.5 扩用例 D 四面板服务面）。
  * 运行：tsx scripts/smoke-web.mts（或 pnpm run smoke:web）
  *
  * 链路：node:http mock OpenAI SSE + 临时 RAINCODE_HOME → createAgentServiceNode(undefined)
@@ -12,12 +12,19 @@
  *   覆盖断线窗口流式内容（history 全量重建无丢失）+ lastSeq 连续。
  * 用例 C 多连接扇出：两个连接各自完整时序，session.create 事件双双到达；断开其一后
  *   另一连接事件扇出不中断。
+ * 用例 D 四面板服务面（T4.5 验收项）：斜杠命令面板（skills.list 双层投影 + skills.invoke
+ *   端到端回合）/ 用量统计（session.usage 回合后投影）/ 记忆管理器（memory.read 空态 →
+ *   write Agent 专用章节 → 回读 + drafts/entries 投影）/ 扩展面板（MCP 连接投影 → 健康检查
+ *   实测 RTT → 启停事件到达 → 重连收敛；插件 active → 停用 → 再激活）——web 面板消费的
+ *   正是这套同方法表帧形态（06 §6.3），UI 侧真浏览器走查归 T4.7（L-05）。
  * 全程仅本机回环与临时目录：无外呼、无真实密钥（mock provider apiKey 为占位符，绝不打印）。
  */
 import assert from "node:assert/strict";
+import { cpSync, mkdirSync, writeFileSync } from "node:fs";
 import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
 import { createReconnectingRpcClient, WebSocketTransport, createRpcClient, RpcCallError } from "../packages/rpc/src/index.js";
 import type { RpcClient } from "../packages/rpc/src/index.js";
@@ -39,6 +46,16 @@ async function waitFor(predicate: () => boolean, ms = 10000, label = "condition"
   }
 }
 
+/** 异步谓词轮询（用例 D 服务面收敛：MCP 连接/插件状态变化经事件异步到达）。 */
+async function waitForAsync(predicate: () => Promise<boolean>, ms = 20000, label = "condition"): Promise<void> {
+  const started = Date.now();
+  for (;;) {
+    if (await predicate()) return;
+    if (Date.now() - started > ms) throw new Error(`waitFor timeout: ${label}`);
+    await sleep(100);
+  }
+}
+
 interface Scenario {
   home: string;
   workspace: string;
@@ -49,10 +66,31 @@ interface Scenario {
   close: () => Promise<void>;
 }
 
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
 async function startScenario(): Promise<Scenario> {
   const home = await mkdtemp(join(tmpdir(), "raincode-smoke-web-"));
   const workspace = join(home, "ws");
   await mkdir(workspace, { recursive: true });
+  // 种子（用例 D 面板服务面）：mcp.json（stdio fixture）+ 示例插件 hello + 技能双层
+  //（home/skills 全局层 ×2 + workspace/.raincode/skills 工作区层 ×1）
+  writeFileSync(
+    join(home, "mcp.json"),
+    JSON.stringify({
+      mcpServers: {
+        fixture: { transport: "stdio", command: "node", args: [join(REPO_ROOT, "scripts", "mcp-fixture-stdio.mjs")], enabled: true },
+      },
+    }),
+    "utf8",
+  );
+  mkdirSync(join(home, "plugins"), { recursive: true });
+  cpSync(join(REPO_ROOT, "examples", "plugins", "hello"), join(home, "plugins", "hello"), { recursive: true });
+  mkdirSync(join(home, "skills"), { recursive: true });
+  for (const skill of ["docs.md", "review.md"]) {
+    cpSync(join(REPO_ROOT, "examples", "skills", skill), join(home, "skills", skill));
+  }
+  mkdirSync(join(workspace, ".raincode", "skills"), { recursive: true });
+  cpSync(join(REPO_ROOT, "examples", "skills", "test-gen.md"), join(workspace, ".raincode", "skills", "test-gen.md"));
   const mock = await startMockLlmServer();
   const node = await createAgentServiceNode(undefined, {
     env: { RAINCODE_HOME: home },
@@ -67,6 +105,8 @@ async function startScenario(): Promise<Scenario> {
     permission: { policy: "default-allow" },
     skills: {},
     plugins: {},
+    mcp: {},
+    memory: {},
   });
   const host = new WebHost({
     node,
@@ -253,10 +293,108 @@ async function caseMultiClientFanout(scenario: Scenario): Promise<void> {
   }
 }
 
+/** D：四面板服务面（T4.5 验收项）。web 面板消费的正是这套同方法表帧形态（06 §6.3）：
+ * 斜杠命令面板 → skills.list（workspace+global 双层 source 投影）+ skills.invoke 端到端回合；
+ * 用量统计 → session.usage（mock usage 每回合 20/8）；记忆管理器 → memory.read 空态 →
+ * memory.write（Agent 专用章节白名单）→ 回读 + drafts/entries 空投影；扩展面板 → MCP
+ * 连接投影 → 健康检查实测 RTT → 启停（mcp.server_status_changed 到达）→ 重连收敛，
+ * 插件 active → 停用 → 再激活（plugin.status_changed 到达）。 */
+async function casePanelServices(scenario: Scenario): Promise<void> {
+  const { url, workspace, setScript } = scenario;
+  const { client, close } = await connectClient(url, "smoke-token");
+  try {
+    const statusEvents = new Set<string>();
+    client.onEvent("mcp.server_status_changed", () => statusEvents.add("mcp"));
+    client.onEvent("plugin.status_changed", () => statusEvents.add("plugin"));
+
+    // ① 斜杠命令面板服务面
+    const created = (await client.call("session.create", { workspaceRoot: workspace, title: "web-panels" })) as { sessionId: string };
+    const skills = (await client.call("skills.list", { sessionId: created.sessionId })) as {
+      items: Array<{ name: string; source: string }>;
+    };
+    const byName = new Map(skills.items.map((row) => [row.name, row]));
+    assert.equal(byName.get("test-gen")?.source, "workspace", "workspace 层技能应投影 source=workspace");
+    assert.equal(byName.get("review")?.source, "global", "global 层技能应投影 source=global");
+    setScript([textScript("面板走查：技能展开后的回复。")]);
+    const invokeDone = new Promise<void>((resolvePromise) => {
+      client.onEvent("done", (payload) => {
+        if ((payload as { sessionId?: string }).sessionId === created.sessionId) resolvePromise();
+      });
+    });
+    await client.call("skills.invoke", { sessionId: created.sessionId, name: "test-gen", arguments: "src/a.ts" });
+    await withTimeout(invokeDone, 15000, "skills.invoke turn");
+
+    // ② 用量统计服务面
+    const usage = (await client.call("session.usage", { sessionId: created.sessionId })) as {
+      inputTokens: number;
+      outputTokens: number;
+      turnsCount: number;
+    };
+    assert.ok(usage.turnsCount >= 1 && usage.inputTokens > 0 && usage.outputTokens > 0, `用量投影应为正: ${JSON.stringify(usage)}`);
+
+    // ③ 记忆管理器服务面（session.create 已建立 workspace 上下文）
+    const md0 = (await client.call("memory.read", { workspaceRoot: workspace })) as { exists: boolean };
+    assert.equal(md0.exists, false, "初始 MEMORY.md 不存在");
+    await client.call("memory.write", { workspaceRoot: workspace, section: "工作约定", content: "- smoke: 面板走查写入" });
+    const md1 = (await client.call("memory.read", { workspaceRoot: workspace })) as { exists: boolean; content: string };
+    assert.equal(md1.exists, true, "memory.write 后 MEMORY.md 应存在");
+    assert.ok(md1.content.includes("面板走查写入"), "memory.read 应回读写入内容");
+    const drafts = (await client.call("memory.drafts.list", {})) as { drafts: unknown[] };
+    assert.ok(Array.isArray(drafts.drafts), "memory.drafts.list 应投影空数组");
+    const entries = (await client.call("memory.entries.list", { page: { limit: 50 } })) as { items: unknown[] };
+    assert.ok(Array.isArray(entries.items), "memory.entries.list 应投影空数组");
+
+    // ④ 扩展面板服务面：MCP（连接投影 → 健康 → 启停 → 重连收敛）
+    const listServers = async (): Promise<Array<{ serverKey: string; status: string; enabled: boolean }>> => {
+      const result = (await client.call("mcp.servers.list", {})) as {
+        servers: Array<{ serverKey: string; status: string; enabled: boolean }>;
+      };
+      return result.servers;
+    };
+    await waitForAsync(
+      async () => (await listServers()).some((row) => row.serverKey === "fixture" && row.status === "Connected"),
+      20000,
+      "fixture Connected 投影",
+    );
+    const health = (await client.call("mcp.servers.health", {})) as {
+      items: Array<{ serverKey: string; ok: boolean; latencyMs?: number }>;
+    };
+    const fixtureHealth = health.items.find((row) => row.serverKey === "fixture");
+    assert.ok(fixtureHealth?.ok === true && typeof fixtureHealth.latencyMs === "number", "健康检查应对已连接 server 实测 RTT");
+    await client.call("mcp.servers.setEnabled", { serverKey: "fixture", enabled: false });
+    await waitForAsync(
+      async () => (await listServers()).some((row) => row.serverKey === "fixture" && row.status === "Disconnected" && !row.enabled),
+      10000,
+      "fixture 停用投影",
+    );
+    await client.call("mcp.servers.setEnabled", { serverKey: "fixture", enabled: true });
+    await waitForAsync(
+      async () => (await listServers()).some((row) => row.serverKey === "fixture" && row.status === "Connected"),
+      20000,
+      "fixture 重连收敛",
+    );
+    assert.ok(statusEvents.has("mcp"), "mcp.server_status_changed 应到达端层（扩展面板活更通道）");
+
+    // ⑤ 扩展面板服务面：插件（active → 停用 → 再激活）
+    const listPlugins = async (): Promise<Array<{ name: string; status: string }>> => {
+      const result = (await client.call("plugins.list", {})) as { plugins: Array<{ name: string; status: string }> };
+      return result.plugins;
+    };
+    assert.ok((await listPlugins()).some((row) => row.name === "hello" && row.status === "active"), "hello 插件应激活投影");
+    await client.call("plugins.setEnabled", { name: "hello", enabled: false });
+    await waitForAsync(async () => (await listPlugins()).some((row) => row.name === "hello" && row.status === "disabled"), 10000, "hello 停用");
+    await client.call("plugins.setEnabled", { name: "hello", enabled: true });
+    await waitForAsync(async () => (await listPlugins()).some((row) => row.name === "hello" && row.status === "active"), 10000, "hello 再激活");
+    assert.ok(statusEvents.has("plugin"), "plugin.status_changed 应到达端层（扩展面板活更通道）");
+  } finally {
+    await close();
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-  console.log("== smoke:web（T3.8 Web 界面 / 06 §6.3 v1.9）==");
+  console.log("== smoke:web（T3.8 Web 界面 / 06 §6.3 v1.9；T4.5 四面板服务面）==");
   const scenario = await startScenario();
   try {
     await caseAuthAndSession(scenario);
@@ -265,7 +403,9 @@ async function main(): Promise<void> {
     console.log("—— 用例 B 断线重连快照补偿 OK");
     await caseMultiClientFanout(scenario);
     console.log("—— 用例 C 多连接扇出 OK");
-    console.log("SMOKE OK: smoke-web 3/3");
+    await casePanelServices(scenario);
+    console.log("—— 用例 D 四面板服务面 OK（斜杠 / 用量 / 记忆 / 扩展）");
+    console.log("SMOKE OK: smoke-web 4/4");
   } finally {
     await scenario.close();
   }

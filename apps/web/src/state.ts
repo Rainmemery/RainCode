@@ -31,7 +31,7 @@ interface WebStore extends WebState {
   bootstrap(): Promise<void>;
   /** 就绪/重连后的列表刷新与会话对齐（connection 状态机驱动）。 */
   refreshLists(): Promise<void>;
-  setView(view: "chat" | "settings"): void;
+  setView(view: "chat" | "settings" | "memory" | "extensions"): void;
   setWorkspace(root: string): void;
   createSession(title?: string): Promise<void>;
   selectSession(sessionId: string): Promise<void>;
@@ -40,10 +40,19 @@ interface WebStore extends WebState {
   respondApproval(grantId: string, decision: "allow" | "deny", always: boolean, scope?: "session" | "project" | "global"): Promise<void>;
   addProvider(input: { name: string; baseURL: string; model: string; apiKey?: string; maxContextTokens: number }): Promise<void>;
   switchProvider(providerId: string): Promise<void>;
+  /** 活跃会话用量刷新（session.usage；done 后与切会话时调用，UI-4 用量统计 T4.5 对齐）。 */
+  refreshUsage(): Promise<void>;
+  /** 斜杠命令调用（skills.invoke，展开在 server 侧；与 CLI/桌面端同语义）。 */
+  invokeSkill(name: string, args?: string): Promise<void>;
   dismissError(): void;
 }
 
 let client: ReconnectingRpcClient | null = null;
+
+/** 面板组件直连 RPC（低频管理面拉取：memory/mcp/plugins/skills 清单；主会话流仍走 store 动作）。 */
+export function rpcCall<T>(method: string, params?: unknown): Promise<T> {
+  return rpc().call<T>(method, params ?? {});
+}
 
 function endpoint(): { url: string; token: string } {
   const params = new URLSearchParams(window.location.search);
@@ -133,6 +142,7 @@ export const useWeb = create<WebStore>((set, get) => {
     try {
       const view = await restoreSession(activeId);
       set((state) => ({ views: { ...state.views, [activeId]: view } }));
+      await get().refreshUsage(); // 重连恢复后用量行对齐
     } catch (err) {
       setState({ error: err instanceof RpcCallError ? `${err.code}: ${err.message}` : String(err) });
     }
@@ -140,8 +150,14 @@ export const useWeb = create<WebStore>((set, get) => {
 
   function onEvent(name: string): void {
     rpc().onEvent(name, (payload) => {
+      // 扩展域全局事件（无 sessionId 归属）：仅 bump tick，面板自行重拉全量投影（桌面端同口径）
+      if (name === "mcp.server_status_changed" || name === "plugin.status_changed") {
+        set((state) => ({ extTick: state.extTick + 1 }));
+        return;
+      }
       const record = (payload ?? {}) as Record<string, unknown>;
       set(applySessionEvent(get(), name, record));
+      if (name === "done") void get().refreshUsage(); // 回合收束即刷新用量行
     });
   }
 
@@ -161,6 +177,8 @@ export const useWeb = create<WebStore>((set, get) => {
         "done",
         "error",
         "session.snapshot",
+        "mcp.server_status_changed",
+        "plugin.status_changed",
       ]) {
         onEvent(name);
       }
@@ -244,6 +262,47 @@ export const useWeb = create<WebStore>((set, get) => {
         activeId: sessionId,
         turnPhase: null,
       }));
+      await get().refreshUsage();
+    },
+
+    async refreshUsage(): Promise<void> {
+      const sessionId = get().activeId;
+      if (sessionId === null) return;
+      try {
+        const usage = await call<NonNullable<WebState["usage"]>>("session.usage", { sessionId });
+        // 会话可能已切换：只写回仍是活跃会话的用量
+        if (get().activeId === sessionId) set({ usage });
+      } catch {
+        // 用量展示为附加信息：失败静默（条目缺失/旧服务端不影响主流程）
+      }
+    },
+
+    async invokeSkill(name, args): Promise<void> {
+      const sessionId = get().activeId;
+      if (sessionId === null) {
+        setState({ error: "no active session" });
+        return;
+      }
+      const view = get().views[sessionId];
+      const commandText = `/${name}${args !== undefined && args.length > 0 ? ` ${args}` : ""}`;
+      const userItem = { kind: "message" as const, id: `u-${Date.now()}`, role: "user" as const, text: commandText, streaming: false };
+      set((state) => ({
+        views: {
+          ...state.views,
+          [sessionId]: {
+            ...(view ?? { sessionId, title: sessionId, items: [] }),
+            items: [...(view?.items ?? []), userItem],
+          },
+        },
+        streaming: true,
+        error: null,
+      }));
+      try {
+        await call("skills.invoke", { sessionId, name, ...(args !== undefined && { arguments: args }) });
+      } catch (err) {
+        const message = err instanceof RpcCallError ? `${err.code}: ${err.message}` : String(err);
+        setState({ error: message, streaming: false });
+      }
     },
 
     async send(text): Promise<void> {
