@@ -26,7 +26,7 @@ interface SnapshotPayload {
 
 interface DesktopStore extends DesktopState {
   bootstrap(): Promise<void>;
-  setView(view: "chat" | "settings" | "memory"): void;
+  setView(view: "chat" | "settings" | "memory" | "extensions"): void;
   setWorkspace(root: string): void;
   pickWorkspace(): Promise<void>;
   createSession(title?: string): Promise<void>;
@@ -36,6 +36,10 @@ interface DesktopStore extends DesktopState {
   respondApproval(grantId: string, decision: "allow" | "deny", always: boolean, scope?: "session" | "project" | "global"): Promise<void>;
   addProvider(input: { name: string; baseURL: string; model: string; apiKey?: string; maxContextTokens: number }): Promise<void>;
   switchProvider(providerId: string): Promise<void>;
+  /** 斜杠技能调用（T3.9 / UI-4）：skills.invoke，turn 事件流与 session.send 完全一致。 */
+  invokeSkill(name: string, args?: string): Promise<void>;
+  /** 活跃会话用量刷新（session.usage；切会话与 done 后调用，UI-4 用量统计）。 */
+  refreshUsage(): Promise<void>;
   dismissError(): void;
 }
 
@@ -65,6 +69,8 @@ export const useDesktop = create<DesktopStore>((set, get) => {
     rpc().onEvent(name, (payload) => {
       const record = (payload ?? {}) as Record<string, unknown>;
       set(applySessionEvent(get(), name, record));
+      // 回合收束后刷新用量（UI-4）：done 每回合一次，拉取成本可忽略
+      if (name === "done") void get().refreshUsage();
     });
   }
 
@@ -149,6 +155,8 @@ export const useDesktop = create<DesktopStore>((set, get) => {
           "done",
           "error",
           "session.snapshot",
+          "mcp.server_status_changed", // 全局事件（扩展面板活更，UI-4）
+          "plugin.status_changed", // 全局事件（扩展面板活更，UI-4）
         ]) {
           onEvent(name);
         }
@@ -218,6 +226,19 @@ export const useDesktop = create<DesktopStore>((set, get) => {
         activeId: sessionId,
         turnPhase: null,
       }));
+      await get().refreshUsage();
+    },
+
+    async refreshUsage(): Promise<void> {
+      const sessionId = get().activeId;
+      if (sessionId === null) return;
+      try {
+        const usage = await call<NonNullable<DesktopState["usage"]>>("session.usage", { sessionId });
+        // 会话可能已切换：只写回仍是活跃会话的用量
+        if (get().activeId === sessionId) set({ usage });
+      } catch {
+        // 用量展示为附加信息：失败静默（条目缺失/旧服务端不影响主流程）
+      }
     },
 
     async send(text): Promise<void> {
@@ -271,6 +292,31 @@ export const useDesktop = create<DesktopStore>((set, get) => {
     async switchProvider(providerId): Promise<void> {
       const result = await call<{ activeProviderId: string }>("config.providers.switch", { providerId });
       setState({ activeProviderId: result.activeProviderId });
+    },
+
+    async invokeSkill(name, args): Promise<void> {
+      const sessionId = get().activeId;
+      if (sessionId === null) throw new Error("no active session");
+      const view = get().views[sessionId];
+      const commandText = `/${name}${args !== undefined && args.length > 0 ? ` ${args}` : ""}`;
+      const userItem = { kind: "message" as const, id: `u-${Date.now()}`, role: "user" as const, text: commandText, streaming: false };
+      set((state) => ({
+        views: {
+          ...state.views,
+          [sessionId]: {
+            ...(view ?? { sessionId, title: sessionId, items: [] }),
+            items: [...(view?.items ?? []), userItem],
+          },
+        },
+        streaming: true,
+        error: null,
+      }));
+      try {
+        await call("skills.invoke", { sessionId, name, ...(args !== undefined && { arguments: args }) });
+      } catch (err) {
+        const message = err instanceof RpcCallError ? `${err.code}: ${err.message}` : String(err);
+        setState({ error: message, streaming: false });
+      }
     },
 
     dismissError(): void {

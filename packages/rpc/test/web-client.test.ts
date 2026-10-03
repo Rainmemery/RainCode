@@ -259,8 +259,19 @@ test("web-client: 服务未就绪 → 持续重连退避直至服务可用", asy
       backoffMs: () => 10,
     });
     await waitFor(() => (client.state === "reconnecting" ? true : undefined));
-    await sleep(50);
-    assert.equal(client.state, "reconnecting", "服务不可用期间不得进入 ready");
+    // 不可用窗口内持续采样：始终处于退避/连接中（不得 ready/closed），且观测到过重连态。
+    // 单点断言在高负载下会被 10ms 退避重连的 connecting 瞬态击穿（T3.9 复跑发现），采样化加固。
+    const states = new Set<string>();
+    const sampleDeadline = Date.now() + 200;
+    while (Date.now() < sampleDeadline) {
+      states.add(client.state);
+      assert.ok(
+        client.state === "connecting" || client.state === "reconnecting",
+        `服务不可用期间不得进入 ${client.state}`,
+      );
+      await sleep(10);
+    }
+    assert.ok(states.has("reconnecting"), "应观测到重连退避态");
     server.setUp(true); // 服务可用：下一次退避重连应成功握手
     await waitFor(() => (client.state === "ready" ? true : undefined), 3000);
     const echoed = await client.call<{ ok: number }>("echo", { ok: 1 });

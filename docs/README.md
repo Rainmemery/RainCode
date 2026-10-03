@@ -25,7 +25,7 @@
 | --- | --- |
 | [../PROGRESS.md](../PROGRESS.md) | **任务进度唯一事实来源**：状态快照、任务日志、问题记录、下一步队列 |
 | [testing.md](testing.md) | 测试说明：单元测试、冒烟脚本、基准测试、门禁体系、运行方法 |
-| [benchmarks/](benchmarks/) | 各里程碑 NFR 基准留存报告：[m1-2026-09-28](benchmarks/m1-2026-09-28.md)（M1：NFR-1/2/3/5/7 首测）· [m2-2026-09-29](benchmarks/m2-2026-09-29.md)（M2：+NFR-4 桌面内存 / NFR-6 压缩非阻塞 / M1 指标复跑对比） |
+| [benchmarks/](benchmarks/) | 各里程碑 NFR 基准留存报告：[m1-2026-09-28](benchmarks/m1-2026-09-28.md)（M1：NFR-1/2/3/5/7 首测）· [m2-2026-09-29](benchmarks/m2-2026-09-29.md)（M2：+NFR-4 桌面内存 / NFR-6 压缩非阻塞 / M1 指标复跑对比）· [m3-2026-10-02](benchmarks/m3-2026-10-02.md)（M3：NFR-1~7 全量重测 + 4.2 矩阵逐项核对 + 桌面 GUI 走查自动化） |
 | [ui-mockups/](ui-mockups/) | HTML 高保真原型：桌面工作区 / 设置 / 记忆 / CLI TUI |
 
 ## 治理文件（仓库根目录）

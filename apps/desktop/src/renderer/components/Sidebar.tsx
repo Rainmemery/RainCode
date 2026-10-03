@@ -16,12 +16,20 @@ function relativeTime(ts: number): string {
   return `${Math.floor(diff / 86_400_000)} 天前`;
 }
 
+/** token 数三档缩写（用量统计行，UI-4）：1234 → 1.2k。 */
+function formatTokens(count: number): string {
+  if (count < 1000) return String(count);
+  if (count < 1_000_000) return `${(count / 1000).toFixed(1)}k`;
+  return `${(count / 1_000_000).toFixed(1)}m`;
+}
+
 export default function Sidebar() {
   const workspace = useDesktop((s) => s.workspace);
   const sessions = useDesktop((s) => s.sessions);
   const activeId = useDesktop((s) => s.activeId);
   const providers = useDesktop((s) => s.providers);
   const activeProviderId = useDesktop((s) => s.activeProviderId);
+  const usage = useDesktop((s) => s.usage);
   const pickWorkspace = useDesktop((s) => s.pickWorkspace);
   const createSession = useDesktop((s) => s.createSession);
   const selectSession = useDesktop((s) => s.selectSession);
@@ -68,6 +76,17 @@ export default function Sidebar() {
         })}
       </nav>
       <div className="border-t border-border-faint px-3 py-2.5">
+        {activeId !== null && usage !== null && (
+          <div
+            className="mb-2 flex items-center gap-2 px-1 text-2xs text-faint"
+            title={`本会话累计：输入 ${usage.inputTokens} tokens / 输出 ${usage.outputTokens} tokens / ${usage.turnsCount} 回合${usage.costEstimateUsd !== undefined ? `（按活跃 Provider 单价估算 $${usage.costEstimateUsd.toFixed(4)}）` : ""}`}
+          >
+            <span>↑{formatTokens(usage.inputTokens)}</span>
+            <span>↓{formatTokens(usage.outputTokens)}</span>
+            <span>{usage.turnsCount} 轮</span>
+            {usage.costEstimateUsd !== undefined && <span>${usage.costEstimateUsd.toFixed(4)}</span>}
+          </div>
+        )}
         <div className="mb-2 flex items-center gap-2 px-1">
           <span className={`dot ${activeProvider !== null ? "dot-ok" : "dot-warn"}`} />
           {activeProvider !== null ? (
@@ -85,6 +104,13 @@ export default function Sidebar() {
             className="h-8 w-full rounded-md border border-border-strong text-2xs text-mid hover:bg-hover"
           >
             记忆管理器
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("extensions")}
+            className="h-8 w-full rounded-md border border-border-strong text-2xs text-mid hover:bg-hover"
+          >
+            扩展面板（MCP / 插件）
           </button>
           <button
             type="button"

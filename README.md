@@ -12,7 +12,7 @@ RainCode 的功能定位与 Claude Code / Codex 对齐：整合**代码生成、
 
 ## 当前状态
 
-**M2（能力补全 + 桌面端 Alpha）验收完成** ✅，NFR-1~7 基准全达标（见 [docs/benchmarks/m2-2026-09-29.md](docs/benchmarks/m2-2026-09-29.md)）。下一里程碑 M3：容器沙箱、技能、插件、远程执行、Web 界面。
+**M3（七模块全量对齐）验收完成** ✅（T3.1~T3.9，NFR-1~7 全量重测与 4.2 对比矩阵核对见 [docs/benchmarks/m3-2026-10-02.md](docs/benchmarks/m3-2026-10-02.md)；M2 基准见 [docs/benchmarks/m2-2026-09-29.md](docs/benchmarks/m2-2026-09-29.md)）。
 
 | 能力 | 状态 |
 | --- | --- |
@@ -26,7 +26,7 @@ RainCode 的功能定位与 Claude Code / Codex 对齐：整合**代码生成、
 | 项目记忆（MEMORY.md 注入 / FTS5 检索 / 会话记忆抽取 / 晋升草案待确认区 / 桌面记忆管理器） | ✅ M2/M3 |
 | P1 工具（`web_fetch` SSRF 防护 / `ask_user_question` 交互提问） | ✅ M2 |
 | rpc stdio 绑定 + headless 宿主（`raincode serve`） | ✅ M2 |
-| 桌面端 Alpha（Electron 三泳道 + React，会话流 / 工具卡 / 审批弹窗 / Provider 设置） | ✅ M2 |
+| 桌面端 Alpha（Electron 三泳道 + React，会话流 / 工具卡 / 审批弹窗 / Provider 设置 / 记忆管理器 / 扩展面板 / 斜杠命令面板 / 用量统计） | ✅ M2/M3 |
 | 会话管理（rename / fork / usage 费用估算 / archive / mode） | ✅ M2 |
 | 容器沙箱（Docker / WSL 执行域 + 不可用回退，config.json `sandbox` 节） | ✅ M3 |
 | 远程执行（SSH 远程工作区，复用 Executor 抽象，本地审计保留） | ✅ M3 |
@@ -151,7 +151,7 @@ pnpm --filter @raincode/desktop build
 pnpm --filter @raincode/desktop dist
 ```
 
-Alpha 功能范围：三栏主界面（会话列表 + 会话流 + 输入区）、工具调用卡片（五状态：排队 / 运行中 / 成功 / 失败 / 已作废）、权限审批弹窗（风险徽章 + 键盘 `1-4` 直选 + `Esc` 拒绝）、Provider 设置（添加 / 切换 / 活跃徽章）、记忆管理器（MEMORY.md 预览 / 晋升草案确认 / 条目检索与晋升）、工作区目录选择、流式输出与光标、子进程崩溃自动重启提示。与 CLI 共享同一 `RAINCODE_HOME` 数据目录——CLI 里开始的会话，桌面端打开即续接。
+Alpha 功能范围：三栏主界面（会话列表 + 会话流 + 输入区）、工具调用卡片（五状态：排队 / 运行中 / 成功 / 失败 / 已作废）、权限审批弹窗（风险徽章 + 键盘 `1-4` 直选 + `Esc` 拒绝）、Provider 设置（添加 / 切换 / 活跃徽章）、记忆管理器（MEMORY.md 预览 / 晋升草案确认 / 条目检索与晋升）、**扩展面板（MCP 服务器启停 / 健康检查 / 重试 + 插件启停与状态，全局事件活更）**、**斜杠命令面板（`/` 唤起技能清单，↑↓ + Tab 补全，Enter 经 `skills.invoke` 端到端执行）**、**会话用量统计（↑/↓ tokens / 回合数 / 费用估算）**、工作区目录选择、流式输出与光标、子进程崩溃自动重启提示。与 CLI 共享同一 `RAINCODE_HOME` 数据目录——CLI 里开始的会话，桌面端打开即续接。GUI 回归走查：`node --import tsx scripts/walkthrough-desktop.mts`（CDP 驱动构建产物，14 断言）。
 
 ## Web 界面（浏览器会话工作台）
 
@@ -176,7 +176,7 @@ raincode web --port 8787
 - **多连接扇出**：多个浏览器标签页可同时连接，会话事件投递到全部活跃连接；多标签审批弹窗互相同步（同一 `pendingApprovals` 投影）。
 - **心跳**：宿主 30s 周期 WS ping 探活，空闲连接自动断开；`RAINCODE_WS_DELTA_WINDOW_MS` 可调大流式批量窗口（广域网）。
 
-Alpha 功能范围：会话列表 / 新建 / 切换、工作区路径输入、会话流式渲染（markdown 轻渲染与工具卡五状态）、交互审批（四级决策 + 键盘直选）、Provider 设置、连接状态条（重连可视化）。记忆管理器等管理面板随桌面端 UI-4 补齐节奏对齐。
+Alpha 功能范围：会话列表 / 新建 / 切换、工作区路径输入、会话流式渲染（markdown 轻渲染与工具卡五状态）、交互审批（四级决策 + 键盘直选）、Provider 设置、连接状态条（重连可视化）。记忆 / 扩展等管理面板当前为桌面端独有（UI-4 已补齐），Web 端管理面板随后续节奏对齐。
 
 ## Provider 配置
 
@@ -278,6 +278,7 @@ raincode chat --base-url https://your-endpoint/v1 --model your-model --api-key s
 ```
 
 - MCP 工具以 `mcp__<serverKey>__<toolName>` 命名空间注册进工具系统，权限元数据**从严**（needsApproval=true），与内置工具同走三态判定。
+- **serverKey 由 map 键承载**（Claude/Cursor 生态 mcpServers 约定；条目内显式 `serverKey` 字段可省，给出时须与键一致——T3.9 起两种形态均接受）。CLI / `serve` / `web` / 桌面 agent 全入口默认装配 mcp 域：全局层 `~/.raincode/mcp.json` 总是生效；project 层 `<workspace>/.raincode/mcp.json` 在单工作区入口（`run/chat --workspace`）生效，多工作区入口（桌面 / web）仅全局层；损坏配置降级为 stderr 告警 + 域空转，不阻断 agent 启动。
 - 连接状态机：Disconnected → Connecting → Connected，失败指数退避重连（1/2/4/8/16s，5 次耗尽 → Failed）；单 server 故障仅影响自身命名空间（失败隔离）。
 - 断连重连后工具清单自动刷新；`mcp.server_status_changed` 事件实时上报状态。
 - 也可运行时经 RPC 管理：`mcp.servers.list/add/remove/retry/setEnabled/health`（桌面端 MCP 面板同源）。

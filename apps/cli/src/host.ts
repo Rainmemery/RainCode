@@ -34,6 +34,7 @@ export async function createStdioHostContext(argv: string[] = []): Promise<Stdio
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
     skills: {}, // skills 域启用（T3.4）：与 CLI in-process 同语义（06 §2.9）
     plugins: {}, // plugins 域启用（T3.5）：与 CLI in-process 同语义（06 §2.10）
+    mcp: {}, // mcp 域启用（T3.9 全量对齐补装配）：stdio 宿主无装配期工作区，全局层 mcp.json 生效（06 §2.5）
   });
   return {
     node,

@@ -3,6 +3,7 @@
  * 状态机与 CLI stream.ts 同源（06 §3.2 事件语义），双端共享同一份事实（03 §7 一致性约束）。
  * 纯函数实现（不依赖 react/zustand），便于单测驱动。
  */
+import type { McpServerStatusEntry, McpServerStatus, PluginStatus, PluginSummary } from "@raincode/shared";
 
 export interface ChatItem {
   kind: "message";
@@ -58,7 +59,8 @@ export interface ProviderRow {
 export interface DesktopState {
   connection: "connecting" | "ready" | "agent-down";
   runMode: string;
-  view: "chat" | "settings" | "memory";
+  /** extensions = MCP / 插件面板（UI-4，T3.9）。 */
+  view: "chat" | "settings" | "memory" | "extensions";
   workspace: string | null;
   sessions: Array<{ id: string; title: string; lastActiveAt: number }>;
   activeId: string | null;
@@ -69,6 +71,14 @@ export interface DesktopState {
   providers: ProviderRow[];
   activeProviderId: string | null;
   error: string | null;
+  /** MCP 服务器状态投影（mcp.servers.list 拉取 + mcp.server_status_changed 事件活更，UI-4）。 */
+  mcpServers: McpServerStatusEntry[];
+  /** 插件状态投影（plugins.list 拉取 + plugin.status_changed 事件活更，UI-4）。 */
+  plugins: PluginSummary[];
+  /** 全局状态事件计数（面板据此重拉列表：拉取早于域就绪时事件对未知行不可增量补，UI-4）。 */
+  extensionsTick: number;
+  /** 活跃会话用量（session.usage；done 事件后与切会话时刷新，UI-4 用量统计）。 */
+  usage: { inputTokens: number; outputTokens: number; turnsCount: number; costEstimateUsd?: number } | null;
 }
 
 export function initialDesktopState(): DesktopState {
@@ -86,6 +96,10 @@ export function initialDesktopState(): DesktopState {
     providers: [],
     activeProviderId: null,
     error: null,
+    mcpServers: [],
+    plugins: [],
+    extensionsTick: 0,
+    usage: null,
   };
 }
 
@@ -133,8 +147,12 @@ function appendAssistantDelta(items: StreamItem[], itemId: string, text: string)
 /**
  * 事件应用（06 §3.2 会话域事件子集；未知事件整体忽略，06 §7.4）。
  * 返回新 state（浅拷贝 + 受影响分支重建）。
+ * 全局事件（mcp.server_status_changed / plugin.status_changed，sessionId 缺省）先行处理——
+ * 不参与会话流投影，只更新扩展面板状态（UI-4）。
  */
 export function applySessionEvent(state: DesktopState, name: string, payload: Record<string, unknown>): DesktopState {
+  if (name === "mcp.server_status_changed") return applyMcpStatusChanged(state, payload);
+  if (name === "plugin.status_changed") return applyPluginStatusChanged(state, payload);
   const sessionId = typeof payload["sessionId"] === "string" ? payload["sessionId"] : state.activeId;
   if (sessionId === null) return state;
   const view: SessionView =
@@ -278,6 +296,44 @@ function patchView(state: DesktopState, sessionId: string, patch: Partial<Sessio
   return { ...state, views: { ...state.views, [sessionId]: { ...current, ...patch } } };
 }
 
+/** mcp.server_status_changed（全局）：upsert 状态行；enabled 以 list 拉取为准（事件不改写）。 */
+function applyMcpStatusChanged(state: DesktopState, payload: Record<string, unknown>): DesktopState {
+  const serverKey = payload["serverKey"];
+  const status = payload["status"];
+  if (typeof serverKey !== "string" || typeof status !== "string") return state;
+  const servers = [...state.mcpServers];
+  const idx = servers.findIndex((server) => server.serverKey === serverKey);
+  if (idx >= 0) {
+    const row = servers[idx]!;
+    servers[idx] = {
+      ...row,
+      status: status as McpServerStatus,
+      ...(typeof payload["toolCount"] === "number" && { toolCount: payload["toolCount"] as number }),
+      ...(typeof payload["error"] === "string" ? { lastError: payload["error"] as string } : {}),
+    };
+  }
+  // 无条件 tick：拉取早于域就绪时事件对未知行不可增量补，面板据此重拉全量
+  return { ...state, mcpServers: servers, extensionsTick: state.extensionsTick + 1 };
+}
+
+/** plugin.status_changed（全局）：patch 状态行；enabled/工具清单以 list 拉取为准。 */
+function applyPluginStatusChanged(state: DesktopState, payload: Record<string, unknown>): DesktopState {
+  const name = payload["name"];
+  const status = payload["status"];
+  if (typeof name !== "string" || typeof status !== "string") return state;
+  const plugins = [...state.plugins];
+  const idx = plugins.findIndex((plugin) => plugin.name === name);
+  if (idx >= 0) {
+    const row = plugins[idx]!;
+    plugins[idx] = {
+      ...row,
+      status: status as PluginStatus,
+      ...(typeof payload["error"] === "string" ? { lastError: payload["error"] as string } : {}),
+    };
+  }
+  return { ...state, plugins, extensionsTick: state.extensionsTick + 1 };
+}
+
 /** 工具入参摘要（折叠头参数摘要，03 §6.4）。 */
 export function summarizeInput(input: unknown): string | undefined {
   if (input === null || input === undefined) return undefined;
@@ -288,4 +344,16 @@ export function summarizeInput(input: unknown): string | undefined {
   } catch {
     return String(input).slice(0, 120);
   }
+}
+
+/**
+ * 斜杠命令解析（T3.9 斜杠命令面板）："/name" 或 "/name args" → 调用形状；
+ * 非斜杠 / 裸 "/" / 名字含非法字符（技能名域 [a-z0-9-]+）→ null（按普通文本发送）。
+ * 展开在 server 侧（skills.invoke，06 §2.9），端层只解析转发，与 CLI 同语义。
+ */
+export function parseSlashInvocation(text: string): { name: string; args?: string } | null {
+  const match = /^\/([a-z0-9-]+)(?:\s+([\s\S]+))?$/.exec(text.trim());
+  if (match === null) return null;
+  const args = match[2];
+  return { name: match[1]!, ...(args !== undefined && { args }) };
 }

@@ -3,6 +3,7 @@
  * Provider 来源优先级在此落地：CLI 参数 > RAINCODE_PROVIDER_* env > config/providers.local.json。
  */
 import { parseArgs } from "node:util";
+import { resolve } from "node:path";
 import { createInMemoryTransportPair, createRpcClient } from "@raincode/rpc";
 import type { InMemoryTransport, RpcClient } from "@raincode/rpc";
 import { createAgentServiceNode, resolveProviderConfig } from "@raincode/server";
@@ -86,6 +87,9 @@ export async function startServiceNode(args: ParsedCliArgs): Promise<CliContext>
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
     skills: {}, // skills 域启用（T3.4）：workspace 技能目录按会话 workspaceRoot 逐会话解析
     plugins: {}, // plugins 域启用（T3.5）：数据根 plugins 目录扫描 + 激活（单插件故障隔离）
+    // mcp 域启用（T3.9 全量对齐补装配）：project 层 mcp.json 需装配期工作区，仅单工作区入口
+    //（--workspace）生效；多工作区入口（chat 无 --workspace / serve / web）全局层 mcp.json 生效
+    ...(args.workspace !== undefined ? { mcp: { workspaceRoot: resolve(args.workspace) } } : { mcp: {} }),
   });
   const client = createRpcClient({ transport: transports[0] });
   return { client, node, transports, providerSource: resolved ? resolved.source : "none" };

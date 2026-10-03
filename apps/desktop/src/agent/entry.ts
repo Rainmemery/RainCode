@@ -28,6 +28,10 @@ void (async (): Promise<void> => {
         }
       : null,
     systemPrompt: SYSTEM_PROMPT,
+    // 域装配与 CLI host.ts 同构（apps 互不依赖，改此处时同步 host.ts；T3.9 对齐补齐 skills/plugins/mcp）
+    skills: {},
+    plugins: {},
+    mcp: {}, // 无装配期工作区，全局层 mcp.json 生效（06 §2.5）
   });
   process.stdin.on("end", () => {
     void node.close().then(() => process.exit(0));

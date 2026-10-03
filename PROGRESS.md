@@ -13,12 +13,12 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 当前里程碑 | **M3 进行中**（T3.1 容器沙箱 ✅ · T3.2 远程执行 ✅ · T3.3 记忆自动抽取+管理界面 ✅ · T3.4 技能与斜杠命令 ✅ · T3.5 插件化 ✅ · T3.6 子代理编排增强 ✅ · T3.7 MCP 服务器管理 ✅ · T3.8 Web 界面 ✅；M2 验收完成，场景 5 GUI 走查已于 2026-09-29 以 CDP 自动化方式闭环，场景 6 真实 MCP 样例留人工） |
-| 已完成任务 | M1 全量 ✅ · M2 全量（T2.1~T2.10）✅ · CLI 展示升级 ✅ · 产品更名 RainCode ✅ · 场景 5 桌面 GUI 走查（自动化）✅ · NFR-4 口径修正复测 ✅ · T3.1 容器沙箱 ✅ · T3.2 远程执行 ✅ · T3.3 记忆自动抽取+管理界面 ✅ · T3.5 插件化 ✅ · T3.6 子代理编排增强 ✅ · T3.7 MCP 服务器管理 ✅ · T3.8 Web 界面 ✅ |
+| 当前里程碑 | **M3 全量完成**（T3.1 容器沙箱 ✅ · T3.2 远程执行 ✅ · T3.3 记忆自动抽取+管理界面 ✅ · T3.4 技能与斜杠命令 ✅ · T3.5 插件化 ✅ · T3.6 子代理编排增强 ✅ · T3.7 MCP 服务器管理 ✅ · T3.8 Web 界面 ✅ · T3.9 桌面端补齐+全量对齐验收 ✅；NFR-1~7 全量重测达标 + 4.2 对比矩阵逐项核对，见 docs/benchmarks/m3-2026-10-02.md） |
+| 已完成任务 | M1 全量 ✅ · M2 全量（T2.1~T2.10）✅ · M3 全量（T3.1~T3.9）✅ · 场景 5 桌面 GUI 走查（自动化）✅ · T3.9 桌面 GUI 走查（自动化，14 断言）✅ |
 | 最新提交 | 见 `git log -1` |
 | 工作区状态 | clean |
-| 门禁状态 | typecheck ✅（14 项目，+apps/web）/ oxlint ✅（12 warning 基线保持）/ architecture:check ✅（13 模块，+app-web）/ 单测 189 ✅（rpc websocket+web-client+authGate 16、server web-host 5 新增）/ smoke:p0 全回归 ✅（新增 smoke:web 三用例 + 补登 smoke:stdio 入回归环）/ NFR 基准留存 `docs/benchmarks/m2-2026-09-29.md`（NFR-1~7 全达标；NFR-4 口径修正复测中位数 414.5MB 达标见报告 §7） |
-| 快照日期 | 2026-10-02 |
+| 门禁状态 | typecheck ✅（14 项目）/ oxlint ✅（12 warning 基线）/ architecture:check ✅（13 模块）/ 单测 203 ✅（T3.9 +14：desktop session-view 6、mcp config 6、server mcp-degrade 2）/ smoke:p0 全回归 ✅（14 子冒烟）/ 桌面走查 walkthrough-desktop.mts ✅（14 断言）/ NFR 基准留存 docs/benchmarks/m3-2026-10-02.md（NFR-1~7 全达标；NFR-1 跨 Node 版本 -50% 申报、NFR-4 +8.7% 装配面扩大申报） |
+| 快照日期 | 2026-10-03 |
 
 ---
 
@@ -29,7 +29,7 @@
 | Phase 1 设计 | — | 7 份产品/技术设计文档 | ✅ 完成（2026-09-28） |
 | M1 | P0 | 单进程 CLI 打通日常可用闭环 | ✅ 完成（2026-09-28） |
 | M2 | P1 | 能力补全 + 桌面端 Alpha | ✅ 完成（2026-09-29，场景 5 走查已自动化闭环） |
-| M3 | P2 | 七模块全量对齐 | 🔄 进行中（T3.1~T3.8 完成，仅余 T3.9） |
+| M3 | P2 | 七模块全量对齐 | ✅ 完成（2026-10-03，T3.1~T3.9 + NFR 全量重测 + 4.2 矩阵核对；环境不可得人工项见 m3 报告 §8） |
 
 ---
 
@@ -38,6 +38,8 @@
 > 格式：`[日期] 任务 — 结果`（含关键产出物与提交号）。**新条目插在本节最上方。**
 
 ### M3 · P2（七模块全量对齐）
+
+- [2026-10-03] T3.9 桌面端补齐 + M3 全量对齐验收（07 §4.1 / UI-4 / 07 §4.4 验收清单）——a) **桌面 UI-4 补齐**：扩展面板（MCP 服务器：mcp.servers.list 投影 / setEnabled 启停 / health 健康检查 RTT / retry，Failed 行内重试；插件：plugins.list 投影 / setEnabled 启停 / 工具清单；全局事件 mcp.server_status_changed / plugin.status_changed 经 reducer 落 store 活更 + extensionsTick 通道驱动面板重拉——拉取早于域就绪时事件对未知行不可增量补，走查发现）；斜杠命令面板（InputArea `/` 唤起 skills.list 清单浮层，↑↓ + Tab + Esc 键盘导航，发送路径 parseSlashInvocation 纯函数解析 → skills.invoke，SKILL_NOT_FOUND 走错误横条；parseSlashInvocation 名字域 [a-z0-9-] 与 CLI 同语义）；用量统计（selectSession 与 done 事件后 session.usage 刷新，侧栏 ↑/↓ tokens / 回合 / 费用估算行）；视图联合类型 chat|settings|memory|extensions；b) **MCP 域用户入口装配补齐（全量对齐缺口）**：mcp 域此前仅测试手装、任何用户入口均未装配——CLI in-process（context.ts，`--workspace` 时含 project 层 mcp.json）/ stdio 宿主（host.ts，serve 与桌面 agent 子进程）/ web 宿主 / 桌面打包 agent 入口（entry.ts，skills/plugins/mcp 三域对齐 host.ts 同构）全入口装配，多工作区入口全局层生效；c) **走查发现并修复 3 缺陷**（scripts/walkthrough-desktop.mts，CDP 驱动构建产物 14 断言全过：扩展面板启停双向+事件活更 / 斜杠面板键盘流+skills.invoke 端到端 / 用量统计 / 记忆管理器）：① **生态形态 mcp.json 被拒载**——README 文档形态 `{mcpServers:{<key>:{...}}}`（serverKey 由 map 键承载）被 mcpServerConfigSchema 判缺 serverKey 字段，smoke 一直写冗余字段从未暴露 → loadFile 按 map 键注入 + 显式字段一致性校验（mcp config.test 6 用例锁定）；② **损坏 mcp.json 崩掉 agent**——McpRuntime.init() 抛 MCP_CONFIG_INVALID 经 `void init()` 未处理拒绝 → agent 崩溃循环放弃 → init 失败降级 stderr 诊断 + 域空转（server mcp-degrade.test 2 用例锁定）；③ **斜杠面板吞 Enter**——面板打开且已输参时 palette 分支 return 拦截发送路径 → 有参 Enter 落回正常发送分支；d) **NFR-1~7 全量重测留存**（docs/benchmarks/m3-2026-10-02.md）：NFR-1 477.9ms（跨 Node v22→v24 版本 -50% 如实申报）/ NFR-2 2.7ms / NFR-3 0.0ms / NFR-5 61.4ms / NFR-7 PASS / NFR-6 compact 专项 PASS / NFR-4 中位数 450.8MB 峰值 452.9MB ≤500MB（agent 子进程 78.7MB 真实存活；+8.7% 为 skills/plugins/mcp 装配面扩大申报）；附加约束（远程执行 NFR-2 本地区间 ≤300ms）由 T3.2 同一 ToolExecutor 链路承担；**4.2 对比矩阵 RainCode 列 13 行逐项核对** + 07 §4.4 验收清单 7 项对照（报告 §4~§5）；e) 测试：单测 +14 共 203（desktop session-view reducer 全局事件投影与斜杠解析 6 / mcp config 文件形态矩阵 6 / server mcp-degrade 2）；web-client「服务未就绪」用例单点断言采样化加固（10ms 退避下高负载 connecting 瞬态击穿，T3.9 复跑发现）；smoke-memory case B 走查期复现 Windows 同时钟刻 mtime 盲窗（~15.6ms tick 内 stat→外部写→stat 复检 mtime 不变 → 冲突漏检，FileSnapshot 增 size 判定修复后 6/6 确定性，见 §4）；f) README 桌面端功能范围/MCP 装配语义/能力行/里程碑行、testing.md 203 + 走查脚本行、docs/README 基准索引；PROGRESS §1~§5 收口（**M3 全量完成**）；四门禁全绿 + smoke:p0 全回归 OK（14 子冒烟）+ 桌面走查 14/14。遗留人工项（环境不可得）：Docker/WSL 真实执行域运行时验证、SSH 端到端样例、场景 6 真实 MCP 任务样例、electron-builder 完整 dist、Web 工作台真实浏览器人工走查。
 
 - [2026-10-02] T3.8 Web 界面（07 §4.1 / 06 §6.3 / UI-5，协议 v1.9 54 方法）——a) **rpc：WebSocketTransport**（websocket.ts）：每条 WS 文本消息一帧、帧结构与 stdio 完全一致（帧协议与方法表零改动，「传输无关」最终验证）；delta 批量窗口自 stdio 抽出共用模块 delta-window.ts（stdio 行为零变更，既有单测作回归护栏）；畸形帧按角色处置（server 角色可定位 id 回 PARSE_ERROR / client 角色丢弃+告警，均不断开）；双面结构适配 WsSocketLike（node「ws」`on` 事件面与浏览器 `addEventListener` 面均满足，rpc 包不引 ws 依赖）；b) **binding 连接级鉴权门**（server.ts `authGate` 选项）：时序 `ws.auth` → `system.ping` → 业务方法，鉴权前一切请求（含 ping，不泄露版本）回新增系统码 `UNAUTHORIZED`（段 0）；成功应答才开门、失败不开、门随连接生存；c) **web-client（@raincode/rpc/web 浏览器安全子路径）**：createReconnectingRpcClient——重连握手（ws.auth+ping）编排、指数退避（1s×2 封顶 10s 可注入）、per-session seq 缺口检测→onSeqGap、恢复后 onRestored、鉴权失败 onFatal 停机、在途调用断线即 TRANSPORT_CLOSED fail-fast、resync 窗口丢事件防补推重复；d) **server：WebHost**（web-host.ts）——http+ws upgrade、逐连接独立绑定（authGate 开门 + ws.auth handler 注入方法表，token sha256+timingSafeEqual 常数时间比较）、事件多连接扇出、ws.ping 心跳探活（30s 周期，空闲 terminate）、可选静态工作台资源（路径穿越防护 + 421 纯 WS 端点提示）；AgentService 多绑定化（bindings Set + publisher 扇出 + detach，stdio/in-memory 单连接零回归）；createAgentServiceNode transport 参数可选（Web 多连接宿主延迟 attach）；agent-service 523→499 行治理：五域构造下沉 runtime-domains.ts、shutdown 主流程下沉 session-support.shutdownService；e) **apps/cli `raincode web`**：装配口径与 serve 一致（provider 三来源 + skills/plugins 域），token 解析 --token > RAINCODE_WEB_TOKEN > 自动生成打印 stderr（绝不落盘）；**apps/web 会话工作台**（React 18 + Zustand + Tailwind，@raincode/rpc/web 单一依赖面）：reducer 与桌面端同状态机（03 §7 一致性），onRestored/onSeqGap 双出口接 resume 补偿 + setSeqBaseline 回填，会话流/工具卡五状态/审批四级决策键盘直选/Provider 设置/连接状态条（重连可视化）；f) 协议 v1.9 additive：ws 域 1 方法 ws.auth + UNAUTHORIZED 段 0 + capability ws.auth（stdio/in-memory 不暴露）；06 §2.11 插入（原 2.11/2.12 顺延 2.12/2.13，tool-phase.ts 引用同步）、§6.3 由预留说明重写为落地定义（心跳/退避/补偿路径/扇出）；g) 测试：单测 +21 共 189（rpc：websocket 6 传输/畸形/窗口/close/断开 + web-client 6 握手/缺口/resync/重连/fatal/未就绪 + authGate 4；server：web-host 5 鉴权/解绑/扇出/静态/421）；smoke:web 三用例入 smoke:p0 回归（A 鉴权+浏览器端到端会话 / B 断线重连快照补偿——mock 延迟 1200ms 使回合内容整体产生于断线窗口，resume 补推零丢失的最强断言 / C 多连接扇出）；并修正 T2.8 遗漏（smoke:stdio 此前未入 smoke:p0 回归环）；h) README Web 界面节 + 命令表 + 能力行、06 五处、04 §4.4 落地化、testing.md 计数 189 + smoke 行；PROGRESS §1/§2/§3/§4/§5 推进（T3.8 ✅）；四门禁全绿 + smoke:p0 全回归 OK（smoke:web 3/3 复跑稳定）。
 
@@ -88,8 +90,12 @@
 
 > 格式：`[日期] 问题 → 根因 → 解决`。同类问题复现时先查此表。
 
+- [2026-10-03] smoke-memory case B（mtime 冲突确定性注入）复跑失败率 ~80%（T3.3 时 4/4 命中）→ 根因：**Windows 文件时间戳有效粒度为系统时钟刻（实测本机 ~15.6ms tick）**——「S1 stat → 注入外部 append → S2 stat」整个读-改-写窗口落在同一 tick 内时 mtime 完全不变（含亚毫秒位逐位相等），mtime 复检对同 tick 外部写天然盲视；T3.3 的 4/4 只是当时时序恰好跨刻，并非机制确定性 → 修复：FileSnapshot 增加 `size` 参与变更判定（字节数精确无粒度，覆盖外部追加/改写主流场景），S2 复检与 rename 回退检查双路同口径，修复后 smoke-memory 6/6 确定性。教训：**mtime 差分并发检测在 Windows 有时钟刻盲窗，双指标（mtime+size）才收敛**。
+- [2026-10-03] 桌面走查发现 mcp.json 文档形态被拒载 + 损坏配置崩掉 agent → 双根因：① loadFile 直接用方法面 schema（serverKey 必填字段）校验文件形态，而文档/生态约定 serverKey 由 map 键承载，smoke 一直写冗余字段从未暴露；② McpRuntime.init() 的 MCP_CONFIG_INVALID 经 fire-and-forget `void init()` 成为未处理拒绝 → agent 进程崩溃 → 桌面守护 5 次放弃（「能跑通的门禁」≠「联调过的功能」再验证——mcp.json 用户路径从未被任何端到端走查覆盖）。修复：loadFile 按 map 键注入 serverKey（显式字段仅一致性校验，写回形态向后兼容）+ init 失败降级 stderr 诊断 + 域空转；生态形态与降级路径各以单测锁定。
+- [2026-10-03] 测试环境：机器负载下 web-client「服务未就绪」用例偶发失败 → 10ms 退避重连下「reconnecting」单点断言被 connecting 瞬态击穿（waitFor 命中后退避可能恰好翻转）→ 采样化：200ms 窗口内状态必须始终 ∈ {connecting, reconnecting} 且观测到过 reconnecting，意图不变消除刀口。另：当日多次发现**昨日遗留 node 进程空转烧 CPU**（挂起的测试子进程不退出，单测文件全部并行后连带时序用例失败）——复跑套件前先查杀孤儿 node 进程。
+
 - [2026-10-02] smoke:web 断线重连用例中「重连后回合事件丢失/误判缺口」→ 双根因：① **delta 批量合并 × seq 缺口检测交互**——服务端连续 delta（seq 5/6/7）在批量窗口内合并为一帧（seq 取最新=7），客户端 4→7 判缺口 → resync 丢弃 done（06 §3.4 与 §6.3 第 4 条叠加语义）；② **seq 基线只覆盖已订阅事件名**——未订阅的 message.delta 不推进基线，下一事件 4→6 误判缺口。解决：缺口检测规则定为「message.delta 帧只推进基线不判定缺口（合并帧 seq=最新一条恰为后续事件前驱，天然桥接），其余会话事件逐帧投递跳变即真实丢帧」；web-client 连接期把 EVENT_SCHEMAS 全部已登记事件名挂上 ingestEvent（基线全见，未订阅事件也参与推进）。教训：传输层合并（§3.4）与端层丢帧检测（§6.3）在同一 seq 序列上共存时，检测必须以「永不合并的事件」为判定锚点、以合并帧为基线桥接。
-- [2026-09-29] smoke-memory case B（mtime 并发冲突）复跑偶发失败（冲突未命中或 INTERNAL）→ 双根因：① 真实竞态窗口 <1ms，固定次数 setImmediate 戳探在快机/负载波动下可能全部被读-改-写吸收（S1→S2 间隙未被覆盖）；② 外部写落在 S2 复检与 rename 之间时，Windows 下 rename 因目标被短暂持有报 EPERM，未被归因直接冒泡为 INTERNAL → ② 在 project-file.ts 修复：rename 失败后复检 mtime，变化即归因 MEMORY_WRITE_CONFLICT（与 S1/S2 同口径）+ 临时文件清理；① 改为在途期间 setInterval(0) 持续外部写直至 promise 收敛 + 10 轮重放，复跑 6 次 5 过。残余时序敏感性已知：ESM 静态导入绑定原函数，进程内事后 patch fs.promises.stat 不传播（实测），确定性方案（prod 注入 stat 钩子）随 T3.3 记忆波次落地，暂不在 prod 加测试面。
+- [2026-09-29] smoke-memory case B（mtime 并发冲突）复跑偶发失败（冲突未命中或 INTERNAL）→ 双根因：① 真实竞态窗口 <1ms，固定次数 setImmediate 戳探在快机/负载波动下可能全部被读-改-写吸收（S1→S2 间隙未被覆盖）；② 外部写落在 S2 复检与 rename 之间时，Windows 下 rename 因目标被短暂持有报 EPERM，未被归因直接冒泡为 INTERNAL → ② 在 project-file.ts 修复：rename 失败后复检 mtime，变化即归因 MEMORY_WRITE_CONFLICT（与 S1/S2 同口径）+ 临时文件清理；① 改为在途期间 setInterval(0) 持续外部写直至 promise 收敛 + 10 轮重放，复跑 6 次 5 过。残余时序敏感性已知：ESM 静态导入绑定原函数，进程内事后 patch fs.promises.stat 不传播（实测），确定性方案（prod 注入 stat 钩子）随 T3.3 记忆波次落地，暂不在 prod 加测试面。（2026-10-03 补注：T3.3 的注入缝方案在 Windows 同时钟刻下仍有 mtime 盲窗，最终修复见 2026-10-03 条目——FileSnapshot 增 size 判定。）
 - [2026-09-29] NFR-4 桌面端空载内存基准口径申报（T2.10 留存值 339.8MB 偏保守失真）→ 基准时 agent 子进程因 dev spawn 路径 bug（见 §3 场景 5 走查条目 a）处于崩溃循环放弃状态，进程树实际仅含 main+renderer/GPU，未计入 agent 子进程 → 修复后应复跑 bench:mem:desktop 留存新口径（M3 开工前补测）。
 - [2026-09-29] CLI `run` 回合收尾报 `failed to persist event "turn.phase_changed" EBADF` → done 事件后 CLI 立即关库，emitPersisted 的串行写队列中迟到的 phase 变更事件持久化失败（非致命，会话事实完整）→ 已知收尾竞态，暂不阻塞：Storage.close() 排空串行写队列列入 M3 内核小修。
 - [2026-09-29] 电脑控制（computer-use）broker 在当前 ZCode 会话不可用（node_repl 桥 assertAvailable 报 unavailable）→ CUA 权限 broker 未随会话开通 → 以「electron --remote-debugging-port + CDP 真实输入事件 + PowerShell SendKeys 驱动原生对话框」等价替代完成 GUI 走查；原生对话框截图不可用 CDP（仅含页面栅格），以全屏 CopyFromScreen 兜底。
@@ -102,9 +108,9 @@
 
 ---
 
-## 5. 下一步队列（M3，按 07-dev-plan §4 顺序）
+## 5. 下一步队列（M3 已全部完成；后续里程碑待 07-dev-plan 增补排期）
 
-> 取任务时**必须**回读 `docs/07-dev-plan.md` §4 对应任务行获取完整验收标准；M2 收尾人工项（真实 MCP 任务样例 / electron-builder dist 打包 / Docker·WSL 真实执行域运行时验证）可随时穿插执行。
+> 取任务时**必须**回读 `docs/07-dev-plan.md` §4 对应任务行获取完整验收标准；M2/M3 收尾人工项（真实 MCP 任务样例 / electron-builder dist 打包 / Docker·WSL 真实执行域运行时验证 / SSH 端到端样例）可随时穿插执行。
 
 1. ~~**T3.1 容器沙箱（SB-3/4）**~~ ✅（2026-09-29；Docker/WSL 真实运行时验证留人工——本机无 Docker、WSL 无发行版）
 2. ~~**T3.2 远程执行复用 Executor 抽象**~~ ✅（2026-09-29；SSH 端到端样例随 M3 全量对齐人工执行——本机无 SSH 服务端）
@@ -114,7 +120,7 @@
 6. ~~**T3.3 记忆自动抽取 + 管理界面**~~ ✅（2026-10-02；晋升草案待确认区 + 桌面记忆管理器 + case B 确定性收口；MR-4 走查自动化项由 smoke-memory 用例 G 与桌面视图构建覆盖，人工界面走查并入 T3.9）
 7. ~~**T3.5 插件化**~~ ✅（2026-10-02；加载/启停/生命周期 + 示例插件 hello + 故障隔离验收，协议 v1.8）
 8. ~~**T3.8 Web 界面**~~ ✅（2026-10-02；WebSocketTransport + ws.auth 鉴权门 + 重连退避与 seq 缺口 resume 补偿 + apps/web 工作台，协议 v1.9）
-9. **T3.9 桌面端补齐 + M3 全量对齐验收** — UI-4 各界面（含 T3.4 留存的桌面斜杠命令面板）+ NFR-1~7 全量重测留存 + 桌面记忆管理器/插件人工走查
+9. ~~**T3.9 桌面端补齐 + M3 全量对齐验收**~~ ✅（2026-10-03；UI-4 扩展面板/斜杠命令面板/用量统计 + MCP 域用户入口装配补齐 + 走查 14 断言修复 3 缺陷 + NFR-1~7 全量重测 + 4.2 矩阵 13 行核对，见 docs/benchmarks/m3-2026-10-02.md）
 
 ---
 

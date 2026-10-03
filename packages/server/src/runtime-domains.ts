@@ -62,7 +62,11 @@ export function buildRuntimeDomains(inputs: RuntimeDomainInputs, deps: RuntimeDo
           workspaceRoot: inputs.mcp.workspaceRoot,
           publish: deps.publish,
         });
-  void mcp?.init();
+  // init 失败（如 mcp.json 损坏 MCP_CONFIG_INVALID）→ 域降级 + 诊断，不得以未处理拒绝
+  // 击穿 agent 装配（T3.9 桌面走查发现：配置形态缺陷曾致 agent 子进程崩溃循环放弃）
+  mcp?.init().catch((err: unknown) => {
+    console.error("[raincode/server] mcp domain degraded: init failed", err);
+  });
   // 插件域（06 §2.10 v1.8）：目录扫描 + 激活异步进行，单插件故障隔离为 failed 状态
   // （bootstrap 于构造期启动；控制面方法经就绪门等待初次扫描完成）
   const plugins =

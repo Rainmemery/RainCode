@@ -59,6 +59,7 @@ export async function webCommand(rest: string[]): Promise<number> {
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
     skills: {}, // skills 域启用（T3.4）：与 CLI in-process 同语义（06 §2.9）
     plugins: {}, // plugins 域启用（T3.5）：与 CLI in-process 同语义（06 §2.10）
+    mcp: {}, // mcp 域启用（T3.9 全量对齐补装配）：Web 宿主无装配期工作区，全局层 mcp.json 生效（06 §2.5）
   });
   const tokenArg = stringOrUndefined(values.token);
   const token = tokenArg ?? process.env["RAINCODE_WEB_TOKEN"] ?? randomBytes(24).toString("hex");

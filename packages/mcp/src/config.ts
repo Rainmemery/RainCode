@@ -9,6 +9,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { mkdir } from "node:fs/promises";
+import { z } from "zod";
 import { mcpConfigFileSchema, mcpServerConfigSchema } from "@raincode/shared";
 import type { McpServerConfig } from "@raincode/shared";
 
@@ -66,7 +67,10 @@ export function validateServerKey(serverKey: string): void {
   }
 }
 
-/** 单文件加载：缺文件返回空 map（不视为错误）；zod 校验失败 → MCP_CONFIG_INVALID。 */
+/** 单文件加载：缺文件返回空 map（不视为错误）；zod 校验失败 → MCP_CONFIG_INVALID。
+ * 文件形态 serverKey 由 map 键承载（Claude/Cursor 生态约定，README 文档形态）；
+ * 条目内显式 serverKey 字段可省（写回形态带字段，向后兼容），给出时须与 map 键一致。
+ * （T3.9 桌面走查发现：文档形态此前被 schema 判缺 serverKey 字段而拒载。） */
 async function loadFile(path: string): Promise<Map<string, McpServerConfig>> {
   let raw: string;
   try {
@@ -80,12 +84,28 @@ async function loadFile(path: string): Promise<Map<string, McpServerConfig>> {
   } catch {
     throw new McpConfigError("MCP_CONFIG_INVALID", `mcp config is not valid JSON: ${path}`);
   }
-  const result = mcpConfigFileSchema.safeParse(parsed);
-  if (!result.success) {
-    const detail = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
-    throw new McpConfigError("MCP_CONFIG_INVALID", `mcp config invalid at ${path}: ${detail}`);
+  const shape = z.object({ mcpServers: z.record(z.unknown()) }).safeParse(parsed);
+  if (!shape.success) {
+    throw new McpConfigError("MCP_CONFIG_INVALID", `mcp config invalid at ${path}: mcpServers map expected`);
   }
-  return new Map(Object.entries(result.data.mcpServers));
+  const configs = new Map<string, McpServerConfig>();
+  for (const [mapKey, entry] of Object.entries(shape.data.mcpServers)) {
+    const record = (entry ?? {}) as Record<string, unknown>;
+    const declared = record["serverKey"];
+    if (typeof declared === "string" && declared !== mapKey) {
+      throw new McpConfigError(
+        "MCP_CONFIG_INVALID",
+        `mcp config invalid at ${path}: serverKey "${declared}" does not match map key "${mapKey}"`,
+      );
+    }
+    const result = mcpServerConfigSchema.safeParse({ ...record, serverKey: mapKey });
+    if (!result.success) {
+      const detail = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
+      throw new McpConfigError("MCP_CONFIG_INVALID", `mcp config invalid at ${path} [${mapKey}]: ${detail}`);
+    }
+    configs.set(mapKey, result.data);
+  }
+  return configs;
 }
 
 /**

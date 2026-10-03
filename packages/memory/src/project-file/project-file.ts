@@ -137,15 +137,18 @@ function serialize(lines: string[]): string {
 interface FileSnapshot {
   exists: boolean;
   mtimeMs: number | null;
+  /** 字节长度：Windows 同时钟刻（实测 ~15.6ms tick）内 mtime 可能不推进（stat→外部写→stat 复检
+   * 观测到 mtimeMs 完全相等），size 精确无粒度，参与变更判定补盲区（T3.9 走查发现）。 */
+  size: number | null;
 }
 
 async function snapshot(path: string): Promise<FileSnapshot> {
   try {
     const s = await stat(path);
-    return { exists: true, mtimeMs: s.mtimeMs };
+    return { exists: true, mtimeMs: s.mtimeMs, size: s.size };
   } catch (reason: unknown) {
     if (isEnoent(reason)) {
-      return { exists: false, mtimeMs: null };
+      return { exists: false, mtimeMs: null, size: null };
     }
     throw reason;
   }
@@ -172,21 +175,21 @@ async function commitSectionEdit(
     if (!before.exists) {
       // 读到 stat 之间被删除：按缺失路径处理（先落模板）
       base = MEMORY_TEMPLATE.split("\n");
-      before = { exists: false, mtimeMs: null };
+      before = { exists: false, mtimeMs: null, size: null };
     }
   } catch (reason: unknown) {
     if (!isEnoent(reason)) {
       throw reason;
     }
     base = MEMORY_TEMPLATE.split("\n");
-    before = { exists: false, mtimeMs: null };
+    before = { exists: false, mtimeMs: null, size: null };
   }
 
   await hooks.onBeforeRecheck?.();
   const after = await snapshot(path);
   const changed =
     after.exists !== before.exists ||
-    (after.exists && before.exists && after.mtimeMs !== before.mtimeMs);
+    (after.exists && before.exists && (after.mtimeMs !== before.mtimeMs || after.size !== before.size));
   if (changed) {
     // 多窗口并发：后写者检测到 mtime 变更即放弃本次写入（02 §7.4）
     throw new MemoryError(
@@ -205,7 +208,10 @@ async function commitSectionEdit(
     // 复检 mtime 归因为并发修改（与 S1/S2 同一口径），而非冒泡为 INTERNAL；临时文件顺手清理。
     void unlink(tmp).catch(() => undefined);
     const afterRename = await snapshot(path);
-    if (afterRename.exists && afterRename.mtimeMs !== before.mtimeMs) {
+    if (
+      afterRename.exists &&
+      (afterRename.mtimeMs !== before.mtimeMs || afterRename.size !== before.size)
+    ) {
       throw new MemoryError(
         MEMORY_ERROR_CODES.WRITE_CONFLICT,
         `MEMORY.md changed concurrently, write abandoned: ${path}`,
