@@ -26,6 +26,7 @@ pnpm smoke:p0                                            # 功能冒烟
    pnpm bench:all       # 涉及性能路径时，与上一里程碑基准对比不劣化 ±10%
    ```
 4. **架构约束**：跨包依赖只允许 `architecture/policy.yaml` 白名单中的 `requires`；跨包导入只能从对方登记的 `publicEntrypoints`（包名入口 `index.ts` 或显式登记的子路径入口，如 `@raincode/rpc/client`）；单文件 ≤ 500 行；禁止循环依赖。越权改动请先在 Issue 中讨论并同步更新 policy。
+5. **提交前自评审**：对照 [docs/defensive-patterns.md](docs/defensive-patterns.md) 附「速查表」过一遍（P-1~P-6 六条防御式模式 + N-1~N-4 原生沉淀）；修复值得复用的问题时按其 §0 格式回写 PROGRESS §4 并标注归位编号。
 
 ## 3. 文档更新协议（强制）
 
@@ -34,7 +35,7 @@ pnpm smoke:p0                                            # 功能冒烟
 | 你改动了什么 | 必须同步更新 |
 | --- | --- |
 | 完成任务/波次 | [PROGRESS.md](PROGRESS.md) §1 状态快照 + §3 任务日志（含提交号） |
-| 解决了一个值得复用的问题 | PROGRESS.md §4 问题记录 |
+| 解决了一个值得复用的问题 | [PROGRESS.md](PROGRESS.md) §4 问题记录（按 [defensive-patterns.md](docs/defensive-patterns.md) §0 格式，标注归位编号 P-x / N-x） |
 | 用户可见功能 | [README.md](README.md) 功能清单与用法 |
 | 测试脚本/门禁 | [docs/testing.md](docs/testing.md) |
 | 里程碑验收 | `docs/benchmarks/` 新增基准留存报告 + README 状态徽章 |

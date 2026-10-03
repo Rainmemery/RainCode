@@ -13,12 +13,12 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 当前里程碑 | **M3 全量完成 ✅**（T3.1~T3.9 全绿 + NFR-1~7 全量重测 + 4.2 对比矩阵核对，见 docs/benchmarks/m3-2026-10-02.md）· **M4 进行中**（工程加固与遗留收口：07-dev-plan §10，T4.1 CI ✅ · T4.2 竞态修复 ✅ · T4.3 协议目录 ✅ · T4.4 技能模型侧可发现性 ✅ · T4.5 Web 管理面板对齐 ✅ · T4.9 可视化测试缺陷修复批次 ✅（B1~B13），T4.6~T4.8 待做） |
-| 已完成任务 | M1 全量 ✅ · M2 全量（T2.1~T2.10）✅ · M3 全量（T3.1~T3.9）✅ · M4 T4.1 CI 落地 ✅ · T4.2 内核收尾竞态修复 ✅ · T4.3 生成式协议目录 ✅ · T4.4 技能模型侧可发现性 ✅ · T4.5 Web 端管理面板对齐 ✅ · T4.9 可视化测试缺陷修复批次（B1~B13）✅ · 场景 5 桌面 GUI 走查（自动化）✅ · T3.9 桌面 GUI 走查（自动化，14 断言）✅ · M4 规划轮（deepseek-harness 调研 + 遗留项台账 + 07 §10 排期 + 文档漂移修订）✅ |
+| 当前里程碑 | **M3 全量完成 ✅**（T3.1~T3.9 全绿 + NFR-1~7 全量重测 + 4.2 对比矩阵核对，见 docs/benchmarks/m3-2026-10-02.md）· **M4 进行中**（工程加固与遗留收口：07-dev-plan §10，T4.1 CI ✅ · T4.2 竞态修复 ✅ · T4.3 协议目录 ✅ · T4.4 技能模型侧可发现性 ✅ · T4.5 Web 管理面板对齐 ✅ · T4.6 防御式模式文档 ✅ · T4.9 可视化测试缺陷修复批次 ✅（B1~B13），T4.7~T4.8 待做） |
+| 已完成任务 | M1 全量 ✅ · M2 全量（T2.1~T2.10）✅ · M3 全量（T3.1~T3.9）✅ · M4 T4.1 CI 落地 ✅ · T4.2 内核收尾竞态修复 ✅ · T4.3 生成式协议目录 ✅ · T4.4 技能模型侧可发现性 ✅ · T4.5 Web 端管理面板对齐 ✅ · T4.6 防御式模式文档 ✅ · T4.9 可视化测试缺陷修复批次（B1~B13）✅ · 场景 5 桌面 GUI 走查（自动化）✅ · T3.9 桌面 GUI 走查（自动化，14 断言）✅ · M4 规划轮（deepseek-harness 调研 + 遗留项台账 + 07 §10 排期 + 文档漂移修订）✅ |
 | 最新提交 | 见 `git log -1` |
 | 工作区状态 | clean |
 | 门禁状态 | typecheck ✅（14 项目）/ oxlint ✅（12 warning 基线）/ architecture:check ✅（13 模块）/ protocol:check ✅（55 方法 19 事件一致，v1.11 plugins.rescan 已 gen 同步）/ 单测 220 ✅（+1：rpc web-client setSeqBaseline 基线防回退）/ smoke:p0 全回归 ✅（14 子冒烟，smoke:web 5/5 含 B3 回归用例 E，smoke:plugin 4 用例含 case D 重扫描）/ smoke:kernel ✅ / 桌面走查 walkthrough-desktop.mts ✅（14 断言，B2 装配后记忆管理器可达）/ CLI 管道真实 Provider 复测 ✅（B5：预置审批应答即时通过 + 干净退出 exit 0，零 ERR_USE_AFTER_CLOSE） · CI ✅（GitHub Actions windows-latest 六门禁与本地同集） |
-| 快照日期 | 2026-10-03 |
+| 快照日期 | 2026-10-04 |
 
 ---
 
@@ -39,6 +39,8 @@
 > 格式：`[日期] 任务 — 结果`（含关键产出物与提交号）。**新条目插在本节最上方。**
 
 ### M4 · 工程加固与遗留收口（07-dev-plan §10）
+
+- [2026-10-04] T4.6 防御式模式文档（调研借鉴 #3）——a) `docs/defensive-patterns.md` 落地：**dsh 六条适配** P-1 正交结果独立上报（MCP 失败隔离 / 工具错误数据级回传 / turns_count 逐列维护）· P-2 公共契约两侧遵守（executor ctx 手拷漏字段 / mcp.json 双形态 / stdin 单读方 / 畸形帧双侧处置）· P-3 异步状态不是同步状态（审批快照执行 / seq 缺口锚点与基线防回退 / 端侧视图是缓存）· P-4 dispose 必须达到静默（close 四步曲 T4.2 / readline close 雷 T4.9 B5 / 孤儿进程收割 L-17 / 容器清理 T3.1）· P-5 派发器收容回调异常（域 init 降级不崩溃 / 插件 failed 隔离 / 抽取与压缩钩子失败跳过）· P-6 不给不可信输出环境变量或可预测路径（SSRF fail-closed / 路径逃逸防护族 / apiKeyRef 秘密治理 / 插件 metadata 缺省从严），各条 = 陈述 + 违反症状 + 实战案例（含任务锚点）+ 评审检查点；**原生沉淀** N-1 信号分辨率不足叠加第二指标（mtime + size 双指标）/ N-2 断言必须有区分力、测试不得自建平行装配（`>= 0` 恒真与 B2 手装域盲区）/ N-3 验证世界而非自述、guard 只在回归能变红时才叫 guard（调研报告 §4 #3 采纳落地）/ N-4 基准必须测真实存活的进程树（NFR-4 口径申报）；**§0 问题记录格式**（症状 → 根因 → 处置含归位编号与修复锚点，PROGRESS §4 后续按此沉淀）+ 附提交前自评审速查表；b) 接入：docs/README 过程资产索引、CONTRIBUTING §2 增自评审清单步骤 + §3 问题记录行标注归位编号、testing.md §7 增「护栏必须演示过变红路径」约定、PROGRESS §4 头注指针；c) 顺带收口文档漂移：legacy-items §3 统计行（L-08 已于 T4.5 ✅ 但统计行仍计待收口——待收口 3→2（L-04/05）· M4 执行收口 2→3（L-06/07/08））+ L-17 处置指向已沉淀模式 + docs/README 台账行 19→21 项；d) 纯文档零代码改动：typecheck / lint（12 warning 基线）/ architecture:check / protocol:check 本地绿，test / smoke 由 CI 六门禁复跑把关。
 
 - [2026-10-03] T4.9 可视化测试缺陷修复批次（B1~B13；测试报告 2026-10-03 Computer Use 三端可视化测试）——a) **B1（高）dev 模式 renderer 全挂**：@raincode/rpc 直读 `process.env["NODE_ENV"]`，浏览器无 process 且 Vite dev 不做静态替换 → `BOOTSTRAP_FAILED` 横幅 + Provider 添加报错 + RPC 全不可用 → validate.ts `isDevMode` 改 `typeof process` 守卫（undefined 视为开发，宁多勿漏），client.ts devAssert 缺省经 isDevMode 解析；B13（未配置 Provider 误报）随 B1 收口。b) **B2（高）memory 域三端未装配**：CLI context / stdio host / web 宿主 / 桌面 agent entry 四入口均只传 skills/plugins/mcp → memory.read METHOD_NOT_FOUND（记忆管理器 UI 全挂）且 README 承诺的 MEMORY.md 注入 / 会话抽取 / 晋升草案在真实入口全部失效（单测冒烟自建节点手装 memory 域造成测试盲区）→ 四入口补 `memory: {}`（CLI 有 --workspace 时含 workspaceRoot）；Web 记忆管理器可视化复验：三栏真实渲染（分桶 / MEMORY.md 预览 / 草案区），零报错。c) **B3（中）多连接扇出**：协议层复验**本就正常**——smoke:web 增用例 E（双 createReconnectingRpcClient 浏览器同构路径：B 经 resume → setSeqBaseline 选中 A 所建会话后，A 的回合 delta/completed/done 实时到达 B，零缺口）+ web-client `setSeqBaseline` 基线防回退加固（resume 响应与在途事件竞态时过期 lastSeq 不得回退已观察基线，单测 +1 锁定）；真浏览器一次 stale 观测经 node 第三连接探针 + CDP 帧捕获判别：服务端扇出正常、帧到达浏览器页面，最可能根因为 Edge 后台窗口标签冻结（JS 挂起、唤醒后 resume 补偿拉平——与原报告「手动重选恢复」吻合），按 L-21 观察项登记（挂 T4.7 真浏览器走查复核）。d) **B4（中）桌面审批快捷键失效**：审批弹出时消息输入框保持焦点，keydown 守卫「输入控件聚焦不响应」使 1-4/Esc 全落输入框 → 弹窗挂载时 `ref.focus()` 接管焦点（tabIndex=-1 + outline-none），键盘直选恢复。e) **B5（中）CLI 管道输入丢失 + 退出噪音**：readline/promises `question()` 在无挂起读取时到达的行被直接丢弃（预置审批应答「1」必丢）→ chat.ts 新 LineChannel（常驻 'line' 监听 + 队列，stdin 单读方；**首跑发现第二根因：readline close 后 `prompt()` 内部 resume() 抛 ERR_USE_AFTER_CLOSE——next() 须先消费队列/判定 EOF，仅挂起等待时才渲染提示**）；EOF 主循环干净退出（exit 0）、挂起审批即时 fail-safe deny、ask_user_question 应答经同一通道（ApprovalMode.interactive 增可选 answer 回调）；PC_GRANT_NOT_FOUND 降级为说明非报错。真实 Provider 管道复测：预置「1」即时审批通过 → 文件落盘 → exit 0，stderr 零噪音。f) **B6（低）markdown 块级渲染**：桌面 MessageBubble 与 Web ChatFlow（按端最小实现，04 §2.3 政策）增 #~###### 标题 / | 表格（含分隔行判定）/ - * 列表解析，行内 code/粗体/斜体与 ``` 围栏保持。g) **B7（低）CLI reasoning 混流**：缺省省略 reasoning delta（每 turn 一次 stderr dim 提示），`RAINCODE_CLI_SHOW_REASONING=1/true` 恢复逐条输出（与桌面/Web 仅渲染 content 对齐，stdout 纯净）。h) **B8（低）风险徽章 i18n**：Web 审批弹窗 riskLevel 直出英文 → 与桌面端同文案映射（高风险/中风险/低风险，未知值原样）；可视化复验「中风险」徽章 + 键盘 1 放行 + 工具 ok。i) **B9（低）Web 首载竞态横幅**：bootstrap 在 ws 握手完成前调 refreshLists → TRANSPORT_CLOSED 横幅驻留 → refreshLists 对 TRANSPORT_CLOSED 静默（ready 后自动重试）+ ready 时清 error；新窗口首载无横幅复验 ✅。j) **B10（低）插件刷新语义**：新增 `plugins.rescan`（协议 v1.11 additive，55 方法）——运行时重扫描 plugins 目录装载新拷入插件（仅新增目录不重载已有、激活走既有 failed 隔离、幂等）；双端扩展面板「刷新」= rescan + 重拉；smoke:plugin 增 case D（新目录装载 / 幂等 / 状态事件）+ 可视化复验免重启装载 active。k) **B11（低）README 快速开始 cwd 口径**：provider 配置按 `<cwd>/config/` 解析而 `pnpm --filter` 的 cwd 是 apps/cli → README 补位置说明与 `node --import tsx apps/cli/src/index.ts` 根目录直跑方式。l) **B12（低）会话列表口径**：设计确认（数据根全量会话跨端可见是特性），README 口径化 + legacy-items L-20 申报保留。m) 测试 +1 共 220（web-client 基线防回退）；smoke:web 4→5 用例、smoke:plugin 3→4 用例；协议目录 gen 同步（55 方法）。n) 文档：06 §2.10 plugins.rescan 行 + §7.5 v1.11、README（协议 55 方法 / 快速开始 / 插件发布刷新语义 / 审批焦点 / 会话列表口径 / RAINCODE_CLI_SHOW_REASONING）、testing.md（220 / 用例 E / case D）、07-dev-plan §10.2 T4.9 行、legacy-items L-20/L-21、PROGRESS §1/§3/§4/§5；六门禁全绿 + 桌面走查 14/14（B2 装配后记忆管理器可达）+ CLI 管道真实 Provider 复测。
 
@@ -106,7 +108,7 @@
 
 ## 4. 问题与解决方案记录
 
-> 格式：`[日期] 问题 → 根因 → 解决`。同类问题复现时先查此表。
+> 格式：`[日期] 问题 → 根因 → 解决（归位 P-x / N-x，格式见 [docs/defensive-patterns.md](docs/defensive-patterns.md) §0）`。同类问题复现时先查此表，再查防御式模式清单。
 
 - [2026-10-03] B5 修复首跑失败（复测仍超时 + ERR_USE_AFTER_CLOSE）→ 双根因叠加：① readline/promises `question()` 无挂起时到达的行被直接丢弃（预置审批应答丢失，LineChannel 队列修复此层）；② **修复后复测仍失败——readline interface close 之后调用 `prompt()`，其内部 `resume()` 对已关闭接口抛 `ERR_USE_AFTER_CLOSE('readline was closed')`**（管道 EOF 即刻到达，审批 next() 渲染提示即抛 → promptApproval reject → grant 悬空等 2 分钟服务端超时 → 主循环再抛 → exit 2），三份日志（两超时 + respond failed + exit 2）由此逐一对应 → LineChannel.next() 调整顺序：先消费队列 / 判定 EOF，仅在实际挂起等待（接口仍开放）时才 setPrompt+prompt()。教训：**readline 非终端模式下 `close()` 后一切会触发 `resume()` 的调用（prompt/question）都带雷；行通道类封装必须在触碰 interface 前先判 EOF 与缓冲**。最小复现：piped stdin 三行脚本对 `createInterface({input, output})` 关闭后调 `rl.prompt()` 即抛（queueLen>0 也不能幸免）。
 - [2026-10-03] B3 可视化复测出现真浏览器 stale（第二窗口完全不更新，协议层 smoke 全绿）→ 分层判别：node 第三连接探针（后连接、实时收齐 delta/completed/done）证明服务端扇出正常；node 客户端完整模拟窗口 2 路径（resume → setSeqBaseline → 订阅）同样实时收齐；CDP `Network.webSocketFrameReceived` 证实帧**到达浏览器页面** → 服务端与 rpc 层均排除；结合第二窗口挂靠用户个人 Edge 配置（大量睡眠标签）、全程后台未聚焦、F5 唤醒后 resume 补偿立即拉平——最可能根因为 **Edge 后台窗口标签冻结（JS 挂起）**，与原可视化测试报告「手动切换会话再切回才恢复」现象吻合。处置：L-21 观察项登记（挂 T4.7 CDP 真浏览器走查复核），协议层回归（smoke:web 用例 E + setSeqBaseline 防回退单测）先行锁定。附带教训：Stop-Process 按 MainWindowTitle 过滤 msedge 会连坐同一浏览器进程的**全部窗口**（含用户个人标签页）——杀 Edge 前必须确认 user-data-dir 维度。
@@ -128,13 +130,12 @@
 
 ---
 
-## 5. 下一步队列（M4 进行中：T4.1~T4.5、T4.9 已完成移入 §3 日志；队列 T4.6~T4.8，07-dev-plan §10）
+## 5. 下一步队列（M4 进行中：T4.1~T4.6、T4.9 已完成移入 §3 日志；队列 T4.7~T4.8，07-dev-plan §10）
 
 > 取任务时**必须**回读 `docs/07-dev-plan.md` §10 对应任务行获取完整验收标准；遗留项全景见 `docs/legacy-items.md`。T4.8 环境门控批次（五 Provider 连通矩阵 / 真实仓库 Bug 修复样例 / 场景 6 真实 MCP 任务样例 / Docker·WSL·SSH 真实运行时验证）可随时穿插执行，环境不可得则按台账保留口径申报，不阻塞里程碑。
 
-1. **T4.6 防御式模式文档**——docs/defensive-patterns.md（dsh 六条适配 + RainCode M1~M4 实战沉淀：executor ctx 重建漏字段 / turns_count 投影列漏累加 / readline close 后 prompt() 抛 ERR_USE_AFTER_CLOSE / Edge 后台标签冻结对 WS 工作台的影响与恢复路径等首跑发现入库）。
-2. **T4.7 遗留收口批次 A**（L-04/L-05 核销）——electron-builder dist 产物 + walkthrough-web.mts 真浏览器走查脚本（含 L-21 多标签扇出冻结假说的确定性复核）。
-3. **T4.8 遗留收口批次 B**（L-01/02/03/14/15 承接，环境门控不计入门槛）——真实环境项穿插执行。
+1. **T4.7 遗留收口批次 A**（L-04/L-05 核销）——electron-builder dist 产物 + walkthrough-web.mts 真浏览器走查脚本（含 L-21 多标签扇出冻结假说的确定性复核）。
+2. **T4.8 遗留收口批次 B**（L-01/02/03/14/15 承接，环境门控不计入门槛）——真实环境项穿插执行。
 
 ---
 
