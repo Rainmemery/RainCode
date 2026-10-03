@@ -25,6 +25,8 @@ export interface Skill {
   description: string;
   /** 参数形状提示（如 "<file>"；缺省无参技能）。 */
   argumentHint?: string;
+  /** 模型侧可调用开关（T4.4；缺省 true）——false 时模型经 skill 工具调用被拒，斜杠命令不受限。 */
+  modelInvocable: boolean;
   /** 提示词模板正文（$ARGUMENTS 占位符在展开时替换）。 */
   template: string;
 }
@@ -98,12 +100,22 @@ export function parseSkillMarkdown(raw: string, fallbackName: string): Skill {
   if (description === undefined || description.length === 0) {
     throw new SkillError("SKILL_INVALID", `技能 "${name}" 缺少 description`);
   }
+  const modelInvocable = parseModelInvocable(fields.modelInvocable, name);
   return {
     name,
     description,
     ...(fields.argumentHint !== undefined && fields.argumentHint.length > 0 && { argumentHint: fields.argumentHint }),
+    modelInvocable,
     template: body.trim(),
   };
+}
+
+/** modelInvocable 开关解析（T4.4）：缺省/空 = true；仅接受 "true"/"false"，其余值 INVALID。 */
+function parseModelInvocable(raw: string | undefined, name: string): boolean {
+  if (raw === undefined || raw.length === 0) return true;
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  throw new SkillError("SKILL_INVALID", `技能 "${name}" frontmatter modelInvocable 非法（仅接受 true/false）: "${raw}"`);
 }
 
 /**

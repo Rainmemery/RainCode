@@ -164,7 +164,33 @@ export interface ToolPhaseDeps {
    * evaluate/awaitApproval 判定链独立（提问本身无副作用，不进五级判定）。
    */
   askUser?: AskUserChannel;
+  /**
+   * skill 工具展开通道（T4.4；可选——缺省 skills 域未装配，工具以 TOOL_UNAVAILABLE 收敛）。
+   * 真实实现由 server 装配（SkillRuntime.expandForModel = skills.invoke 同链路：双源解析 →
+   * modelInvocable 开关 → 模板展开，展开单点在 server 侧）；结果形态不复用异常（跨包错误类
+   * 不越 port），以 ok/code 投影交由工具侧收敛为 ToolResult.error。
+   */
+  expandSkill?: SkillExpansionChannel;
 }
+
+// ---------------------------------------------------------------------------
+// skill 工具展开通道（T4.4；skills.invoke 同链路的端口投影）
+// ---------------------------------------------------------------------------
+
+/** skill 工具调用请求（tool-phase 由 ToolExecutionContext 注入会话归属）。 */
+export interface SkillExpansionRequest {
+  sessionId: string;
+  /** 技能名（[a-z0-9-]+，同斜杠命令名）。 */
+  name: string;
+  /** 调用参数（$ARGUMENTS 替换；缺省无参）。 */
+  arguments?: string;
+}
+
+/** 展开结果：ok = 模板展开文本（模型作为工具结果续答）；!ok = 域码投影（工具侧收敛为错误结果）。 */
+export type SkillExpansionResult = { ok: true; expanded: string } | { ok: false; code: string; message: string };
+
+/** skill 展开通道（server 注入；SkillRuntime.expandForModel 薄投影）。 */
+export type SkillExpansionChannel = (request: SkillExpansionRequest) => Promise<SkillExpansionResult>;
 
 // ---------------------------------------------------------------------------
 // ask_user_question 通道（T2.7 P1；02 §1.4 L322 简化落地的端口投影）

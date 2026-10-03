@@ -1,10 +1,9 @@
 /**
  * SessionTurnLoop：单会话 Turn 循环（02-module-design §1.2 / 04-architecture §1.3）。
  * 单写者：一个循环实例同时只执行一个 turn；运行中 submit 经 CommandInbox 排队。
- * 多轮主流程（T1–T15，02 §1.2.1）：输入落库 → 组装上下文 → 流式 → ToolSchedule（zod+权限判定，
- * ask 态经 ApprovalBroker 挂起收敛）→ T9 ToolExecution → 结果落库 → T13 回传直至纯文本收束；
- * maxRoundsPerTurn（默认 32）保护；非法入参受限重试上限 3（AC-12，06 §4.3 段 7）；delta/progress 为
- * UI 瞬态不落盘（05 §4.2）；取消 T3/T5+T8/T12。
+ * 多轮主流程（T1–T15，02 §1.2.1）：输入落库 → 组装上下文 → 流式 → ToolSchedule（zod+权限判定，ask 态
+ * 经 ApprovalBroker 挂起收敛）→ T9 ToolExecution → 结果落库 → T13 回传直至纯文本收束；maxRoundsPerTurn
+ * （默认 32）保护；非法入参受限重试上限 3（AC-12，06 §4.3 段 7）；delta/progress 为 UI 瞬态不落盘（05 §4.2）；取消 T3/T5+T8/T12。
  */
 import { LlmAbortedError, LlmError, type LlmStreamEvent } from "@raincode/llm";
 import { ulid, type CheckpointState } from "@raincode/storage";
@@ -41,6 +40,8 @@ export interface SessionTurnLoopOptions {
   storage: StoragePort;
   publish: SessionEventPublisher;
   systemPrompt?: string;
+  /** 逐 turn 系统提示提供者（T4.4：技能目录 digest 热变更重发布；优先于静态 systemPrompt）。 */
+  systemPromptProvider?: () => Promise<string | undefined>;
   /** resume 场景的既有历史（内存态重建，server 从 JSONL 重放取得）。 */
   initialHistory?: MessageRecord[];
   /** resume 场景的 rpc 事件 seq 续起点（best-effort，见 server 侧注释）。 */
@@ -283,8 +284,12 @@ export class SessionTurnLoop {
       const result = await this.settler.abnormal(entry.turnId, "LLM_NOT_CONFIGURED", "no LLM client configured");
       return { kind: "settled", result };
     }
+    // 系统提示：provider 优先（T4.4 技能目录逐 turn 重发布），缺省静态 options.systemPrompt
+    const systemPrompt = this.options.systemPromptProvider !== undefined
+      ? await this.options.systemPromptProvider()
+      : this.options.systemPrompt;
     const requestMessages = assembleChatMessages({
-      systemPrompt: this.options.systemPrompt,
+      systemPrompt,
       history: this.history,
       steering: this.steeringBuffer,
     });
@@ -375,11 +380,7 @@ export class SessionTurnLoop {
     this.toPhase("Streaming", "message.completed.tool_calls", entry.turnId);
     const tools = this.options.tools;
     if (tools === undefined) {
-      const result = await this.settler.failed(
-        entry.turnId,
-        "TOOL_CALLS_UNSUPPORTED",
-        "model requested tool calls, but no tool system is configured for this session",
-      );
+      const result = await this.settler.failed(entry.turnId, "TOOL_CALLS_UNSUPPORTED", "model requested tool calls, but no tool system is configured for this session");
       return { kind: "settled", result };
     }
 
@@ -395,13 +396,7 @@ export class SessionTurnLoop {
     });
     const workspaceRoot = this.options.workspaceRoot ?? process.cwd();
     const phaseResult = await runner.run(
-      calls.map(
-        (call): PlannedToolCall => ({
-          toolCallId: call.toolCallId,
-          toolName: call.toolName,
-          argsJSON: call.argumentsJSON,
-        }),
-      ),
+      calls.map((call): PlannedToolCall => ({ toolCallId: call.toolCallId, toolName: call.toolName, argsJSON: call.argumentsJSON })),
       {
         signal: controller.signal,
         workspaceRoot,

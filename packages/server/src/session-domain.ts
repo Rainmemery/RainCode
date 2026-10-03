@@ -31,6 +31,7 @@ import type { MemoryRuntime } from "./memory-runtime.js";
 import { memoryLoopEnhancements } from "./memory-runtime.js";
 import { createSessionLoop } from "./session-support.js";
 import type { SessionEntry } from "./session-support.js";
+import type { SkillRuntime } from "./skill-runtime.js";
 
 /** 装配依赖（agent-service.buildMethods 注入；闭包指向 AgentService 活动状态）。 */
 export interface SessionDomainDeps {
@@ -44,6 +45,8 @@ export interface SessionDomainDeps {
   systemPrompt?: string;
   tools: ToolPhaseDeps & { background: BackgroundTaskRegistry };
   memory: MemoryRuntime | null;
+  /** skills 域（T4.4：非 null 时装配技能目录逐 turn 重发布的 systemPromptProvider）。 */
+  skills: SkillRuntime | null;
   /** auto-compact 选项（undefined = 不启用；与 create/resume 同口径）。 */
   compaction?: CompactionOptions;
 }
@@ -120,9 +123,11 @@ export class SessionDomain {
     });
     // 内核循环装配：对齐 resume 形态（initialHistory + rpc seq 续起点；epoch 起点缺省 0 = fork 文件头行）
     const llm = this.deps.llmFor(entry?.providerId); // 源会话活跃时继承其 Provider 绑定；否则主客户端
+    const memoryExtras = await memoryLoopEnhancements(this.deps.memory, this.deps.systemPrompt, workspaceRoot, forked.id, source.workspaceId);
     const loop = createSessionLoop({
       sessionId: forked.id, mode: forked.mode, llm, storage, publish,
-      ...(await memoryLoopEnhancements(this.deps.memory, this.deps.systemPrompt, workspaceRoot, forked.id, source.workspaceId)),
+      ...memoryExtras,
+      ...(this.deps.skills !== null && { systemPromptProvider: this.deps.skills.systemPromptProvider(forked.id, workspaceRoot, memoryExtras.systemPrompt) }),
       tools: this.deps.tools, workspaceRoot, workspaceId: source.workspaceId,
       initialHistory: replay.history,
       initialEventSeq: checkpoint.accepted ? checkpoint.seq : lastSeq,

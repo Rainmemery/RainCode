@@ -16,6 +16,8 @@ export const skillSummarySchema = z.object({
   source: z.enum(["workspace", "global"]),
   /** 参数形状提示（如 "<file>"；缺省无参技能）。 */
   argumentHint: z.string().optional(),
+  /** 模型侧可调用开关（T4.4，v1.10；缺省 true）——仅约束模型经 skill 工具的调用，斜杠命令不受限。 */
+  modelInvocable: z.boolean(),
 });
 export type SkillSummary = z.infer<typeof skillSummarySchema>;
 

@@ -15,6 +15,7 @@ import { grepTool } from "./handlers/grep.js";
 import { createBashTool } from "./handlers/bash.js";
 import { webFetchTool } from "./handlers/web-fetch.js";
 import { askUserTool } from "./handlers/ask-user.js";
+import { skillTool } from "./handlers/skill.js";
 import { createTodoWriteTool, createTodoReadTool } from "./handlers/todo.js";
 
 export interface BuiltinToolSet {
@@ -57,6 +58,7 @@ export function createBuiltinTools(options: CreateBuiltinToolsOptions = {}): Bui
   registry.register(createBashTool(options.executor !== undefined ? { executor: options.executor } : {}));
   registry.register(webFetchTool);
   registry.register(askUserTool);
+  registry.register(skillTool); // T4.4：展开经 ctx.expandSkill 通道（skills 域未装配 → TOOL_UNAVAILABLE）
   registry.register(createTodoWriteTool(todos));
   registry.register(createTodoReadTool(todos));
   return { registry, background, todos };

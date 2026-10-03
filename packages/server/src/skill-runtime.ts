@@ -11,11 +11,12 @@
  * workspace 层技能目录按会话 workspaceRoot 逐会话解析（storage.workspaceRootOf），
  * 装配期无需 workspace 参数（与 memory 域同形态，与 subagent 域装配期解析不同——技能调用总是会话内行为）。
  */
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { RpcCallError } from "@raincode/rpc";
 import { SkillError, expandSkillTemplate, parseSkillMarkdown, resolveSkillFile } from "@raincode/agent-core";
-import type { SkillDir } from "@raincode/agent-core";
+import type { SkillDir, SkillExpansionResult } from "@raincode/agent-core";
 import type { SkillSummary, SkillsInvokeParams, SkillsListParams } from "@raincode/shared";
 
 /** skills 域装配依赖（agent-service 注入；风格对齐 SubagentRuntimeOptions）。 */
@@ -31,6 +32,9 @@ export interface SkillRuntimeOptions {
 }
 
 export class SkillRuntime {
+  /** 逐会话目录 digest（T4.4 热变更重发布：digest 变化 → 诊断 + 新目录块进入下一 turn 系统提示）。 */
+  private readonly promptDigests = new Map<string, string>();
+
   constructor(private readonly options: SkillRuntimeOptions) {}
 
   /** 控制面方法表（06 §2.9 skills 域 2 方法；形态对齐 subagent-runtime.methods）。 */
@@ -59,6 +63,67 @@ export class SkillRuntime {
     const { skill } = this.resolveSkill(dirs, params.name);
     const expanded = expandSkillTemplate(skill.template, params.arguments);
     return this.options.submitTurn(params.sessionId, expanded);
+  }
+
+  // -------------------------------------------------------------------------
+  // 模型侧通道（T4.4：skill 工具 + 系统提示目录注入）
+  // -------------------------------------------------------------------------
+
+  /**
+   * skill 工具展开（ToolPhaseDeps.expandSkill 服务端实现，skills.invoke 同链路的解析+展开段）：
+   * 双源解析 → modelInvocable 开关（false 拒绝，斜杠命令不受此限）→ 模板展开。
+   * 不抛异常（错误类不越 port）：域码投影为 ok/code 结果，工具侧收敛为 ToolResult.error——
+   * SKILL_NOT_FOUND → TOOL_INVALID_INPUT、SKILL_INVALID → TOOL_EXEC_FAILED、开关拒绝 →
+   * TOOL_PERMISSION_DENIED、其余 → TOOL_INTERNAL。
+   */
+  async expandForModel(sessionId: string, name: string, args: string | undefined): Promise<SkillExpansionResult> {
+    try {
+      const dirs = await this.skillDirs(sessionId);
+      const { skill } = this.resolveSkill(dirs, name);
+      if (!skill.modelInvocable) {
+        return { ok: false, code: "TOOL_PERMISSION_DENIED", message: `技能 "${name}" 未开放模型调用（frontmatter modelInvocable: false；仍可经 /${name} 斜杠命令使用）` };
+      }
+      return { ok: true, expanded: expandSkillTemplate(skill.template, args) };
+    } catch (reason: unknown) {
+      if (reason instanceof RpcCallError) {
+        const code = reason.code === "SKILL_NOT_FOUND" ? "TOOL_INVALID_INPUT" : reason.code === "SKILL_INVALID" ? "TOOL_EXEC_FAILED" : "TOOL_INTERNAL";
+        return { ok: false, code, message: reason.message };
+      }
+      return { ok: false, code: "TOOL_INTERNAL", message: reason instanceof Error ? reason.message : String(reason) };
+    }
+  }
+
+  /**
+   * 会话系统提示提供者（SessionTurnLoop.systemPromptProvider 注入形态）：基础提示（角色 + memory 块）
+   * 之上逐 turn 追加技能目录块——目录内容每 turn 现扫（同步 IO，低频），digest 变化时诊断告警
+   * 「重发布」；无技能返回基础提示原样。modelInvocable=false 的技能不进模型目录（面板仍可见）。
+   */
+  systemPromptProvider(sessionId: string, workspaceRoot: string, basePrompt: string | undefined): () => Promise<string | undefined> {
+    return async () => {
+      const dirs: SkillDir[] = [
+        { path: join(workspaceRoot, ".raincode", "skills"), source: "workspace" },
+        { path: join(this.options.dataRoot, "skills"), source: "global" },
+      ];
+      const invocable = this.skillCatalog(dirs).filter((item) => item.modelInvocable);
+      if (invocable.length === 0) return basePrompt;
+      const digest = createHash("sha256").update(JSON.stringify(invocable)).digest("hex").slice(0, 12);
+      const previous = this.promptDigests.get(sessionId);
+      if (previous !== digest) {
+        if (previous !== undefined) this.diag(`技能目录变更，系统提示已重发布: ${sessionId}（${previous} → ${digest}）`);
+        this.promptDigests.set(sessionId, digest);
+      }
+      const lines = invocable.map((item) =>
+        `- \`${item.name}\`: ${item.description}${item.argumentHint !== undefined ? `（args: ${item.argumentHint}）` : ""}（source: ${item.source}）`);
+      const block = [
+        "## Skills（可复用工作流技能）",
+        "",
+        "以下技能可用。用户请求匹配某技能时，用 `skill` 工具调用它（name + 可选 arguments），",
+        "并按返回的模板指令在同一 turn 内续答收束；用户也可能以 /名称 参数 斜杠命令触发同一技能。",
+        "",
+        ...lines,
+      ].join("\n");
+      return basePrompt !== undefined ? `${basePrompt}\n\n${block}` : block;
+    };
   }
 
   // -------------------------------------------------------------------------
@@ -104,6 +169,7 @@ export class SkillRuntime {
             name: skill.name,
             description: skill.description,
             source: dir.source,
+            modelInvocable: skill.modelInvocable,
             ...(skill.argumentHint !== undefined && { argumentHint: skill.argumentHint }),
           });
         } catch (reason: unknown) {

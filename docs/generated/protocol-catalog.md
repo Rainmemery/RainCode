@@ -609,7 +609,7 @@
 出参：
 | 字段 | 类型 | 必填 | 约束/说明 |
 | --- | --- | --- | --- |
-| `items` | `{ name: string, description: string, source: "workspace" \| "global", argumentHint: string? }[]` | 是 |  |
+| `items` | `{ name: string, description: string, source: "workspace" \| "global", argumentHint: string?, modelInvocable: boolean }[]` | 是 |  |
 
 ### 域 subagent（4 方法）
 

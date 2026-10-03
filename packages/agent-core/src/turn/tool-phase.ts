@@ -10,15 +10,8 @@
  *   状态迁移经 onTransition 回调由 turn-loop 执行（保持状态机单点）。
  */
 import { ulid } from "@raincode/storage";
-import {
-  TOOL_ERROR_CODES,
-  buildToolCallCompletedEvent,
-  buildToolCallProgressEvent,
-  buildToolCallStartedEvent,
-} from "@raincode/shared";
-import type { CollaborationMode, ToolErrorCode, ToolMetadata, ToolResult } from "@raincode/shared";
-import { guardPath, normalizeForGuard } from "@raincode/tools";
-import type { AskUserRequest, BackgroundTaskRegistry, ToolCallRequest, ToolProgressEvent } from "@raincode/tools";
+import { TOOL_ERROR_CODES, buildToolCallCompletedEvent, buildToolCallProgressEvent, buildToolCallStartedEvent, type CollaborationMode, type ToolErrorCode, type ToolMetadata, type ToolResult } from "@raincode/shared";
+import { guardPath, normalizeForGuard, type AskUserRequest, type BackgroundTaskRegistry, type ToolCallRequest, type ToolProgressEvent } from "@raincode/tools";
 import type { PermissionEventSink, PermissionPort, PermissionVerdict, ToolPhaseDeps } from "../ports.js";
 
 export interface PlannedToolCall {
@@ -308,6 +301,11 @@ export class ToolPhaseRunner {
         askUser: (question: AskUserRequest) => deps.askUser!({ sessionId: ctx.sessionKey, workspaceId: ctx.workspaceId,
           question: question.question, ...(question.choices !== undefined && { choices: question.choices }),
           events: this.permissionSink() }),
+      }),
+      // T4.4 skill 展开通道：会话归属注入，展开单点 SkillRuntime（skills.invoke 同链路）；缺省 → TOOL_UNAVAILABLE
+      ...(deps.expandSkill !== undefined && {
+        expandSkill: (request: { name: string; arguments?: string }) =>
+          deps.expandSkill!({ sessionId: ctx.sessionKey, name: request.name, arguments: request.arguments }),
       }),
       onToolProgress: (event: ToolProgressEvent & { toolCallId: string }) => {
         this.publishThrottledProgress(event, progressThrottleMs);

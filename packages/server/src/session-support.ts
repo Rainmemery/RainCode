@@ -19,6 +19,7 @@ import { computeWorkspaceHash } from "@raincode/storage";
 import { SessionTurnLoop } from "@raincode/agent-core";
 import type { CompactionOptions, LlmPort, SessionEventPublisher, ToolPhaseDeps, TurnOutcome } from "@raincode/agent-core";
 import { memoryLoopEnhancements, type MemoryRuntime } from "./memory-runtime.js";
+import type { SkillRuntime } from "./skill-runtime.js";
 
 /** AgentService 活跃会话表条目（agent-service.sessions 与 session-domain 共用同一形态）。 */
 export interface SessionEntry {
@@ -41,6 +42,8 @@ export interface SessionLoopDeps {
   storage: Storage;
   publish: SessionEventPublisher;
   systemPrompt?: string;
+  /** 逐 turn 系统提示提供者（T4.4 技能目录热变更重发布；优先于静态 systemPrompt，缺省不启用）。 */
+  systemPromptProvider?: () => Promise<string | undefined>;
   tools: ToolPhaseDeps & { background: BackgroundTaskRegistry };
   workspaceRoot: string;
   workspaceId: string;
@@ -64,6 +67,7 @@ export function createSessionLoop(deps: SessionLoopDeps): SessionTurnLoop {
     storage: deps.storage,
     publish: deps.publish,
     ...(deps.systemPrompt !== undefined && { systemPrompt: deps.systemPrompt }),
+    ...(deps.systemPromptProvider !== undefined && { systemPromptProvider: deps.systemPromptProvider }),
     tools: deps.tools,
     workspaceRoot: deps.workspaceRoot,
     workspaceId: deps.workspaceId,
@@ -139,6 +143,8 @@ export async function resumeSessionFlow(input: {
   publishFactory(): SessionEventPublisher;
   toolDeps: ToolPhaseDeps & { background: BackgroundTaskRegistry };
   memory: MemoryRuntime | null;
+  /** skills 域（T4.4：非 null 时装配技能目录逐 turn 重发布的 systemPromptProvider）。 */
+  skills: SkillRuntime | null;
   systemPrompt?: string;
   compaction?: CompactionOptions;
   providerId: string;
@@ -177,9 +183,11 @@ export async function resumeSessionFlow(input: {
   }
   const workspaceRoot = (await input.storage.workspaceRootOf(meta.id)) ?? process.cwd();
   const llm = input.llmFor(undefined);
+  const memoryExtras = await memoryLoopEnhancements(input.memory, input.systemPrompt, workspaceRoot, meta.id, meta.workspaceId);
   const loop = createSessionLoop({
     sessionId: meta.id, mode: meta.mode, llm, storage: input.storage, publish: input.publishFactory(),
-    ...((await memoryLoopEnhancements(input.memory, input.systemPrompt, workspaceRoot, meta.id, meta.workspaceId))),
+    ...memoryExtras,
+    ...(input.skills !== null && { systemPromptProvider: input.skills.systemPromptProvider(meta.id, workspaceRoot, memoryExtras.systemPrompt) }),
     tools: input.toolDeps, workspaceRoot, workspaceId: meta.workspaceId,
     initialHistory: replay.history,
     initialEventSeq: seedEventSeq(replay),

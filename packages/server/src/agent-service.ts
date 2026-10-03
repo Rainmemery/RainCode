@@ -20,24 +20,16 @@ import type {
   SessionSteerParams,
   SystemShutdownParams,
 } from "@raincode/shared";
-import { RpcCallError, createServiceBinding } from "@raincode/rpc";
-import type { IMessageTransport, RpcMethodHandler, RpcServiceBinding } from "@raincode/rpc";
+import { RpcCallError, createServiceBinding, type IMessageTransport, type RpcMethodHandler, type RpcServiceBinding } from "@raincode/rpc";
 import { Storage } from "@raincode/storage";
-import { createBuiltinTools, ToolExecutor } from "@raincode/tools";
-import type { BackgroundTaskRegistry, Executor, ToolRegistry } from "@raincode/tools";
-import { alwaysAllowApprover, alwaysDenyApprover, createMetadataPermissionPort } from "@raincode/agent-core";
-import type { AskUserChannelRequest, CompactionOptions, LlmPort, PermissionPort, SessionEventPublisher, ToolPhaseDeps, TurnOutcome } from "@raincode/agent-core";
+import { createBuiltinTools, ToolExecutor, type BackgroundTaskRegistry, type Executor, type ToolRegistry } from "@raincode/tools";
+import { alwaysAllowApprover, alwaysDenyApprover, createMetadataPermissionPort, type AskUserChannelRequest, type CompactionOptions, type LlmPort, type PermissionPort, type SessionEventPublisher, type ToolPhaseDeps, type TurnOutcome } from "@raincode/agent-core";
 import { ConfigDomain } from "./config-domain.js";
 import { ConfigStore } from "./config-store.js";
 import { ToolDomain } from "./tool-domain.js";
 import { SessionDomain } from "./session-domain.js";
 import { appVersion } from "./app-version.js";
-import {
-  buildLlmClient,
-  resolveLlmForModel,
-  resolveLlmForProvider,
-} from "./llm-factory.js";
-import type { LlmProviderResolverDeps } from "./llm-factory.js";
+import { buildLlmClient, resolveLlmForModel, resolveLlmForProvider, type LlmProviderResolverDeps } from "./llm-factory.js";
 import {
   assertNoRunningBackgroundTasks,
   buildCompactionOptions,
@@ -49,8 +41,8 @@ import {
   requireActiveSession,
   resumeSessionFlow,
   shutdownService,
+  type SessionEntry,
 } from "./session-support.js";
-import type { SessionEntry } from "./session-support.js";
 import { PermissionRuntime, type PermissionPolicy, type PermissionRuntimeOptions } from "./permission-runtime.js";
 import type { McpRuntime } from "./mcp-runtime.js";
 import type { PluginRuntime } from "./plugin-runtime.js";
@@ -201,6 +193,10 @@ export class AgentService {
     this.subagent = domains.subagent;
     this.memory = domains.memory;
     this.skills = domains.skills;
+    // T4.4 skill 工具通道：展开单点 SkillRuntime（skills.invoke 同链路）；skills 域未装配 → 工具 TOOL_UNAVAILABLE
+    if (this.skills !== null) {
+      this.toolDeps.expandSkill = (request) => this.skills!.expandForModel(request.sessionId, request.name, request.arguments);
+    }
   }
 
   /**
@@ -275,7 +271,7 @@ export class AgentService {
         storage: this.options.storage, sessions: this.sessions, config: this.config,
         llmFor: (providerId) => this.llmFor(providerId), publisher: () => this.publisher(),
         systemPrompt: this.options.systemPrompt, tools: this.toolDeps, memory: this.memory,
-        compaction: this.compaction,
+        skills: this.skills, compaction: this.compaction,
       }).methods(register),
       ...this.config.methods(register),
       ...this.toolDomain.methods(register),
@@ -312,9 +308,12 @@ export class AgentService {
         mode: meta.mode, createdAt: meta.createdAt,
       }),
     });
+    const memoryExtras = await memoryLoopEnhancements(this.memory, this.options.systemPrompt, params.workspaceRoot, meta.id, workspace.hash);
     const loop = createSessionLoop({
       sessionId: meta.id, mode: meta.mode, llm, storage: this.options.storage, publish,
-      ...((await memoryLoopEnhancements(this.memory, this.options.systemPrompt, params.workspaceRoot, meta.id, workspace.hash))),
+      ...memoryExtras,
+      // T4.4：skills 域装配时注入技能目录逐 turn 重发布的系统提示提供者（热变更 digest 检测）
+      ...(this.skills !== null && { systemPromptProvider: this.skills.systemPromptProvider(meta.id, params.workspaceRoot, memoryExtras.systemPrompt) }),
       tools: this.toolDeps, workspaceRoot: params.workspaceRoot, workspaceId: workspace.hash,
       initialEventSeq: 1,
       ...(this.compaction !== undefined && { compaction: this.compaction }),
@@ -428,6 +427,7 @@ export class AgentService {
       publishFactory: () => this.publisher(),
       toolDeps: this.toolDeps,
       memory: this.memory,
+      skills: this.skills,
       ...(this.options.systemPrompt !== undefined && { systemPrompt: this.options.systemPrompt }),
       ...(this.compaction !== undefined && { compaction: this.compaction }),
       providerId: this.providerId,

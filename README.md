@@ -13,12 +13,12 @@ RainCode 的功能定位与 Claude Code / Codex 对齐：整合**代码生成、
 
 ## 当前状态
 
-**M3（七模块全量对齐）验收完成** ✅（T3.1~T3.9，NFR-1~7 全量重测与 4.2 对比矩阵核对见 [docs/benchmarks/m3-2026-10-02.md](docs/benchmarks/m3-2026-10-02.md)；M2 基准见 [docs/benchmarks/m2-2026-09-29.md](docs/benchmarks/m2-2026-09-29.md)）。**M4（工程加固与遗留收口）进行中**：T4.1 CI 已落地（[Actions](https://github.com/Rainmemery/RainCode/actions/workflows/ci.yml) windows-latest 六门禁与本地同集）· T4.2 内核收尾竞态修复 ✅ · T4.3 生成式协议目录 ✅（[docs/generated/protocol-catalog.md](docs/generated/protocol-catalog.md)，`protocol:gen` 再生成 / `protocol:check` 防漂移入 CI）；待做：技能模型侧可发现性 / Web 管理面板对齐 / 防御式模式文档 / 遗留项收口，见 [docs/07-dev-plan.md §10](docs/07-dev-plan.md)（参照 [deepseek-harness 调研报告](docs/research/2026-10-03-deepseek-harness.md)，遗留项全量登记于 [docs/legacy-items.md](docs/legacy-items.md)）。
+**M3（七模块全量对齐）验收完成** ✅（T3.1~T3.9，NFR-1~7 全量重测与 4.2 对比矩阵核对见 [docs/benchmarks/m3-2026-10-02.md](docs/benchmarks/m3-2026-10-02.md)；M2 基准见 [docs/benchmarks/m2-2026-09-29.md](docs/benchmarks/m2-2026-09-29.md)）。**M4（工程加固与遗留收口）进行中**：T4.1 CI 已落地（[Actions](https://github.com/Rainmemery/RainCode/actions/workflows/ci.yml) windows-latest 六门禁与本地同集）· T4.2 内核收尾竞态修复 ✅ · T4.3 生成式协议目录 ✅（[docs/generated/protocol-catalog.md](docs/generated/protocol-catalog.md)，`protocol:gen` 再生成 / `protocol:check` 防漂移入 CI）· T4.4 技能模型侧可发现性 ✅（系统提示目录 digest 重发布 + `skill` 工具 + `modelInvocable` 开关）；待做：Web 管理面板对齐 / 防御式模式文档 / 遗留项收口，见 [docs/07-dev-plan.md §10](docs/07-dev-plan.md)（参照 [deepseek-harness 调研报告](docs/research/2026-10-03-deepseek-harness.md)，遗留项全量登记于 [docs/legacy-items.md](docs/legacy-items.md)）。
 
 | 能力 | 状态 |
 | --- | --- |
 | Agent 内核（turn 状态机 / 会话生命周期 / checkpoint 恢复 / epoch 守卫 / 受限重试） | ✅ M1 |
-| 工具调用（9 个内置工具 / 声明式权限元数据 / 只读并行 / 输出预算裁剪） | ✅ M1 |
+| 工具调用（11 个内置工具 / 声明式权限元数据 / 只读并行 / 输出预算裁剪） | ✅ M1~M4 |
 | 命令权限控制（五级判定链 / bash argv 求值 / grantId 审批闭环 / 三层规则 / 审计） | ✅ M1 |
 | 控制面协议（54 方法 / 19 事件 / 密钥引用制 / capability 协商） | ✅ M2/M3 |
 | 上下文压缩 compact（80% 阈值自动触发 / 异步不阻塞 / 记忆抽取钩子） | ✅ M2 |
@@ -316,6 +316,7 @@ maxTurns: 20
 | `bash` | 受控 shell 执行（超时 / 输出预算 / 后台任务 / argv 级规则求值） | 按命令求值 |
 | `glob` / `grep` | 文件名模式 / 内容搜索（默认忽略 node_modules、.git） | 只读，自动放行 |
 | `todo_write` | 任务清单维护（会话内计划跟踪） | 无副作用 |
+| `skill` | 调用技能包（系统提示目录自主发现；展开模板回传同 turn 续答；`modelInvocable` 开关约束） | 无副作用，自动放行 |
 | `web_fetch` | 抓取 URL 转文本（SSRF 强制黑名单：私网/环回/DNS 解析校验/重定向逐跳防护） | network，从严审批 |
 | `ask_user_question` | 向用户提问并等待应答（复用审批闭环；CLI 提问卡 / 桌面弹窗） | 无副作用 |
 

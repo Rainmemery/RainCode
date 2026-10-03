@@ -59,6 +59,14 @@ export interface ToolExecutionContext {
    * 缺省 = headless/无 UI，ask_user_question 以 TOOL_UNAVAILABLE 收敛（02 §2.4 fail-safe）。
    */
   askUser?: (question: AskUserRequest) => Promise<AskUserAnswer>;
+  /**
+   * skill 工具展开通道（T4.4；tool-phase 从 ToolPhaseDeps 注入，SkillRuntime 展开）。
+   * 缺省 = skills 域未装配，skill 工具以 TOOL_UNAVAILABLE 收敛（同 ask_user fail-safe 口径）。
+   */
+  expandSkill?: (request: {
+    name: string;
+    arguments?: string;
+  }) => Promise<{ ok: true; expanded: string } | { ok: false; code: string; message: string }>;
   /** 进度回调（长耗时工具周期性产出）。 */
   onProgress?: (event: ToolProgressEvent) => void;
 }

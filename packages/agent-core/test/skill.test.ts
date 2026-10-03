@@ -141,3 +141,23 @@ describe("expandSkillTemplate（T3.4 展开语义）", () => {
     assert.equal(expandSkillTemplate("模板", "   "), "模板");
   });
 });
+
+describe("parseSkillMarkdown modelInvocable 开关（T4.4 模型侧可发现性）", () => {
+  it("缺省（无字段/空值）→ true", () => {
+    assert.equal(parseSkillMarkdown("---\ndescription: 甲\n---\n\n正文", "a").modelInvocable, true);
+    assert.equal(parseSkillMarkdown("---\ndescription: 甲\nmodelInvocable:\n---\n\n正文", "b").modelInvocable, true);
+  });
+
+  it("显式 true/false 正确解析", () => {
+    assert.equal(parseSkillMarkdown("---\ndescription: 甲\nmodelInvocable: true\n---\n\n正文", "c").modelInvocable, true);
+    assert.equal(parseSkillMarkdown("---\ndescription: 乙\nmodelInvocable: false\n---\n\n正文", "d").modelInvocable, false);
+  });
+
+  it("非法值 → SKILL_INVALID", () => {
+    assert.throws(() => parseSkillMarkdown("---\ndescription: 丙\nmodelInvocable: yes\n---\n\n正文", "e"), (err: unknown) => {
+      assert.ok(err instanceof SkillError);
+      assert.equal(err.code, "SKILL_INVALID");
+      return true;
+    });
+  });
+});

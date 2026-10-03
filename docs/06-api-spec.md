@@ -253,14 +253,16 @@ system 域承载握手、版本发现与优雅停机，是唯一与业务无关�
 | `system.version` | `{}` | `{ protocolVersion, appVersion, configVersion, nodeVersion? }` | — | 详细版本信息，用于诊断与「关于」页 |
 | `system.shutdown` | `{ reason? }` | `{ shuttingDown: true }` | — | 优雅停机：取消运行中 turn（outcome=cancelled，reason=shutdown）→ flush 事件与 JSONL → 关闭存储与传输；各绑定语义差异见 §6.2 |
 
-### 2.9 skills 域（技能与斜杠命令，M3 T3.4）
+### 2.9 skills 域（技能与斜杠命令，M3 T3.4；模型侧可发现性 T4.4，v1.10）
 
-技能 = markdown + frontmatter 提示词模板（`<workspace>/.raincode/skills/<name>.md` 或 `<dataRoot>/skills/<name>.md`，workspace 层先命中生效；字段 `name`（可省，缺省文件名，[a-z0-9-]+）/ `description`（必填）/ `argumentHint`（可选）），正文为提示词模板。展开在 server 侧（`$ARGUMENTS` 占位替换；无占位符且有参 → 参数独立行追加模板末尾），CLI / 桌面端只做 `/name args` 转发，无第二展开点。本域无新事件——turn 事件流与 `session.send` 完全一致（端层复用同一渲染管线）；无新 capability（未装配时调用报 `METHOD_NOT_FOUND`，端层据此探测）。装配期无参数（workspace 技能目录按会话 workspaceRoot 逐会话解析）；CLI in-process 与 stdio 宿主（桌面 agent 子进程）默认装配。
+技能 = markdown + frontmatter 提示词模板（`<workspace>/.raincode/skills/<name>.md` 或 `<dataRoot>/skills/<name>.md`，workspace 层先命中生效；字段 `name`（可省，缺省文件名，[a-z0-9-]+）/ `description`（必填）/ `argumentHint`（可选）/ `modelInvocable`（可选，缺省 `true`——仅约束模型经 `skill` 工具的调用，斜杠命令不受限）），正文为提示词模板。展开在 server 侧（`$ARGUMENTS` 占位替换；无占位符且有参 → 参数独立行追加模板末尾），CLI / 桌面端只做 `/name args` 转发，无第二展开点。本域无新事件——turn 事件流与 `session.send` 完全一致（端层复用同一渲染管线）；无新 capability（未装配时调用报 `METHOD_NOT_FOUND`，端层据此探测）。装配期无参数（workspace 技能目录按会话 workspaceRoot 逐会话解析）；CLI in-process 与 stdio 宿主（桌面 agent 子进程）默认装配。
+
+**模型侧可发现性（T4.4）**：skills 域装配时，会话系统提示逐 turn 追加技能目录块（name/description/argumentHint/source；`modelInvocable: false` 的技能不进模型目录）——目录内容每 turn 现扫，digest 变化即重发布（热变更下一 turn 生效，附诊断）。内置工具 `skill`（`{ name, arguments? }`，readOnly/零副作用）经 ToolPhaseDeps 展开通道复用 skills.invoke 的解析+展开链路（展开单点不变），展开模板作为工具结果回传、模型同 turn 续答收束；工具调用本身走标准五级判定链。工具侧错误投影：`SKILL_NOT_FOUND` → `TOOL_INVALID_INPUT`、`SKILL_INVALID` → `TOOL_EXEC_FAILED`、开关关闭 → `TOOL_PERMISSION_DENIED`、skills 域未装配 → `TOOL_UNAVAILABLE`。
 
 | 方法 | 请求 params | 返回 result | 业务错误码 | 说明 |
 | --- | --- | --- | --- | --- |
-| `skills.list` | `{ sessionId? }` | `{ items: SkillSummary[] }` | `SESSION_NOT_FOUND` | 技能清单（frontmatter 投影，不含模板正文）：每项含 `{ name, description, source: "workspace"\|"global", argumentHint? }`；提供 `sessionId` 时含该会话 workspace 层（同名 workspace 优先），缺省仅 global 层；**非法文件跳过不阻塞面板**（仅产诊断） |
-| `skills.invoke` | `{ sessionId, name, arguments? }` | `{ turnId, admission: "started"\|"queued", queuePosition? }` | `SESSION_NOT_FOUND` `SESSION_ARCHIVED` `SKILL_NOT_FOUND` `SKILL_INVALID` | 斜杠命令受理：按名解析 → 模板展开 → 复用 `session.send` 提交链（requireActive + provider 缺席拒绝 + 受理即返 + usage 旁路）；展开后文本即该 turn 的 user 消息（会话历史可见完整展开） |
+| `skills.list` | `{ sessionId? }` | `{ items: SkillSummary[] }` | `SESSION_NOT_FOUND` | 技能清单（frontmatter 投影，不含模板正文）：每项含 `{ name, description, source: "workspace"\|"global", argumentHint?, modelInvocable }`；提供 `sessionId` 时含该会话 workspace 层（同名 workspace 优先），缺省仅 global 层；**非法文件跳过不阻塞面板**（仅产诊断） |
+| `skills.invoke` | `{ sessionId, name, arguments? }` | `{ turnId, admission: "started"\|"queued", queuePosition? }` | `SESSION_NOT_FOUND` `SESSION_ARCHIVED` `SKILL_NOT_FOUND` `SKILL_INVALID` | 斜杠命令受理：按名解析 → 模板展开 → 复用 `session.send` 提交链（requireActive + provider 缺席拒绝 + 受理即返 + usage 旁路）；展开后文本即该 turn 的 user 消息（会话历史可见完整展开）；不受 `modelInvocable` 约束（用户显式行为） |
 
 ### 2.10 plugins 域（插件化，M3 T3.5，v1.8）
 
@@ -753,6 +755,7 @@ capability 命名约定：`<domain>.<feature>`（小写点分），登记于 `sy
 | 1.7 | 2026-10-02 | T3.3 记忆自动抽取 + 管理界面（minor+1，additive）：memory 域新增 2 方法 `memory.drafts.list` / `memory.drafts.resolve`——晋升草案待确认区（02 §7.2 第三层「记忆 Agent 循环」的用户确认入口）：抽取高置信（≥0.8）新条目自动生成草案（kind → 章节预填、todo/低置信排除），confirm 经 promote 链合入 MEMORY.md、reject 仅标记，直管 promote 自动收敛同条目 pending 草案；错误码段 6 增 `MEMORY_DRAFT_NOT_FOUND`。协议规模 51 方法 / 18 事件 |
 | 1.8 | 2026-10-02 | T3.5 插件化（minor+1，additive）：新增 plugins 域 2 方法 `plugins.list` / `plugins.setEnabled`（§2.10）与新事件 `plugin.status_changed`——插件 = `<dataRoot>/plugins/<name>/`（plugin.json 清单 + 入口 ES module `activate()/deactivate()` 契约），工具以 `plugin__<pluginName>__<toolName>` 注册（source="plugin"，registry 命名空间豁免）；启停经 plugins.json 停用名单持久化（目录即配置，停用 ≠ 卸载）；故障隔离：加载失败 → failed 状态、工具执行错误 → 数据级 ToolExecutionError，插件故障不拖垮内核。错误码新增段 10：`PLUGIN_NOT_FOUND` / `PLUGIN_INVALID`。协议规模 53 方法 / 19 事件 |
 | 1.9 | 2026-10-02 | T3.8 Web 界面（minor+1，additive）：新增 ws 域 1 方法 `ws.auth`（§2.11）与系统码 `UNAUTHORIZED`（段 0）——websocket 绑定连接级鉴权门（时序 `ws.auth` → `system.ping` → 业务方法，鉴权前一切请求拒绝），capability `ws.auth` 登记；§6.3 由预留差异说明重写为落地定义（心跳/退避重连/seq 缺口→resume 补偿路径/多连接扇出）；帧协议与方法表零改动（传输无关设计最终验证）。stdio / in-memory 绑定不暴露 `ws.auth`（同生共死不设门）。协议规模 54 方法 / 19 事件 |
+| 1.10 | 2026-10-03 | T4.4 技能模型侧可发现性（minor+1，additive）：`SkillSummary` 增 `modelInvocable`（boolean，缺省 true——仅约束模型经 `skill` 工具的调用，斜杠命令不受限）；内置工具清单新增 `skill`（`{ name, arguments? }`，readOnly）——展开复用 skills.invoke 链路（单点不变），模型经系统提示技能目录（逐 turn digest 重发布）自主发现并调用。方法/事件规模不变（54 方法 / 19 事件；生成式协议目录经 `protocol:gen` 同步） |
 
 ---
 

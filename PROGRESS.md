@@ -13,11 +13,11 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 当前里程碑 | **M3 全量完成 ✅**（T3.1~T3.9 全绿 + NFR-1~7 全量重测 + 4.2 对比矩阵核对，见 docs/benchmarks/m3-2026-10-02.md）· **M4 进行中**（工程加固与遗留收口：07-dev-plan §10，T4.1 CI 落地 ✅ · T4.2 内核收尾竞态修复 ✅ · T4.3 生成式协议目录 ✅，T4.4~T4.8 待做） |
-| 已完成任务 | M1 全量 ✅ · M2 全量（T2.1~T2.10）✅ · M3 全量（T3.1~T3.9）✅ · M4 T4.1 CI 落地 ✅ · M4 T4.2 内核收尾竞态修复 ✅ · M4 T4.3 生成式协议目录 ✅ · 场景 5 桌面 GUI 走查（自动化）✅ · T3.9 桌面 GUI 走查（自动化，14 断言）✅ · M4 规划轮（deepseek-harness 调研 + 遗留项台账 + 07 §10 排期 + 文档漂移修订）✅ |
+| 当前里程碑 | **M3 全量完成 ✅**（T3.1~T3.9 全绿 + NFR-1~7 全量重测 + 4.2 对比矩阵核对，见 docs/benchmarks/m3-2026-10-02.md）· **M4 进行中**（工程加固与遗留收口：07-dev-plan §10，T4.1 CI ✅ · T4.2 竞态修复 ✅ · T4.3 协议目录 ✅ · T4.4 技能模型侧可发现性 ✅，T4.5~T4.8 待做） |
+| 已完成任务 | M1 全量 ✅ · M2 全量（T2.1~T2.10）✅ · M3 全量（T3.1~T3.9）✅ · M4 T4.1 CI 落地 ✅ · T4.2 内核收尾竞态修复 ✅ · T4.3 生成式协议目录 ✅ · T4.4 技能模型侧可发现性 ✅ · 场景 5 桌面 GUI 走查（自动化）✅ · T3.9 桌面 GUI 走查（自动化，14 断言）✅ · M4 规划轮（deepseek-harness 调研 + 遗留项台账 + 07 §10 排期 + 文档漂移修订）✅ |
 | 最新提交 | 见 `git log -1` |
 | 工作区状态 | clean |
-| 门禁状态 | typecheck ✅（14 项目）/ oxlint ✅（12 warning 基线）/ architecture:check ✅（13 模块）/ protocol:check ✅（T4.3 防漂移：生成式协议目录与 schema 注册表逐字节一致）/ 单测 212 ✅（T4.2 +9：storage jsonl-stream close 排空与栅栏 6、agent-core loop-events-flush L-06 复现回归 3）/ smoke:p0 全回归 ✅（14 子冒烟）/ smoke:kernel ✅ / 桌面走查 walkthrough-desktop.mts ✅（14 断言）/ NFR 基准留存 docs/benchmarks/m3-2026-10-02.md（NFR-1~7 全达标；NFR-1 跨 Node 版本 -50% 申报、NFR-4 +8.7% 装配面扩大申报） · CI ✅（GitHub Actions windows-latest 六门禁与本地同集，T4.3 增补门禁 6 protocol:check） |
+| 门禁状态 | typecheck ✅（14 项目）/ oxlint ✅（12 warning 基线）/ architecture:check ✅（13 模块）/ protocol:check ✅（T4.3 防漂移：生成式协议目录与 schema 注册表逐字节一致，T4.4 schema 变更已 gen 同步）/ 单测 218 ✅（T4.4 +6：agent-core skill 开关解析 3、server skill-tool mock 端到端 3）/ smoke:p0 全回归 ✅（14 子冒烟）/ smoke:kernel ✅ / 桌面走查 walkthrough-desktop.mts ✅（14 断言）/ NFR 基准留存 docs/benchmarks/m3-2026-10-02.md（NFR-1~7 全达标） · CI ✅（GitHub Actions windows-latest 六门禁与本地同集） |
 | 快照日期 | 2026-10-03 |
 
 ---
@@ -39,6 +39,8 @@
 > 格式：`[日期] 任务 — 结果`（含关键产出物与提交号）。**新条目插在本节最上方。**
 
 ### M4 · 工程加固与遗留收口（07-dev-plan §10）
+
+- [2026-10-03] T4.4 技能模型侧可发现性（调研借鉴 #1；01-PRD TL-6 实现注记）——a) **系统提示目录注入 + digest 热变更重发布**：`SkillRuntime.systemPromptProvider(sessionId, workspaceRoot, basePrompt)` 返回逐 turn 提供者（SessionTurnLoop 新可选 `systemPromptProvider`，优先于静态 systemPrompt），基础提示（角色 + memory 块，create/resume/fork 三装配点传入）之上追加技能目录块（name/description/argumentHint/source，`modelInvocable: false` 不进模型目录）；目录内容每 turn 现扫（同步低频 IO，同 profile 口径），sha256 digest 按会话登记、变化即诊断「重发布」——新技能下一 turn 生效；无技能返回基础提示原样。b) **`skill` 内置工具**（11 个）：`{ name, arguments? }`，readOnly/零副作用/needsApproval=false，展开模板作为工具结果回传、模型同 turn 续答收束；经 ToolPhaseDeps 新 `expandSkill` 通道（ask_user 同形态：ports → tool-phase batchCtx → executor ctx 透传——**首跑发现 executor.executeInner 显式重建 handler ctx 漏新字段，补透传后转绿**）由 server 接线 `SkillRuntime.expandForModel` = skills.invoke 同链路的解析+展开段（**展开单点不变**，ADR-06 口径）；工具调用走标准五级判定链。c) **modelInvocable 开关**（协议 v1.10，additive）：frontmatter 缺省/空 = true，仅接受 true/false 其余 SKILL_INVALID；`SkillSummary` 增 `modelInvocable`（skills.list 投影，面板可见性不受影响）；开关只挡模型侧调用（expandForModel 拒绝 → TOOL_PERMISSION_DENIED），斜杠命令不受限。d) 错误投影（错误类不越 port，ok/code 结果形态）：SKILL_NOT_FOUND→TOOL_INVALID_INPUT、SKILL_INVALID→TOOL_EXEC_FAILED、开关关闭→TOOL_PERMISSION_DENIED、skills 域未装配→TOOL_UNAVAILABLE。e) 协议目录随 schema 变更 `protocol:gen` 同步（T4.3 机制首次实战）；测试 +6 共 218：agent-core 开关解析 3 + server skill-tool mock 端到端 3（系统提示目录注入断言 → skill 工具调用展开回传续答收束 / 热变更重发布 / 开关拒绝 + skills.list 投影；请求体捕获式 mock LLM 母版）；smoke-tools 内置清单 10→11。f) 文档：06 §2.9 模型侧可发现性段落 + §7.5 v1.10、01-PRD TL-6 实现注记、README 内置工具表 + 当前状态、testing.md 218；门禁：typecheck / oxlint 12 warning 基线 / architecture 223 文件 0 违规（turn-loop 495 / tool-phase 497 / agent-service 500 行上限内）/ 单测 218 / smoke:skills ✅ / smoke:p0 全回归 ✅。
 
 - [2026-10-03] T4.3 生成式协议目录 + 防漂移门禁——a) `scripts/gen-protocol-catalog.mts`（gen / `--check` 双模式，package.json 增 `protocol:gen` / `protocol:check`）：从 shared `METHOD_SCHEMAS` / `EVENT_SCHEMAS` 注册表与五个 `*_ERROR_CODES` 常量生成 `docs/generated/protocol-catalog.md`（989 行）；zod 3 内省口径——`_def.typeName` 分派渲染、对象经 shape 展开（深度 ≥3 折叠为 object 防爆炸）、约束取 checks（int/min/max/regex/url/email）与 describe() 描述、ZodDefault 读 defaultValue 注记默认值；输出确定性（域与方法、事件排序，无时间戳）——同注册表必得同字节输出，--check 才可判漂移；不直接依赖 zod 类型（scripts 侧最小结构面 SchemaLike）。b) 生成物三节：方法表 54（11 域分节，每方法入参/出参顶层字段表：字段/类型/必填/约束说明）/ 事件表 19（EventBase 三基字段 seq·sessionId·ts 散文声明一次，各表只列特有字段）/ 错误码族 5（SYSTEM 段 0、PC 段 2、MEMORY 段 6、TOOL 段 7、PLUGIN 段 10 常量直读；session/config/mcp/subagent/skills 域为调用点字面量 → 注记 06 §4.3 手写表为权威）；**文档头声明职责边界**：生成物只承载字段/类型/必填/约束，语义、行为、时序、业务码含义仍以 06 手写章节为唯一权威，不一致时以注册表为准修正 06 而非手改生成物。c) CI 门禁 6：ci.yml 五门禁→六门禁（Gate 6/6 `pnpm protocol:check`），本地与 CI 门禁集保持一致。d) 验收达成（07 §10.2）：手改生成文件 → `--check` 变红（退出码 1 + 首个差异行定位）→ `protocol:gen` 一键再生成恢复绿；协议演进路径 = 改 schema 注册表 → gen 再生成 → 核对 06 手写表。e) 文档：06 §5 增生成式目录注记（演进顺序三步）、docs/README 过程资产索引、testing.md §5 六门禁行、README 当前状态；门禁：typecheck / oxlint 12 warning 基线 / architecture 222 文件 0 违规（+1 新脚本）/ 单测 212 / smoke:kernel ✅；本次无运行时代码改动（纯工具链/生成物/文档），smoke:p0 由 CI 门禁 5 复跑把关。
 
@@ -121,15 +123,14 @@
 
 ---
 
-## 5. 下一步队列（M4 进行中：T4.1/T4.2/T4.3 已完成移入 §3 日志；队列 T4.4~T4.8，07-dev-plan §10）
+## 5. 下一步队列（M4 进行中：T4.1~T4.4 已完成移入 §3 日志；队列 T4.5~T4.8，07-dev-plan §10）
 
 > 取任务时**必须**回读 `docs/07-dev-plan.md` §10 对应任务行获取完整验收标准；遗留项全景见 `docs/legacy-items.md`。T4.8 环境门控批次（五 Provider 连通矩阵 / 真实仓库 Bug 修复样例 / 场景 6 真实 MCP 任务样例 / Docker·WSL·SSH 真实运行时验证）可随时穿插执行，环境不可得则按台账保留口径申报，不阻塞里程碑。
 
-1. **T4.4 技能模型侧可发现性**——技能目录注入系统提示 + digest 变更重发布 + `skill` 内置工具 + modelInvocable 开关。
-2. **T4.5 Web 端管理面板对齐**（L-08 核销）——apps/web 落地记忆管理器 / 扩展面板 / 斜杠面板 / 用量统计。
-3. **T4.6 防御式模式文档**——docs/defensive-patterns.md（dsh 六条适配 + RainCode M1~M3 实战沉淀）。
-4. **T4.7 遗留收口批次 A**（L-04/L-05 核销）——electron-builder dist 产物 + walkthrough-web.mts 真浏览器走查脚本。
-5. **T4.8 遗留收口批次 B**（L-01/02/03/14/15 承接，环境门控不计入门槛）——真实环境项穿插执行。
+1. **T4.5 Web 端管理面板对齐**（L-08 核销）——apps/web 落地记忆管理器 / 扩展面板 / 斜杠面板 / 用量统计。
+2. **T4.6 防御式模式文档**——docs/defensive-patterns.md（dsh 六条适配 + RainCode M1~M3 实战沉淀）。
+3. **T4.7 遗留收口批次 A**（L-04/L-05 核销）——electron-builder dist 产物 + walkthrough-web.mts 真浏览器走查脚本。
+4. **T4.8 遗留收口批次 B**（L-01/02/03/14/15 承接，环境门控不计入门槛）——真实环境项穿插执行。
 
 ---
 

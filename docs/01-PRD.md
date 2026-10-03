@@ -284,7 +284,7 @@ RainCode 面向**个人开发者**，不设团队协作与组织管理能力。�
 | TL-3 | 执行前权限接入 | P0 | 所有工具调用执行前经过 Permission Control 三态判定（allow 直接执行 / ask 暂停审批 / deny 拒绝） |
 | TL-4 | 工具结果处理 | P1 | 超长输出截断与摘要、二进制内容识别、结果分页回看 |
 | TL-5 | 并行工具调用 | P1 | 相互独立的只读工具（glob/grep/read）并行执行，缩短 turn 时长 |
-| TL-6 | 技能与斜杠命令扩展体系 | P2 | 用户自定义技能包与 / 命令，扩展 Agent 的可复用工作流 |
+| TL-6 | 技能与斜杠命令扩展体系 | P2 | 用户自定义技能包与 / 命令，扩展 Agent 的可复用工作流（实现注记：M3 T3.4 落地清单/斜杠命令与 `skills.list`/`skills.invoke`；M4 T4.4 补模型侧可发现性——系统提示技能目录逐 turn digest 重发布 + `skill` 内置工具复用展开链路 + frontmatter `modelInvocable` 开关） |
 | TL-7 | 插件化 | P2 | 第三方插件加载、启停与生命周期管理 |
 
 ### 5.3 MCP 调用 MCP Integration
