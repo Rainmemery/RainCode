@@ -3,9 +3,9 @@
 | 项目 | 内容 |
 | --- | --- |
 | 产品代号 | RainCode（个人 AI 编程工作台） |
-| 文档版本 | v1.0 |
-| 发布日期 | 2026-09-24 |
-| 文档状态 | 正式定稿 |
+| 文档版本 | v1.1 |
+| 发布日期 | 2026-09-24（v1.1 修订 2026-10-04） |
+| 文档状态 | 正式定稿；v1.1 增补 M5 里程碑登记（M4 收官后三仓调研修订，见 §1.5/§1.6 与 [07 §11](07-dev-plan.md)） |
 | 关联文档 | 02-module-design（模块详设）· 03-ui-design（双端 UI 规范）· 04-architecture（技术架构）· 05-database（存储设计）· 06-api-spec（协议全集）· 07-dev-plan（开发计划）· [legacy-items](legacy-items.md)（遗留项台账） |
 
 > 本文档是 RainCode 的顶层产品需求文档，为后续架构与模块文档提供术语与范围基线。文中七大功能模块命名、P0/P1/P2 优先级划分与性能指标为强约束基线，后续文档必须与本文档保持一致。
@@ -48,6 +48,15 @@ RainCode 是一个面向个人开发者的本地优先 AI 编程工作台：由 
 | M1 | P0 | Agent 内核 + 基础工具集 + 权限审批闭环 + 会话持久化 + CLI TUI，CLI 达到日常可用 |
 | M2 | P1 | 上下文压缩、MCP 接入、子代理、项目记忆 + 桌面端 Alpha |
 | M3 | P2 | 沙箱容器（Docker/WSL）、技能与斜杠命令扩展、插件化、远程执行、Web 界面，七大模块全量对齐行业水平 |
+| M5（2026-10-04 增补） | —（增补） | 扩展机制与上下文治理：hooks 生命周期、沙箱 enforcement 上报、记忆/历史检索增强、compact 预剪枝、config dump 与事件矩阵可观测性、MCP 工具目录化（范围登记见 §1.6，任务分解见 [07 §11](07-dev-plan.md)） |
+
+### 1.6 M5 增补范围（2026-10-04 修订登记）
+
+M1~M3 已完成本 PRD 全量范围（P0/P1/P2），M4 完成工程加固与遗留收口。M5 为 M4 收官后经三仓调研（[MiMo-Code / deepseek-harness / ZCode 调研报告](research/2026-10-04-m5-reference-repos.md)）确定的**增补里程碑**，不改变 §1~§9 的历史基线：
+
+- **纳入（T5.1~T5.7，07 §11）**：hooks 生命周期 v1（PreToolUse/PostToolUse/UserPromptSubmit/Stop + project 级信任授信 + JSON 输出契约）；沙箱 enforcement 上报（full/partial）；记忆与历史检索增强（history FTS + 全局记忆，**不做 embeddings**）；compact 预剪枝（旧工具结果先行清理，剪枝可回指原文）；`raincode config dump` 与事件生产者/消费者矩阵；MCP 工具目录化（按需加载治 token 膨胀）；工程收尾（CLI esbuild 编译 / SSH base64 加固 / 遗留批次 C）。
+- **明确不做（调研定论）**：embeddings 向量检索与代码语义索引（三参照仓均未实现，FTS+BM25 路线已够用）、会话录制回放 lane（先做事件矩阵与导出基座）、IDE 插件（以 ACP 标准协议评估为前置，M6+ spike）、后台守护进程、插件 marketplace、per-file 覆盖率 100% 门禁。
+- **M6+ 候选**（marketplace / ACP / 守护进程 / 回放 lane / spill 溢出 / Goal 判定等）：沉淀于 [07 §11.5](07-dev-plan.md)，排期前同样必须先修订本文档登记。
 
 ---
 

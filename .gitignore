@@ -24,6 +24,8 @@ Thumbs.db
 .idea/
 .vscode/
 
-# 外部参照仓库（调研用，不入库；见 docs/research/2026-10-03-deepseek-harness.md）
+# 外部参照仓库（调研用，不入库；见 docs/research/2026-10-03-deepseek-harness.md 与 docs/research/2026-10-04-m5-reference-repos.md）
 deepseek-harness/
+MiMo-Code/
+ZCode/
 apps/desktop/build/native/

@@ -13,8 +13,8 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 当前里程碑 | **M3 全量完成 ✅**（T3.1~T3.9 全绿 + NFR-1~7 全量重测 + 4.2 对比矩阵核对，见 docs/benchmarks/m3-2026-10-02.md）· **M4 全量完成 ✅**（工程加固与遗留收口：07-dev-plan §10，T4.1 CI ✅ · T4.2 竞态修复 ✅ · T4.3 协议目录 ✅ · T4.4 技能模型侧可发现性 ✅ · T4.5 Web 管理面板对齐 ✅ · T4.6 防御式模式文档 ✅ · T4.7 遗留收口批次 A ✅ · T4.8 遗留收口批次 B ✅（环境门控批次：L-02/03/15 执行收口 + L-14 矩阵自动化，L-01/三 Provider 密钥保留口径申报）· T4.9 可视化测试缺陷修复批次 ✅（B1~B13）；验收清单核对见 docs/benchmarks/m4-2026-10-04.md §7） |
-| 已完成任务 | M1 全量 ✅ · M2 全量（T2.1~T2.10）✅ · M3 全量（T3.1~T3.9）✅ · M4 T4.1 CI 落地 ✅ · T4.2 内核收尾竞态修复 ✅ · T4.3 生成式协议目录 ✅ · T4.4 技能模型侧可发现性 ✅ · T4.5 Web 端管理面板对齐 ✅ · T4.6 防御式模式文档 ✅ · T4.7 遗留收口批次 A（L-04/L-05 核销 + L-21 复核）✅ · T4.8 遗留收口批次 B（L-02/03/15 执行收口 + L-01/14 保留口径申报）✅ · T4.9 可视化测试缺陷修复批次（B1~B13）✅ · 场景 5 桌面 GUI 走查（自动化）✅ · T3.9 桌面 GUI 走查（自动化，14 断言）✅ · M4 规划轮（deepseek-harness 调研 + 遗留项台账 + 07 §10 排期 + 文档漂移修订）✅ |
+| 当前里程碑 | **M3 全量完成 ✅**（T3.1~T3.9 全绿 + NFR-1~7 全量重测 + 4.2 对比矩阵核对，见 docs/benchmarks/m3-2026-10-02.md）· **M4 全量完成 ✅**（工程加固与遗留收口：07-dev-plan §10，T4.1 CI ✅ · T4.2 竞态修复 ✅ · T4.3 协议目录 ✅ · T4.4 技能模型侧可发现性 ✅ · T4.5 Web 管理面板对齐 ✅ · T4.6 防御式模式文档 ✅ · T4.7 遗留收口批次 A ✅ · T4.8 遗留收口批次 B ✅（环境门控批次：L-02/03/15 执行收口 + L-14 矩阵自动化，L-01/三 Provider 密钥保留口径申报）· T4.9 可视化测试缺陷修复批次 ✅（B1~B13）；验收清单核对见 docs/benchmarks/m4-2026-10-04.md §7）· **M5 已排期 📋**（扩展机制与上下文治理：07-dev-plan §11，T5.1 hooks v1 / T5.2 enforcement 上报 / T5.3 记忆与历史检索增强 / T5.4 compact 预剪枝 / T5.5 config dump+事件矩阵 / T5.6 MCP 工具目录化 / T5.7 工程收尾+遗留批次 C；门槛 T5.1~T5.5，23~35 人日；参照 [docs/research/2026-10-04-m5-reference-repos.md]，01-PRD v1.1 已登记） |
+| 已完成任务 | M1 全量 ✅ · M2 全量（T2.1~T2.10）✅ · M3 全量（T3.1~T3.9）✅ · M4 T4.1 CI 落地 ✅ · T4.2 内核收尾竞态修复 ✅ · T4.3 生成式协议目录 ✅ · T4.4 技能模型侧可发现性 ✅ · T4.5 Web 端管理面板对齐 ✅ · T4.6 防御式模式文档 ✅ · T4.7 遗留收口批次 A（L-04/L-05 核销 + L-21 复核）✅ · T4.8 遗留收口批次 B（L-02/03/15 执行收口 + L-01/14 保留口径申报）✅ · T4.9 可视化测试缺陷修复批次（B1~B13）✅ · 场景 5 桌面 GUI 走查（自动化）✅ · T3.9 桌面 GUI 走查（自动化，14 断言）✅ · M4 规划轮（deepseek-harness 调研 + 遗留项台账 + 07 §10 排期 + 文档漂移修订）✅ · M5 规划轮（三仓调研 MiMo-Code/deepseek-harness 二轮/ZCode + 01-PRD v1.1 登记 + 07 v1.2 §11 排期）✅ |
 | 最新提交 | 见 `git log -1` |
 | 工作区状态 | clean |
 | 门禁状态 | typecheck ✅（14 项目）/ oxlint ✅（12 warning 基线）/ architecture:check ✅（13 模块）/ protocol:check ✅（55 方法 19 事件一致，v1.11 plugins.rescan 已 gen 同步）/ 单测 220 ✅（+1：rpc web-client setSeqBaseline 基线防回退）/ smoke:p0 全回归 ✅（15 子冒烟，smoke:web 5/5 含 B3 回归用例 E，smoke:plugin 4 用例含 case D 重扫描）/ smoke:kernel ✅ / 桌面走查 walkthrough-desktop.mts ✅（14 断言，B2 装配后记忆管理器可达）/ **dist 安装包冒烟 ✅（T4.7：nsis 产物 + 静默安装 + 同套 14 断言含 mock 会话全链路）** / **Web 真浏览器走查 walkthrough-web.mts ✅（T4.7：19 断言两轮稳定，鉴权/会话/审批落盘/宿主重启恢复/多标签扇出与标签冻结补偿）** / **SSH 执行域端到端 smoke:ssh ✅（T4.8：5 断言，真 SSH2 协议 + 真 OpenSSH 客户端）** / **真实 Provider 连通矩阵 smoke:remote ✅（T4.8：矩阵化，2/5 实测 aliyun-qwen + Ollama 本地端点）** / CLI 管道真实 Provider 复测 ✅（B5：预置审批应答即时通过 + 干净退出 exit 0，零 ERR_USE_AFTER_CLOSE） · CI ✅（GitHub Actions windows-latest 六门禁与本地同集） |
@@ -30,13 +30,18 @@
 | M1 | P0 | 单进程 CLI 打通日常可用闭环 | ✅ 完成（2026-09-28） |
 | M2 | P1 | 能力补全 + 桌面端 Alpha | ✅ 完成（2026-09-29，场景 5 走查已自动化闭环） |
 | M3 | P2 | 七模块全量对齐 | ✅ 完成（2026-10-03，T3.1~T3.9 + NFR 全量重测 + 4.2 矩阵核对；环境不可得人工项见 m3 报告 §8） |
-| M4 | —（增补） | 工程加固与遗留收口（CI 落地 / 内核收尾竞态 / 生成式协议目录 / 技能模型侧可发现性 / Web 管理面板 / 防御式模式文档 / 遗留收口两批次） | 📋 已排期（2026-10-03，07-dev-plan §10，T4.1~T4.8；参照 deepseek-harness 调研） |
+| M4 | —（增补） | 工程加固与遗留收口（CI 落地 / 内核收尾竞态 / 生成式协议目录 / 技能模型侧可发现性 / Web 管理面板 / 防御式模式文档 / 遗留收口两批次 / 可视化缺陷修复批次） | ✅ 完成（2026-10-04，T4.1~T4.9；验收核对见 docs/benchmarks/m4-2026-10-04.md §7；L-01/L-14 环境门控保留口径） |
+| M5 | —（增补） | 扩展机制与上下文治理（hooks 生命周期 v1 / 沙箱 enforcement 上报 / 记忆与历史检索增强 / compact 预剪枝 / config dump+事件矩阵 / MCP 工具目录化 / 工程收尾+遗留批次 C） | 📋 已排期（2026-10-04，07-dev-plan §11，T5.1~T5.7，门槛 T5.1~T5.5；参照三仓调研 docs/research/2026-10-04-m5-reference-repos.md，01-PRD v1.1 已登记） |
 
 ---
 
 ## 3. 已完成任务日志（倒序追加）
 
 > 格式：`[日期] 任务 — 结果`（含关键产出物与提交号）。**新条目插在本节最上方。**
+
+### 规划轮（M4 收官后）
+
+- [2026-10-04] M5 规划轮（三仓调研 + 01-PRD v1.1 登记 + 07 v1.2 §11 排期）——a) **三仓参照系只读调研**（三个调研子代理并行 very thorough，结论逐条落证据路径；仓库均已克隆至工作区并加入 .gitignore 不入库）：报告 docs/research/2026-10-04-m5-reference-repos.md——MiMo-Code（小米 OpenCode fork，Bun+Effect，29.6 万行：FTS5+BM25 记忆/历史检索全套 + 相对分数地板与 3x 过取样经验、gate.ts 工具 FIFO 闸门+fail-cascade、三层记忆文件+结构化 checkpoint 模板、Dream/Distill 自我改进、mcp_tool_search BM25 延迟加载、Goal/Stop judge、pinned 包管理器教训）；deepseek-harness 二轮（首轮 2026-10-03，本轮只做 M5 五候选机制级增量：hooks=CC/Codex 兼容桥 + log-only 审计事件对、enforcement full|partial 落地细节与 Windows ACL partial 先例、回放三层基建与「回放格式=日志格式本身」、dump-config 静态列层、compact pruner 三不变量+shadow-price、spill 溢出家族、jobs 完成通知注入、per-file 覆盖豁免 membership contract、无 embeddings/无全局记忆/无 session.delete 澄清）；ZCode（同构度最高参照系，76 万行：hooks 全解 7 事件+JSON 输出契约+project trust 每 dispatch 重验、skills 渐进加载与 marketplace 三层分发、microcompact 常量、rewind checkpoint、esbuild 三件套 metafile 校验、architecture-policy 声明式治理；避坑：双 workspace zod 双实例 / 测试近乎清零不可照抄 / ui 包失控样本）；**七条共性定论**（调研报告 §1）：embeddings 三仓均无→FTS+BM25 路线够用、hooks 两仓成熟→M5 主菜、compact 预剪枝两仓同题互证、IDE 接入正姿=ACP 标准协议、守护进程无共识形态、回放先做事件矩阵、权限语义对照出差距；b) **01-PRD v1.0→v1.1**：§1.5 里程碑表增 M5 行 + §1.6 M5 增补范围登记（纳入 T5.1~T5.7 / 明确不做清单 / M6+ 指针）——07 §10.5 纪律「排期前先修订 01-PRD」就此闭环；c) **07-dev-plan v1.1→v1.2 增补 §11 M5「扩展机制与上下文治理」**：T5.1 hooks 生命周期 v1（6~9 人日：四事件+command 类型+JSON 输出契约+project trust 授信每 dispatch 重验+provenance+审计事件对，协议 additive v1.12）/ T5.2 沙箱 enforcement 上报（2~3：full|partial 工厂自报+工具结果持续携带+模型可见拒绝标记）/ T5.3 记忆与历史检索增强（4~6：history FTS trigram+相对分数地板+全局记忆双层注入，不做 embeddings）/ T5.4 compact 预剪枝（3~5：microcompact 常量+sourceEventSeqs 回指+单过确定性收敛）/ T5.5 config dump+事件矩阵（2~3：静态归并来源标签+--default-only 诊断+T4.3 管线扩展）/ T5.6 MCP 工具目录化（3~4：BM25+mcp_tool_search，可裁）/ T5.7 工程收尾+遗留批次 C（3~5：CLI esbuild L-16 核销+SSH base64 加固+L-14/L-01 复查，可裁）；23~35 人日、门槛 T5.1~T5.5（17~26）、裁剪次序 T5.6→T5.7→T5.5→T5.4、验收清单七项 + §11.5 M6+ 候选沉淀（marketplace/ACP/守护进程/回放 lane/spill/Goal judge/工具闸门/last-match-wins 等五族）+ §10.5 处置表（11 项候选逐项排期/缓议/不做去向）+ §10.1 §10.6 笔误修正；d) **文档收口**：PROGRESS §1/§2（M4 行「已排期」→「✅ 完成」收口漂移 + M5 行已排期）/§3/§5、README 当前状态行、docs/README 调研索引、.gitignore（MiMo-Code/ ZCode/）；legacy-items 台账 21 项原样保留（待收口 0 · 环境门控 2 · 申报性 5 · 运维 1），M5.7 遗留批次 C 承接 L-16 核销与 L-14/L-01 复查；纯文档零代码改动。
 
 ### M4 · 工程加固与遗留收口（07-dev-plan §10）
 
@@ -137,11 +142,21 @@
 
 ---
 
-## 5. 下一步队列（M4 全量完成 ✅：T4.1~T4.9 已完成移入 §3 日志；队列清空，07-dev-plan §10）
+## 5. 下一步队列（M5 已排期：07-dev-plan §11，T5.1~T5.7；M4 全量完成 ✅ 已移入 §3 日志）
 
-> 取任务时**必须**回读 `docs/07-dev-plan.md` §10 对应任务行获取完整验收标准；遗留项全景见 `docs/legacy-items.md`（当前：待收口 0 · 环境门控保留 2 · 申报性保留 5 · 运维保留 1）。
+> 取任务时**必须**回读 `docs/07-dev-plan.md` §11 对应任务行获取完整验收标准；遗留项全景见 `docs/legacy-items.md`（当前：待收口 0 · 环境门控保留 2 · 申报性保留 5 · 运维保留 1，台账 21 项原样保留）。
 
-1. **无排期任务**。M4 验收清单七项核对全达成（[m4 报告 §7](docs/benchmarks/m4-2026-10-04.md)）；M5+ 候选方向见 07 §10.5——**未经 01-PRD 修订登记前不得排期**（07 风险 7 纪律）。环境门控项（L-01 Docker/WSL、L-14 其余三 Provider 密钥、真 OpenSSH/Linux 远端）就绪即穿插执行：Provider 密钥到位 → 写入本地 `config/remote-providers.local.json` 跑 `pnpm smoke:remote`；SSH base64 加固列 M5+ 候选。
+M5「扩展机制与上下文治理」执行顺序（07 §11.2/§11.3，23~35 人日，门槛 T5.1~T5.5）：
+
+1. **T5.1 hooks 生命周期 v1**（主题主菜，不可裁，6~9 人日）：PreToolUse/PostToolUse/UserPromptSubmit/Stop 四事件 + command 类型（timeoutMs 缺省 60s/async）+ JSON 输出契约 + project trust 授信（每 dispatch 前重验）+ provenance 溯源 + log-only 审计事件对，协议 additive v1.12。
+2. **T5.2 沙箱 enforcement 上报**（最小增量，不可裁，2~3 人日）：full|partial 工厂自报（local=partial、docker/wsl=full、ssh 按远端探测）+ 工具结果 metadata 持续携带 + 模型可见拒绝标记。
+3. **T5.3 记忆与历史检索增强**（4~6 人日）：history FTS5 trigram（part 级）+ 相对分数地板 + 3x 过取样 + 全局记忆双层注入；**不做 embeddings**（01-PRD §1.6 定论）。
+4. **T5.4 compact 预剪枝**（3~5 人日）：旧 tool result 先行清理（microcompact 常量）+ sourceEventSeqs 回指原文 + 单过确定性收敛。
+5. **T5.5 可观测性**（2~3 人日）：`raincode config dump`（静态归并+来源标签+--default-only 诊断）+ 事件生产者/消费者矩阵生成器（T4.3 管线扩展）入 CI。
+6. T5.6 MCP 工具目录化（可裁，3~4 人日）：BM25 目录摘要 + `mcp_tool_search` 按需加载（治 token 膨胀）。
+7. T5.7 工程收尾 + 遗留批次 C（可裁，3~5 人日）：CLI esbuild（L-16 核销）+ SSH base64 加固 + L-14/L-01 复查 + NFR 抽查。
+
+裁剪次序：T5.6 → T5.7 → T5.5 → T5.4；**T5.1 / T5.2 不可裁**。环境门控项（L-01 Docker/WSL、L-14 其余三 Provider 密钥、真 OpenSSH/Linux 远端）就绪即穿插执行不计门槛：Provider 密钥到位 → 写入本地 `config/remote-providers.local.json` 跑 `pnpm smoke:remote`。M6+ 候选五族见 07 §11.5（marketplace / ACP / 守护进程 / 回放 lane / spill / Goal judge 等）——**排期前必须先修订 01-PRD**（07 风险 7 纪律）。
 
 ---
 

@@ -2,10 +2,10 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 文档版本 | v1.1 |
-| 发布日期 | 2026-09-28（v1.1 修订 2026-10-03） |
-| 文档状态 | 正式定稿（Phase 1 规划阶段收尾交付物）；v1.1 增补 §10 M4 排期（M3 收官后，见 §10.1 背景说明） |
-| 关联文档 | 01-PRD（范围/里程碑/NFR 权威）· 02-module-design（模块详设）· 03-ui-design（双端 UI 规范）· 04-architecture（包划分/进程/RPC/治理）· 05-database（存储设计）· 06-api-spec（协议全集，本计划基线 43 方法 / 17 事件，M3 收官演进至 54 方法 / 19 事件，M4 缺陷修复批次增至 55 方法（v1.11），见 06 §7.5）· [legacy-items](legacy-items.md)（遗留项台账） |
+| 文档版本 | v1.2 |
+| 发布日期 | 2026-09-28（v1.1 修订 2026-10-03 · v1.2 增补 2026-10-04） |
+| 文档状态 | 正式定稿（Phase 1 规划阶段收尾交付物）；v1.1 增补 §10 M4 排期（M3 收官后，见 §10.1 背景说明）；v1.2 增补 §11 M5 排期（M4 收官后三仓调研，见 §11.1 背景说明） |
+| 关联文档 | 01-PRD（范围/里程碑/NFR 权威）· 02-module-design（模块详设）· 03-ui-design（双端 UI 规范）· 04-architecture（包划分/进程/RPC/治理）· 05-database（存储设计）· 06-api-spec（协议全集，本计划基线 43 方法 / 17 事件，M3 收官演进至 54 方法 / 19 事件，M4 缺陷修复批次增至 55 方法（v1.11），见 06 §7.5）· [legacy-items](legacy-items.md)（遗留项台账）· [调研：deepseek-harness](research/2026-10-03-deepseek-harness.md) / [调研：M5 三仓参照系](research/2026-10-04-m5-reference-repos.md) |
 
 > 本文档是 Phase 1（规划）的收尾交付物：将六份设计文档的交付范围收敛为单人可执行的三里程碑开发计划，并给出 Phase 2（开发实施）的启动清单。**里程碑划分、P0/P1/P2 范围、NFR 验收口径均以 01-PRD 为唯一基线**；任务分解的包归属、依赖方向以 02 §0.1 / 04 §2 为准；协议接线范围以 06-api-spec 的 8 域 43 方法 / 17 事件为准（该口径为规划时点基线；M3 全量落地后演进为 54 方法 / 19 事件）。排期以「人日」计，不承诺绝对日期。
 
@@ -414,7 +414,7 @@ M1~M3 已完成 01-PRD 全量范围（P0/P1/P2），本节为 M3 收官后的**�
 2. **高价值实践引入**：从调研报告中选定 4 项可落地借鉴（技能模型侧可发现性 / 生成式协议目录 / 防御式模式文档 / CI 门禁编排思想），完整取舍决策见调研报告 §3~§5；
 3. **遗留项系统性收口**：三里程碑累积的遗留项已全量登记入 [legacy-items 台账](legacy-items.md)（19 项），M4 内收口 5 项待收口项，环境门控 5 项挂 T4.8 穿插执行。
 
-范围纪律沿用 §6 风险 7：M5+ 候选方向（§10.6）未经 PRD 修订登记前不得排期。
+范围纪律沿用 §6 风险 7：M5+ 候选方向（§10.5）未经 PRD 修订登记前不得排期。
 
 ### 10.2 任务分解表
 
@@ -451,11 +451,82 @@ M4 小计：**8~14.5 人日**（不含环境门控的 T4.8）。
 3. dist 安装包：nsis 产物安装后应用可启动并完成一次 mock 会话。
 4. **台账核对**：legacy-items 全部「待收口」项转 ✅ 或明确降级口径。
 
-### 10.5 M5+ 候选方向（未排期，排期前必须先修订 01-PRD 登记编号）
+### 10.5 M5+ 候选方向（2026-10-03 登记；2026-10-04 M5 规划轮已处置，排期见 §11）
 
 来源两处：01-PRD/02/05/07 中「P2 后再议 / 明确不做」条目 + 调研报告 §3~§4「M5+ 候选」。仅列方向，不做承诺：
 
-- **记忆增强**：embeddings / 代码语义索引（02 §7「P2+ 另立设计」）；跨项目全局记忆（02 §7「P2 后再议」）。
-- **扩展机制**：hooks 生命周期（07 风险 7 排除项，dsh hooks 桥为参考）；沙箱 enforcement 上报（full/partial 明示）；`session.delete` 物理删除（AC-8 回补）。
-- **工程深化**：录制会话回放测试 lane；事件生产者/消费者矩阵生成；`raincode config dump` 最终生效配置可观测性；per-file 覆盖率渐进圈；lefthook 分层 hooks；CLI esbuild 前置编译（L-16）。
-- **形态扩展**：IDE 插件 / 后台守护 / 更多端（07 风险 7 排除项，维持排除直到 PRD 修订）。
+> **2026-10-04 处置记录**：经三仓调研（[MiMo-Code / deepseek-harness 二轮 / ZCode](research/2026-10-04-m5-reference-repos.md)），01-PRD 已修订 v1.1（§1.5/§1.6 登记 M5），本节候选按下表处置——完整决策依据见调研报告 §3~§5：
+
+| §10.5 原候选 | 处置 | 去向 |
+| --- | --- | --- |
+| hooks 生命周期 | ✅ 排期 | §11 T5.1（M5 主题主菜） |
+| 沙箱 enforcement 上报 | ✅ 排期 | §11 T5.2 |
+| 记忆增强（跨项目全局记忆部分） | ✅ 排期 | §11 T5.3（global MEMORY.md 双层注入 + scope 预留） |
+| 记忆增强（embeddings / 代码语义索引） | ❌ 不做 | 三仓均无实现，FTS+BM25 路线够用（调研报告 §4） |
+| 事件生产者/消费者矩阵生成 | ✅ 排期 | §11 T5.5（T4.3 管线扩展） |
+| `raincode config dump` 可观测性 | ✅ 排期 | §11 T5.5 |
+| CLI esbuild 前置编译（L-16） | ✅ 排期 | §11 T5.7 |
+| 录制会话回放测试 lane | ⏸ M6+ | 调研定论：先做事件矩阵+导出基座，回放格式=日志格式本身（调研报告 §1-4） |
+| `session.delete` 物理删除 | ⏸ M6+ | dsh 无参照，自设计 tombstone+vacuum（§11.5） |
+| per-file 覆盖率 / lefthook | ❌ 不做 | 维持 CI 六门禁现状；dsh 豁免机制作渐进入口候选（§11.5） |
+| IDE 插件 / 后台守护 / 更多端 | ⏸ M6+ | ACP spike / serve+cron / jobs 通知注入形态沉淀 §11.5 |
+
+---
+
+## 11. M5 增补排期（2026-10-04 增补，M4 收官后）
+
+### 11.1 背景与定位
+
+M4 已全量完成（T4.1~T4.9，验收核对见 [m4 报告 §7](benchmarks/m4-2026-10-04.md)），本节为 M4 收官后的**增补排期**，不改变 §1~§10 的历史计划事实。M5 主题定为**「扩展机制与上下文治理」**，以 [M5 三仓调研报告](research/2026-10-04-m5-reference-repos.md)（MiMo-Code / deepseek-harness 二轮 / ZCode，三个只读调研子代理并行）为证据基座做四件事——
+
+1. **扩展机制补课**：hooks 生命周期 v1（ZCode/蓝本 + MiMo 纪律 + dsh 审计语义）与沙箱 enforcement 上报（dsh full/partial 落地）——RainCode 扩展面（skills/plugins/MCP）已成型，唯 hooks 缺位；
+2. **上下文治理**：compact 预剪枝（ZCode microcompact 常量 + dsh 三不变量）、MCP 工具目录化（MiMo BM25 延迟加载）、记忆与历史检索增强（三仓均无 embeddings 的定论 → FTS+BM25 路线）；
+3. **可观测性**：`raincode config dump`（dsh 静态列层 + 来源标签）与事件生产者/消费者矩阵（T4.3 生成管线扩展）；
+4. **工程收尾**：CLI esbuild 前置编译（L-16 核销）+ SSH base64 加固（T4.8 残留申报）+ 遗留批次 C。
+
+范围纪律沿用 §6 风险 7：01-PRD 已修订 v1.1（§1.5/§1.6 登记 M5），本节排期成立；**M6+ 候选（§11.5）排期前同样必须先修订 01-PRD**。
+
+### 11.2 任务分解表
+
+| 任务 | 产出物 | 依赖 | 预估人日 | 验收方式 |
+| --- | --- | --- | --- | --- |
+| T5.1 hooks 生命周期 v1（M5 主题主菜） | shared 协议 additive v1.12（hooks 配置域 + hook 生命周期事件）；config schema hooks 节点（project/user 双源，project 来源须 workspace trust 授信且**每 dispatch 前重验**、授信撤销立即生效）；hooks runner（command 类型：timeoutMs 缺省 60s / async 后台运行 / 输出 JSON 契约 additionalContext / decision(approve\|block) / systemMessage / suppressOutput / hookSpecificOutput.permissionDecision(allow\|ask\|deny)，解析失败=failed 告警不阻塞主流程）；PreToolUse deny 拦截接线 ToolExecutor；UserPromptSubmit / PostToolUse / Stop 生命周期接线；hook 注入消息带 provenance 溯源（hookPhase/hookIds）；审计 log-only 事件对 hook/invoked + hook/result（stderr 截断落盘）；桌面/Web hook 执行事件投影 | — | 6~9 | smoke:hooks（mock hook 子进程）：PreToolUse deny 真实拦截工具调用（N-3）/ additionalContext 注入下一回合 / 超时与坏 JSON = failed 不阻塞 / project hook 未授信拒绝 + 授信后生效 + 撤销立即失效 / 审计事件对落盘；协议 --check；runner 单测矩阵 |
+| T5.2 沙箱 enforcement 上报 | `Enforcement = 'full' \| 'partial'` 类型入 shared；Executor 工厂各实现自报（local=partial、docker/wsl=full、ssh 按远端探测，探针不可得报 partial）；bash 等工具结果 metadata **持续携带** enforcement 字段（非一次性告警）；模型可见拒绝标记 `[sandbox: ... denied under ... mode]`（同轮重试提示可选） | — | 2~3 | 四执行域自报矩阵单测 + bash 工具结果字段断言 + executor 冒烟扩展 |
+| T5.3 记忆与历史检索增强 | storage history FTS5 trigram 表（消息 part 级：文本+工具名；versioned 增量迁移）；检索 API 相对分数地板（top hit × 0.15）+ 3x 过取样；全局记忆 global MEMORY.md（RAINCODE_HOME）双层注入（global 先 workspace 后）+ L2 条目 scope 列预留；`session_search` 模型工具（会话历史检索，裁剪候选）；02 §7 补「检索结果与模型所见一致」不变量注记；**不做 embeddings**（01-PRD §1.6 定论） | — | 4~6 | FTS 单测（中英文 / phrase 转义 / 分数地板 / 增量迁移）+ smoke:memory 扩展全局记忆注入用例 + 检索工具 mock 端到端（若保留） |
+| T5.4 compact 预剪枝（microcompact） | full compact 触发前旧 tool result 预剪枝（触发阈值=上下文占比、可压缩工具白名单、保留最近 N 条、最小节省 tokens 门槛，常量参考 ZCode microcompact）；剪枝事件带 sourceEventSeqs 回指原文（resume/回放一致）；单过确定性收敛（head+marker+tail 恒 ≤ 阈值，按 code point 切分不劈代理对）；与压缩锁括弧协议兼容 | — | 3~5 | smoke:compact 扩展（预剪枝触发 / 白名单外不动 / 回指校验 / resume 后一致）+ NFR-6 回归 + 收敛性单测 |
+| T5.5 可观测性：config dump + 事件矩阵 | `raincode config dump`：静态归并 默认 → RAINCODE_HOME config.json → env → CLI args 逐层覆盖，逐项标来源；`--default-only` 损坏诊断模式（配置文件坏也能打印内置默认）；事件生产者/消费者矩阵：扩展 T4.3 gen 管线，源码扫描 19 事件的声明/emit/监听点生成 `docs/generated/event-matrix.md`，gen + `--check` 双模式入 CI | T4.3 管线（已在） | 2~3 | dump 输出与实际生效一致（env 覆盖用例）；手改 event-matrix → `--check` 变红；损坏 config 下 `--default-only` 仍可打印 |
+| T5.6 MCP 工具目录化（token 治理，裁剪候选） | MCP 工具不再全量进系统提示：目录摘要（BM25 K1=1.2 索引）+ `mcp_tool_search` 模型工具按需检索加载（上限 32）；大目录预算与降级（超预算降级为仅名称列表） | T4.4 目录 digest 机制 | 3~4 | 多 server fixture 下系统提示 token 对比断言 + search 工具 mock 端到端 + 目录热变更重发布 |
+| T5.7 工程收尾 + 遗留批次 C（裁剪候选） | CLI esbuild 前置编译（L-16 核销：单文件 bundle、原生模块外置清单（better-sqlite3 等）、metafile 重复依赖校验、alias 逐条精确声明三件套）+ pinned 包管理器校验入 CI；SSH 执行域 base64 加固（远端命令 base64 包装消除 T4.8 申报的双引号转义残差）；遗留批次 C：L-14 密钥到位复查（smoke:remote）/ L-01 Docker/WSL 复查 / NFR 抽查 | 收尾性质置后 | 3~5 | CLI bundle 产物冒烟（命令集与协议断言）+ smoke:ssh 扩展双引号场景转绿 + CI 绿；L-16 核销登记 |
+
+M5 小计：**23~35 人日**；**里程碑门槛 = T5.1~T5.5（17~26 人日）**，T5.6 / T5.7 为可裁尾项（T5.7 中遗留批次 C 的环境门控部分照旧不计门槛）。
+
+### 11.3 裁剪次序与关键路径
+
+- **耦合关系**：T5.1 / T5.2 / T5.3 / T5.4 相互零耦合可并行穿插；T5.5 复用 T4.3 生成管线（已在）；T5.6 复用 T4.4 目录 digest；T5.7 为收尾性质置后，其中 CLI esbuild 建议在 T5.1~T5.5 全部落地后执行（避免 bundle 面反复变动）。
+- **裁剪次序（若需压缩）**：T5.6 MCP 工具目录化 → T5.7 工程收尾 → T5.5 可观测性 → T5.4 预剪枝，先后裁撤；**T5.1 hooks（主题主菜）/ T5.2 enforcement（最小增量性价比最高）不可裁**。
+- 环境门控项（L-01 / L-14 / 真 OpenSSH 远端）照旧就绪即穿插，不计门槛（legacy-items §1 口径）。
+
+### 11.4 验收清单（M5）
+
+**工程门槛**：§2.4 四命令全绿 + 协议 v1.12 additive 后 `protocol:gen` 同步 + `--check` 门禁全绿。
+
+**功能手动验收场景**：
+
+1. hooks 端到端五用例全绿（T5.1 验收列：拦截 / 注入 / 容错 / 授信闭环 / 审计落盘）。
+2. 四执行域（local/docker/wsl/ssh）工具结果携带 enforcement 字段，local 在 Windows 上如实自报 partial。
+3. 检索增强：history FTS 命中 + 相对分数地板生效；全局记忆注入可见且优先级正确（global 先）。
+4. 预剪枝：microcompact 触发后 full compact 频率下降（smoke:compact 扩展用例 + NFR-6 回归绿）。
+5. 可观测性：`config dump` 输出与实际生效一致（含来源标签）；event-matrix `--check` 入 CI。
+6. **台账核对**：legacy-items 待收口保持 0；L-16 核销（若 T5.7 执行）；L-14 / L-01 复查记录更新。
+
+**性能抽查**：NFR-1 / NFR-2 / NFR-6 复跑不劣化（T5.1 hooks dispatch、T5.4 预剪枝均触及热路径）。
+
+### 11.5 M6+ 候选方向（2026-10-04 沉淀，排期前必须先修订 01-PRD）
+
+来源：三仓调研报告 §5「M6+ 候选沉淀」与 §4「明确不做」的缓议项。仅列方向，不做承诺：
+
+- **扩展生态**：插件 marketplace 分发（ZCode 三层来源 + manifest，前置 symlink/junction 逃逸防护）；PermissionRequest hook 与 permissionUpdates 动态权限规则（T5.1 留口）；experimental 钩子区（chat.messages.transform / session.compacting 等，MiMo 分层纪律）；MCP OAuth 与进程树管控（ZCode）。
+- **上下文与记忆**：会话录制回放测试 lane（前提：回放格式 = 事件日志格式本身）；spill 溢出家族（超大工具结果落盘 locator，dsh，约 2 人日）；checkpoint 结构化模板 + 候选晋升（MiMo 10 节模板）；Dream/Distill 自动记忆固化（MiMo）；compaction-image-offload（dsh）。
+- **内核强化**：Goal/Stop 判定 judge（MiMo，防乐观早停）；Max Mode best-of-N + 评审（MiMo）；工具 FIFO 闸门 + fail-cascade（MiMo gate.ts，子代理并行编排强化前置）；last-match-wins 权限语义 + hardPermission 不可放宽层 + forced-ask 超时（MiMo 对照补用例）；`session.delete` 物理删除（tombstone+vacuum 自设计）；事件版本化 + 序号落库（MiMo sync）；持久化 shell 会话工具（dsh pwsh persistent，Windows 长驻终端）；rewind checkpoint 工件（ZCode，与 git stash 方案二选一）。
+- **形态扩展**：ACP server 包装层（Zed 等 IDE 生态，3~5 人日，2 人日 spike 先行）；serve 长驻守护 + cron 调度四件套（MiMo jitter/lock/sentinel）；jobs 后台任务 + 完成通知注入原会话（dsh，约 3 人日）；动态工作流子系统（ZCode，subagent 之上的可编程编排层）。
+- **工程**：架构治理升级（ZCode architecture-policy 声明式依赖方向 + `--changed` 增量 + maxFileLines）；knip 未用导出检测；CI path-hash 分片（MiMo）；per-file 覆盖率渐进圈（dsh 豁免 membership contract 作入口）。
