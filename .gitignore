@@ -28,4 +28,6 @@ Thumbs.db
 deepseek-harness/
 MiMo-Code/
 ZCode/
+# 本地手工测试草稿（非工程产物，不入库）
+testRainCode/
 apps/desktop/build/native/
