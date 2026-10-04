@@ -1,7 +1,6 @@
 /**
- * 会话视图模型与事件 reducer（T2.9 Alpha）：服务端事件 → 会话流 UI 状态。
- * 状态机与 CLI stream.ts 同源（06 §3.2 事件语义），双端共享同一份事实（03 §7 一致性约束）。
- * 纯函数实现（不依赖 react/zustand），便于单测驱动。
+ * 会话视图模型与事件 reducer（T2.9 Alpha）：服务端事件 → 会话流 UI 状态；状态机与 CLI
+ * stream.ts 同源（06 §3.2 事件语义），双端共享同一份事实（03 §7）；纯函数便于单测驱动。
  */
 import type { McpServerStatusEntry, McpServerStatus, PluginStatus, PluginSummary } from "@raincode/shared";
 
@@ -407,9 +406,9 @@ function clipOneLine(text: string, max: number): string {
 }
 
 /**
- * 工具入参摘要 v2（折叠头参数摘要，03 §6.4；UI 重设计二轮）：按工具域提炼主参数——
- * bash 命令行 / grep·glob 模式+范围 / read·write·edit 路径 / web_fetch URL /
- * agent profile·task / skill /name；未知形状回退紧凑 JSON。纯展示，权限判定在服务端。
+ * 工具入参摘要 v2（折叠头参数摘要，03 §6.4 v1.2）：按工具域提炼主参数——bash 命令行 /
+ * grep·glob 模式+范围 / read·write·edit 路径 / web_fetch URL / agent profile·task /
+ * skill /name；未知形状回退紧凑 JSON。纯展示，权限判定在服务端。
  */
 export function summarizeInput(input: unknown): string | undefined {
   if (input === null || input === undefined) return undefined;

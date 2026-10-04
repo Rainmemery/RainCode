@@ -71,6 +71,8 @@ export const messageRecordSchema = z.object({
   attachments: z.array(attachmentSchema).optional(),
   toolCallId: z.string().optional(),
   isError: z.boolean().optional(),
+  /** 思考过程（协议 v1.13 additive：assistant 行随行落盘，冷重建恢复思考块；瞬态 delta 仍不落盘）。 */
+  reasoning: z.string().optional(),
 });
 export type MessageRecord = z.infer<typeof messageRecordSchema>;
 

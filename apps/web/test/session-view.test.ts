@@ -5,7 +5,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { applySessionEvent, initialWebState, summarizeInput } from "../src/session-view.js";
+import { applySessionEvent, initialWebState, rebuildItemsFromHistory, summarizeInput } from "../src/session-view.js";
 import type { ChatItem, ToolItem } from "../src/session-view.js";
 
 describe("message.delta reasoning 累积（思考块，03 §6.1 v1.2）", () => {
@@ -103,5 +103,46 @@ describe("summarizeInput v2（工具域主参数提炼，03 §6.4 v1.2）", () =
     });
     const item = state.views["s1"]!.items[0] as ToolItem;
     assert.equal(item.argsPreview, "$ pnpm test");
+  });
+});
+
+describe("rebuildItemsFromHistory（冷重建：v1.13 reasoning 落盘恢复 + 摘要 v2 重建）", () => {
+  const history = [
+    { id: "m1", role: "user", content: "把备注卡片改成流式布局" },
+    { id: "m2", role: "assistant", content: "看完了，给两个方案。", reasoning: "先读文件再对比方案。" },
+    {
+      id: "m3",
+      role: "assistant",
+      content: [{ type: "tool_call", toolCallId: "t1", name: "read", arguments: { path: "src/store.ts" } }],
+    },
+    { id: "m4", role: "tool", toolCallId: "t1", content: "export class NoteStore {}", isError: false },
+    { id: "m5", role: "assistant", content: "无思考的旧消息" },
+  ];
+
+  it("assistant 行 reasoning 恢复为思考块字段；无 reasoning 的行不设字段", () => {
+    const items = rebuildItemsFromHistory(history);
+    const withReasoning = items[1] as ChatItem;
+    assert.equal(withReasoning.kind, "message");
+    assert.equal(withReasoning.role, "assistant");
+    assert.equal(withReasoning.text, "看完了，给两个方案。");
+    assert.equal(withReasoning.reasoning, "先读文件再对比方案。");
+    assert.equal(withReasoning.streaming, false);
+    const without = items[3] as ChatItem;
+    assert.equal(without.text, "无思考的旧消息");
+    assert.equal(without.reasoning, undefined);
+  });
+
+  it("工具卡参数摘要走 summarizeInput v2（不再裸 JSON 墙），工具结果归并 contentPreview", () => {
+    const items = rebuildItemsFromHistory(history);
+    const card = items[2] as ToolItem;
+    assert.equal(card.kind, "tool");
+    assert.equal(card.toolName, "read");
+    assert.equal(card.state, "ok");
+    assert.equal(card.argsPreview, "src/store.ts");
+    assert.equal(card.contentPreview, "export class NoteStore {}");
+  });
+
+  it("空 history → 空视图", () => {
+    assert.equal(rebuildItemsFromHistory([]).length, 0);
   });
 });

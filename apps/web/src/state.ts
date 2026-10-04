@@ -9,7 +9,7 @@
 import { create } from "zustand";
 import { createReconnectingRpcClient, RpcCallError } from "@raincode/rpc/web";
 import type { ReconnectingRpcClient } from "@raincode/rpc/web";
-import { applySessionEvent, initialWebState } from "./session-view.js";
+import { applySessionEvent, initialWebState, rebuildItemsFromHistory } from "./session-view.js";
 import type { SessionView, WebState } from "./session-view.js";
 
 interface SnapshotPayload {
@@ -89,36 +89,7 @@ export const useWeb = create<WebStore>((set, get) => {
     const result = await call<{ snapshot: SnapshotPayload }>("session.resume", { sessionId });
     const snapshot = result.snapshot;
     const rebuild = snapshot.history !== undefined && snapshot.history.length > 0 ? snapshot.history : snapshot.messages ?? [];
-    const items: SessionView["items"] = [];
-    const toolCards = new Map<string, Extract<SessionView["items"][number], { kind: "tool" }>>();
-    for (const raw of rebuild) {
-      const record = raw as { role?: string; content?: unknown; toolCallId?: string; isError?: boolean };
-      if (record.role === "user" && typeof record.content === "string") {
-        items.push({ kind: "message", id: `m-${items.length}`, role: "user", text: record.content, streaming: false });
-      } else if (record.role === "assistant" && typeof record.content === "string" && record.content.length > 0) {
-        items.push({ kind: "message", id: `m-${items.length}`, role: "assistant", text: record.content, streaming: false });
-      } else if (record.role === "assistant" && Array.isArray(record.content)) {
-        for (const block of record.content as Array<Record<string, unknown>>) {
-          if (block.type === "tool_call" && typeof block.toolCallId === "string") {
-            const card: Extract<SessionView["items"][number], { kind: "tool" }> = {
-              kind: "tool",
-              toolCallId: block.toolCallId,
-              toolName: typeof block.name === "string" ? block.name : "unknown",
-              state: "ok",
-              ...(block.arguments !== undefined && { argsPreview: JSON.stringify(block.arguments) }),
-            };
-            toolCards.set(block.toolCallId, card);
-            items.push(card);
-          }
-        }
-      } else if (record.role === "tool" && typeof record.toolCallId === "string") {
-        const card = toolCards.get(record.toolCallId);
-        if (card !== undefined) {
-          card.state = record.isError === true ? "error" : "ok";
-          if (typeof record.content === "string") card.contentPreview = record.content.slice(0, 2000);
-        }
-      }
-    }
+    const items = rebuildItemsFromHistory(rebuild);
     const approvals = (snapshot.pendingApprovals ?? []).map((raw) => {
       const record = raw as Record<string, unknown>;
       return {

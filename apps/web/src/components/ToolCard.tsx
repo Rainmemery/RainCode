@@ -5,7 +5,7 @@
  * glyph 与 CLI theme.glyphFor 同源（◇ MCP / ◈ 子代理 / ✓ todo / ✱ 检索 / ← 写入 / $ bash / ⚙ 兜底）；
  * 模块徽标：`mcp__<server>__<tool>` → info「MCP·server」、`agent` → violet「子代理」（03 §3.1 模块标识色）。
  */
-import { useState } from "react";
+import { memo, useState } from "react";
 import type { ToolItem } from "../session-view.js";
 
 interface ToolCardProps {
@@ -131,7 +131,7 @@ function ContentPreview({ content, truncated }: { content: string; truncated?: b
   );
 }
 
-export function ToolCard({ item }: ToolCardProps) {
+function ToolCardView({ item }: ToolCardProps) {
   const [expanded, setExpanded] = useState(false);
   const meta = stateMeta(item);
   const badge = moduleBadge(item.toolName);
@@ -182,3 +182,6 @@ export function ToolCard({ item }: ToolCardProps) {
     </div>
   );
 }
+
+/** memo：流式期间历史工具卡不随转渲染（03 §6.4 性能注记）。 */
+export const ToolCard = memo(ToolCardView);

@@ -4,7 +4,7 @@
 | --- | --- |
 | 文档版本 | v1.0 |
 | 发布日期 | 2026-09-28 |
-| 文档状态 | 正式定稿；v1.12 增补 hooks 域（M5 T5.1，§2.12 / §3.2 D 组 / §7.5） |
+| 文档状态 | 正式定稿；v1.13 增补 MessageRecord.reasoning（UI 重构轮，§6.3 snapshot / §7.5） |
 | 协议版本 | protocolVersion `1.0` |
 | 关联文档 | 02-module-design（模块接口语义权威）· 04-architecture（§4 传输无关 RPC 设计权威）· 03-ui-design（事件消费方）· 01-PRD（NFR 性能基线） |
 
@@ -416,7 +416,7 @@ payload 惯例：所有事件 payload 继承 §3.1 的 `EventBase`；下表只�
 | `session.created` | `{ sessionId, title, workspaceRoot, mode, createdAt, kind?: "main"\|"subagent", parentSessionId? }` | 会话创建/分叉受理（05-database JSONL 头行同名事件的 rpc 投影；`kind`/`parentSessionId` 为 T2.6 可选演进字段——`session.fork` 的新会话回链源会话） | 端层会话列表刷新 |
 | `session.snapshot` | `SessionSnapshotPayload`（见下） | 恢复完成、客户端重连补推、seq 缺口补偿 | 端层状态全量重建 |
 
-`SessionSnapshotPayload`：`{ lastSeq, phase, turnId?, model, activeProviderId, contextUsage: { tokens, maxTokens }, messages: MessageRecord[], history?: MessageRecord[], todoState?: TodoItem[], pendingApprovals: PermissionRequestedPayload[] }`。`messages` 只含末尾 checkpoint 之后的增量（NFR-5 ≤1s 的协议投影）；`history` 为可选全量消息（v1.3，冷重建专用：端层无本地历史时以 `history ?? messages` 重建视图；resume 双路径填充、事件投影可省略）；`pendingApprovals` 复用 `permission.requested` 的 payload 主体，实现重连补推未决审批（02 §6.4）。
+`SessionSnapshotPayload`：`{ lastSeq, phase, turnId?, model, activeProviderId, contextUsage: { tokens, maxTokens }, messages: MessageRecord[], history?: MessageRecord[], todoState?: TodoItem[], pendingApprovals: PermissionRequestedPayload[] }`。`messages` 只含末尾 checkpoint 之后的增量（NFR-5 ≤1s 的协议投影）；`history` 为可选全量消息（v1.3，冷重建专用：端层无本地历史时以 `history ?? messages` 重建视图；resume 双路径填充、事件投影可省略）；assistant 行自 v1.13 起可携带可选 `reasoning`（思考过程随行落盘，端层冷重建恢复思考块；`message.delta` 的 reasoning 流仍为瞬态不落盘，05 §4.2 口径不变）；`pendingApprovals` 复用 `permission.requested` 的 payload 主体，实现重连补推未决审批（02 §6.4）。
 
 **B. 工具与权限（审批闭环）**
 
@@ -782,6 +782,7 @@ capability 命名约定：`<domain>.<feature>`（小写点分），登记于 `sy
 | 1.10 | 2026-10-03 | T4.4 技能模型侧可发现性（minor+1，additive）：`SkillSummary` 增 `modelInvocable`（boolean，缺省 true——仅约束模型经 `skill` 工具的调用，斜杠命令不受限）；内置工具清单新增 `skill`（`{ name, arguments? }`，readOnly）——展开复用 skills.invoke 链路（单点不变），模型经系统提示技能目录（逐 turn digest 重发布）自主发现并调用。方法/事件规模不变（54 方法 / 19 事件；生成式协议目录经 `protocol:gen` 同步） |
 | 1.11 | 2026-10-03 | 可视化测试缺陷修复批次（minor+1，additive）：plugins 域新增 `plugins.rescan`（§2.10，运行时重扫描插件目录，免重启装载新拷入插件——双端扩展面板「刷新」语义核销）。协议规模 55 方法 / 19 事件 |
 | 1.12 | 2026-10-04 | M5 T5.1 hooks 生命周期 v1（minor+1，additive）：新增 hooks 域 3 方法 `hooks.list` / `hooks.trust.grant` / `hooks.trust.revoke`（§2.12）与新事件 `hook.started` / `hook.completed`（§3.2 D 组）——hooks.json 双源（user/project，CC 兼容 command 子集）+ project 源 workspace trust 授信（**每 dispatch 前重验**，绑定配置 digest，撤销/改文件立即生效）+ 四生命周期接线（PreToolUse deny 拦截先于权限判定 / additionalContext provenance 注入下一轮 / failed·timed_out 告警不阻塞）+ log-only 审计事件对 `hook.invoked`/`hook.result`（stderr 截断落盘，不进 EVENT_SCHEMAS）；错误码新增段 11 `HOOKS_CONFIG_INVALID` 与数据级 `TOOL_HOOK_DENIED`。PermissionRequest hook / permissionUpdates 动态权限规则留 M6+。协议规模 58 方法 / 21 事件 |
+| 1.13 | 2026-10-04 | UI 重构轮（minor+1，additive）：`MessageRecord` 增可选 `reasoning`（string，仅 assistant 行）——思考过程随消息落盘（turn-loop 累积 `delta.reasoning` 并在 assistant 行随行写入，中断残留半行同口径），端层 `session.resume` 冷重建据此恢复思考块（跨宿主重启 / 换端接续）；`message.delta` reasoning 流保持瞬态不落盘（05 §4.2 口径不变），CLI 上下文组装不消费该字段（行为零变更）。方法/事件规模不变（58 方法 / 21 事件；生成式协议目录经 `protocol:gen` 同步） |
 
 ---
 

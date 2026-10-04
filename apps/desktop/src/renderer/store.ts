@@ -7,6 +7,7 @@ import { createRpcClient, RpcCallError } from "@raincode/rpc/client";
 import type { RpcClient } from "@raincode/rpc/client";
 import { getBridge } from "./bridge.js";
 import { applySessionEvent, initialDesktopState } from "./session-view.js";
+import { rebuildItemsFromHistory } from "./history-rebuild.js";
 import type { DesktopState, SessionView } from "./session-view.js";
 
 interface SessionListRow {
@@ -87,42 +88,8 @@ export const useDesktop = create<DesktopStore>((set, get) => {
     const result = await call<{ snapshot: SnapshotPayload }>("session.resume", { sessionId });
     const snapshot = result.snapshot;
     const rebuild = snapshot.history !== undefined && snapshot.history.length > 0 ? snapshot.history : snapshot.messages ?? [];
-    const items: SessionView["items"] = [];
-    // 历史重建：文本消息直映；工具调用重建为工具卡（结果归并进对应卡，03 §6.4 五状态口径）
-    const toolCards = new Map<string, Extract<SessionView["items"][number], { kind: "tool" }>>();
-    for (const raw of rebuild) {
-      const record = raw as {
-        role?: string;
-        content?: unknown;
-        toolCallId?: string;
-        isError?: boolean;
-      };
-      if (record.role === "user" && typeof record.content === "string") {
-        items.push({ kind: "message", id: `m-${items.length}`, role: "user", text: record.content, streaming: false });
-      } else if (record.role === "assistant" && typeof record.content === "string" && record.content.length > 0) {
-        items.push({ kind: "message", id: `m-${items.length}`, role: "assistant", text: record.content, streaming: false });
-      } else if (record.role === "assistant" && Array.isArray(record.content)) {
-        for (const block of record.content as Array<Record<string, unknown>>) {
-          if (block.type === "tool_call" && typeof block.toolCallId === "string") {
-            const card: Extract<SessionView["items"][number], { kind: "tool" }> = {
-              kind: "tool",
-              toolCallId: block.toolCallId,
-              toolName: typeof block.name === "string" ? block.name : "unknown",
-              state: "ok",
-              ...(block.arguments !== undefined && { argsPreview: JSON.stringify(block.arguments) }),
-            };
-            toolCards.set(block.toolCallId, card);
-            items.push(card);
-          }
-        }
-      } else if (record.role === "tool" && typeof record.toolCallId === "string") {
-        const card = toolCards.get(record.toolCallId);
-        if (card !== undefined) {
-          card.state = record.isError === true ? "error" : "ok";
-          if (typeof record.content === "string") card.contentPreview = record.content.slice(0, 2000);
-        }
-      }
-    }
+    // 历史重建（session-view 纯函数）：文本消息 + 思考块（v1.13 随行落盘）+ 工具卡（结果归并，摘要 v2）
+    const items = rebuildItemsFromHistory(rebuild);
     const approvals = (snapshot.pendingApprovals ?? []).map((raw) => {
       const record = raw as Record<string, unknown>;
       return {

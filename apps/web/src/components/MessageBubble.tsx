@@ -1,7 +1,7 @@
 /**
- * 消息气泡（03 §6.1 第 1 条；UI 重构轮 markdown 抽出至 Markdown.tsx 并 memo 化）：用户右对齐
- * 浅橙底气泡（最大宽 76%）；助手左对齐卡片（✦ RainCode 署名 + model 标签 + ReasoningBlock
- * 思考块 + 流式尾部光标）。
+ * 消息气泡（03 §6.1；UI 重构轮新增，与桌面端 MessageBubble 同构并 memo 化）：用户右对齐
+ * 浅橙底气泡 / 助手左对齐卡片（✦ RainCode 署名 + model 标签 + ReasoningBlock 思考块 +
+ * 流式尾部光标）；markdown 经 Markdown 组件渲染。
  */
 import { memo, useEffect, useState } from "react";
 import { Markdown } from "./Markdown.js";
@@ -63,11 +63,11 @@ function MessageBubbleView({ item }: { item: ChatItem }) {
       )}
       <div>
         <Markdown text={item.text} />
-        {item.streaming && <span className="stream-cursor" />}
+        {item.streaming ? <span className="stream-cursor" /> : null}
       </div>
     </div>
   );
 }
 
 /** memo：流式期间仅活动气泡重渲染，历史消息与工具卡不随转渲染。 */
-export default memo(MessageBubbleView);
+export const MessageBubble = memo(MessageBubbleView);

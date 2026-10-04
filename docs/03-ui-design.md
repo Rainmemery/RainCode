@@ -260,7 +260,7 @@ flowchart TD
 **中部会话流**（核心，带四角取景框角标）：从上到下依次为——
 
 1. **消息气泡**：用户消息右对齐浅橙底（`--accent-bg`）气泡；助手消息左对齐卡片，含 `✦ RainCode` 署名行与模型标签；支持行内代码、代码块、Markdown。
-2. **思考块（v1.2）**：助手消息内、正文之前——`✻ 思考过程 · N 字` 单行开关（violet 标识 + 2px violet 左边线），流式期间自动展开实时呈现（文本 italic 弱化 + 尾部 48px 渐隐 mask），`message.completed` 后自动折叠（用户可再展开）；reasoning 与正文在 reducer 层独立累积（`delta.type=reasoning`），CLI 侧对应 `RAINCODE_CLI_SHOW_REASONING` stderr 通道。
+2. **思考块（v1.2）**：助手消息内、正文之前——`✻ 思考过程 · N 字` 单行开关（violet 标识 + 2px violet 左边线），流式期间自动展开实时呈现（文本 italic 弱化 + 尾部 48px 渐隐 mask），`message.completed` 后自动折叠（用户可再展开）；reasoning 与正文在 reducer 层独立累积（`delta.type=reasoning`），CLI 侧对应 `RAINCODE_CLI_SHOW_REASONING` stderr 通道。**v1.3 增补**：reasoning 自协议 v1.13 随 assistant 行落盘，冷重建（宿主重启 / 换端接续）后思考块照常恢复，折叠态呈现与实时收束口径一致。
 3. **工具调用卡片**：结构为「状态灯 + glyph + 等宽工具名 + 参数摘要 + 耗时 + 展开箭头」。折叠态一行；展开态含参数区与结果预览（文本 / diff / 表格三种渲染），底部操作行：复制、重跑、在编辑器打开。五种状态：`pending`（琥珀脉冲灯）、`running`（青色旋转灯）、`success`（绿灯）、`error`（红灯 + 错误摘要）、`needs-approval`（琥珀边框 + 内嵌审批条）。沙箱执行的调用带 `mint` 色「沙箱」徽标；MCP 调用带 `info` 蓝色「MCP·服务器名」徽标。
 4. **子代理进度卡**（紫色标识）：主代理派发的并行子任务列表，每行子代理名 + 当前动作 + 迷你进度条；可展开查看子代理各自的消息流缩略；全部完成后折叠为一行汇总。
 5. **流式输出**：生成中的助手消息尾部为 1×16px 橙色光标块（闪烁）；未完成段落底部呈现一行 shimmer 扫过的占位文本「正在生成…」。
@@ -338,7 +338,7 @@ flowchart TD
 - **开关**：30×16px，开态使用所属模块标识色（沙箱 mint / MCP info / 通用 accent），不用统一绿色。
 - **空态**：面板级空态 = 一行说明 + 一个动作链接；页面级空态（首启动）= ASCII 纹样 + 主按钮引导，二者不用插画位图。
 - **kbd 快捷键芯片（v1.2）**：快捷键提示行中的按键用 `.kbd` 芯片呈现（等宽 10px、1px 描边 + 下边加重 2px、`--bg-raised` 底），如审批弹窗「快捷键 `1`–`4` 直选 · `Esc` 拒绝」、斜杠面板「`↑``↓` 选择 · `Tab` 补全 · `Enter` 执行 · `Esc` 关闭」。
-- **代码围栏复制（v1.2）**：围栏代码块右上角常驻「复制」按钮（`--bg-panel` 底 + 1px 描边），点击后 1.5s 内显示「已复制」；clipboard API 优先，非安全上下文（file://）回退 `execCommand`。
+- **代码围栏复制（v1.2，v1.3 修订为头行式）**：围栏升级为「头行 + 主体」整体容器（1px 描边圆角）——头行（`--bg-panel` 底、下缘 1px 分隔）左侧语言芯片（`​```ts` 首行语言标签，mono faint 小字；无标签显示 `text`），右侧常驻「复制」按钮（1.5s「已复制」反馈；clipboard API 优先，非安全上下文（file://）回退 `execCommand`）。
 
 ---
 
@@ -436,3 +436,15 @@ flowchart TD
 2. **工具卡 v2（双端同构）**：glyph 表与 CLI `theme.glyphFor` 同源（◇ MCP / ◈ 子代理 / ✓ todo / ✱ 检索 / ← 写入 / $ bash / ⚙ 兜底——三端同一视觉语言）；参数摘要 v2（`summarizeInput` 按工具域提炼主参数：bash `$ 命令` / grep·glob `"模式" · 范围` / 路径族 / URL / `profile · task` / `/name`，120 字符截断，拒绝 JSON 墙）；状态底色 tint（pending warn / running cyan / error danger 各 5%）与 2px 左边框构成双通道状态编码；结果预览 diff 行着色（结构化标记或 +/- 成对才启用，markdown 列表不误判）+ `truncated` 截断提示。
 3. **组件搭配补全（双端）**：代码围栏右上角复制按钮（clipboard 优先 + execCommand 回退，1.5s「已复制」反馈）；快捷键提示行 kbd 芯片（`.kbd`：等宽 10px + 下边加重），审批弹窗与斜杠面板两处先行。
 4. **验收留存**：门禁 typecheck / lint 12 warning 基线 / architecture 244 文件 0 违规 / 单测 270（+20：desktop session-view 10 + web session-view 10 新测试文件）；walkthrough-web 19/19、walkthrough-desktop 14/14；CDP 截图 8 张（思考块+围栏复制 / read 工具卡 ok 态展开 / MCP 审批弹窗 / MCP 徽标 ok 态，双端各四）人工核对通过——首跑修出截图脚本自身两缺陷（read mock 用 `file_path` 不符工具 schema、目标文件未种入致 ENOENT 假红，均非产品缺陷）。
+
+---
+
+## 13. v1.3 变更记录（2026-10-04 · UI 重构轮：组件化重构 + 冷重建补全 + 产品截图）
+
+本轮为「进一步优化重构 + 产品介绍截图」专项：呈现层组件化与 memo 化、截图验收反哺修出两处冷重建缺陷（token 色值仍零变更）：
+
+1. **呈现层组件化（双端，行为零变更）**：markdown 渲染自 ChatFlow（web）/ MessageBubble（desktop）抽出为独立 `Markdown.tsx`（行内 + 块级 + CodeFence，memo 化）；web 端补齐 `MessageBubble.tsx` 与桌面端同构（用户气泡 / 助手卡片 + 署名 + ReasoningBlock + 流式光标）；`MessageBubble` / `Markdown` / `ToolCard` 双端 `React.memo` 化——长会话流式期间仅活动消息重渲染，历史消息与工具卡不随转渲染。走查 DOM 契约零破坏（walkthrough-web 19/19、walkthrough-desktop 14/14 复归全绿）。
+2. **CodeFence v1.3（双端同构）**：围栏自「悬浮复制按钮」升级为「头行 + 主体」整体容器——头行左侧语言芯片（fence 首行语言标签，mono faint；无标签 `text` 兜底）+ 右侧常驻复制按钮（§6.5 修订）。
+3. **冷重建补全（截图验收反哺，双端真缺陷）**：产品截图脚本以「回合先跑、页面后开」路径驱动，暴露 `session.resume` 冷重建两处退化——①工具卡参数摘要裸 `JSON.stringify`（活路径已用摘要 v2，恢复后退化 JSON 墙）；②思考块丢失（reasoning 为瞬态 delta 不落盘）。修复：重建逻辑抽纯函数 `rebuildItemsFromHistory`（双端各自实现，单测锁定）统一消费摘要 v2；协议 v1.13 additive `MessageRecord.reasoning`（turn-loop 累积随 assistant 行落盘，中断残留半行同口径）——思考块自此跨宿主重启 / 换端接续保留（06 §7.5 v1.13）。
+4. **产品截图管线（README picture/ 素材）**：新增 `scripts/product-shots-web.mts` / `scripts/product-shots-desktop.mts`（`pnpm shots:web` / `shots:desktop`）——真实入口（`raincode web` 宿主 + 构建产物 electron）+ mock LLM 脚本回放（推理流 / markdown / 并行只读工具 / MCP 审批 / write 审批）+ CDP 语义导航与 `Page.captureScreenshot`，产出 12 张真实渲染截图入库 `picture/` 并嵌入 README（产品一览 / 双端节 / 折叠详情）。截图即验收：web-chat（思考块 + 摘要 v2 + 语言芯片三重确认）/ web-approval（kbd 芯片）/ desktop-tools（read 卡展开 + 耗时）等人工核对通过。
+5. **验收留存**：门禁 typecheck 14 项目 / lint 12 warning 基线 / architecture 251 文件 0 违规 / protocol:check 58 方法 21 事件（v1.13 gen 同步）/ 单测 278（+8：双端 rebuildItemsFromHistory 3+3 + agent-core round-helpers 2）；walkthrough-web 19/19、walkthrough-desktop 14/14。

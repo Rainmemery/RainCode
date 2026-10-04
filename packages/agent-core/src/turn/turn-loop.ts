@@ -1,9 +1,9 @@
 /**
- * SessionTurnLoop：单会话 Turn 循环（02-module-design §1.2 / 04-architecture §1.3）。
- * 单写者：一个循环实例同时只执行一个 turn；运行中 submit 经 CommandInbox 排队。
- * 多轮主流程（T1–T15，02 §1.2.1）：输入落库 → 组装上下文 → 流式 → ToolSchedule（zod+权限判定，ask 态
- * 经 ApprovalBroker 挂起收敛）→ T9 ToolExecution → 结果落库 → T13 回传直至纯文本收束；maxRoundsPerTurn
- * （默认 32）保护；非法入参受限重试上限 3（AC-12，06 §4.3 段 7）；delta/progress 为 UI 瞬态不落盘（05 §4.2）；取消 T3/T5+T8/T12。
+ * SessionTurnLoop：单会话 Turn 循环（02 §1.2 / 04 §1.3）。单写者：一个实例同时只执行一个
+ * turn，运行中 submit 经 CommandInbox 排队；多轮主流程（T1–T15，02 §1.2.1）：输入落库 →
+ * 组装上下文 → 流式 → ToolSchedule（ask 态经 ApprovalBroker 挂起）→ T9 执行 → T13 回传
+ * 直至纯文本收束；maxRoundsPerTurn（默认 32）保护；非法入参受限重试上限 3（AC-12）；
+ * delta/progress 为 UI 瞬态不落盘（05 §4.2）。
  */
 import { LlmAbortedError, LlmError, type LlmStreamEvent } from "@raincode/llm";
 import { ulid, type CheckpointState } from "@raincode/storage";
@@ -25,7 +25,7 @@ export type { SessionTurnLoopOptions } from "./loop-options.js";
 
 const DEFAULT_DELTA_FLUSH_MS = 50; // message.delta 批量节流窗口（06 §3.4：≤50ms）
 const DEFAULT_MAX_ROUNDS = 32; // turn 内模型↔工具往返轮次上限（02 §1.2.1）
-// AC-12 受限重试上限：单 turn 内 TOOL_INVALID_INPUT 达 3 次强制收束（06 §4.3 段 7；maxRoundsPerTurn 语义不变）
+// AC-12 受限重试上限：TOOL_INVALID_INPUT 达 3 次强制收束（06 §4.3 段 7）
 const INVALID_INPUT_RETRY_LIMIT = 3;
 
 interface InboxEntry {
@@ -53,6 +53,8 @@ export class SessionTurnLoop {
   private cancelRequested = false;
   private controller: AbortController | null = null;
   private assistantText = "";
+  /** 思考过程累积（协议 v1.13：随 assistant 行落盘，冷重建恢复思考块；delta 事件仍瞬态）。 */
+  private assistantReasoning = "";
   /** 协作模式（可运行时切换：session.setMode → setMode()，对运行中 turn 的后续判定立即生效）。 */
   private mode: CollaborationMode;
   private readonly settler: TurnSettler;
@@ -124,8 +126,7 @@ export class SessionTurnLoop {
     const done = new Promise<TurnOutcome>((resolvePromise) => (resolve = resolvePromise));
     const entry: InboxEntry = { turnId, input, resolve };
     const { position } = this.inbox.enqueue(entry);
-    const started =
-      position === 1 && this.running === null && !this.pumping && this._phase === "Idle";
+    const started = position === 1 && this.running === null && !this.pumping && this._phase === "Idle";
     if (started) {
       this.pump();
     }
@@ -163,7 +164,6 @@ export class SessionTurnLoop {
   }
 
   // 泵：单写者循环 -----------------------------------------------------------
-
   private pump(): void {
     if (this.pumping) return;
     this.pumping = true;
@@ -203,16 +203,13 @@ export class SessionTurnLoop {
   }
 
   // 多轮 turn：模型请求 ↔ 工具执行（T2 … T13 往返）---------------------------
-
   private async executeTurn(entry: InboxEntry, controller: AbortController): Promise<TurnOutcome> {
     // T2 前的接纳段：用户输入先落盘再发请求（04 §1.3 预算表顺序）
     const userRecord: MessageRecord = {
       id: `msg_${ulid()}`,
       role: "user",
       content: entry.input.text,
-      ...(entry.input.attachments !== undefined && entry.input.attachments.length > 0
-        ? { attachments: entry.input.attachments }
-        : {}),
+      ...(entry.input.attachments !== undefined && entry.input.attachments.length > 0 && { attachments: entry.input.attachments }),
     };
     await this.serialWrite(() => this.options.storage.appendMessage(this.options.sessionId, userRecord));
     this.history.push(userRecord);
@@ -298,6 +295,7 @@ export class SessionTurnLoop {
       this.events.publishDelta(entry.turnId, round, kind, text),
     );
     this.assistantText = "";
+    this.assistantReasoning = "";
     let roundUsage: TokenUsage | undefined;
     const state: { calls: CompletedToolCall[] | null } = { calls: null }; // 闭包累积（规避 TS 收窄推断）
 
@@ -311,6 +309,7 @@ export class SessionTurnLoop {
           batcher.add("text", event.text);
           break;
         case "delta.reasoning":
+          this.assistantReasoning += event.text;
           batcher.add("reasoning", event.text);
           break;
         case "tool_calls.completed":
@@ -349,7 +348,7 @@ export class SessionTurnLoop {
 
     // 落库 assistant 行（含 tool_call 块；02 §1.2.1 T6 前置）
     const calls = state.calls;
-    const record = buildAssistantRecord(this.assistantText, calls);
+    const record = buildAssistantRecord(this.assistantText, calls, this.assistantReasoning);
     await this.serialWrite(() => this.options.storage.appendMessage(this.options.sessionId, record));
     this.history.push(record);
 
@@ -441,19 +440,15 @@ export class SessionTurnLoop {
   replaceWith(prefix: MessageRecord[], count: number): void {
     this.history = [...prefix, ...this.history.slice(count)];
   }
-
   historyLength(): number {
     return this.history.length;
   }
-
   currentEpoch(): number {
     return this.compactionEpoch;
   }
-
   updateEpoch(epoch: number): void {
     this.compactionEpoch = epoch;
   }
-
   checkpointBase(): Pick<CheckpointState, "mode" | "todo"> {
     return { mode: this.mode, todo: [] };
   }
@@ -474,7 +469,12 @@ export class SessionTurnLoop {
   }
 
   private persistPartialText(): Promise<unknown> {
-    const record: MessageRecord = { id: `msg_${ulid()}`, role: "assistant", content: this.assistantText };
+    const record: MessageRecord = {
+      id: `msg_${ulid()}`,
+      role: "assistant",
+      content: this.assistantText,
+      ...(this.assistantReasoning.length > 0 && { reasoning: this.assistantReasoning }),
+    };
     return this.serialWrite(() => this.options.storage.appendMessage(this.options.sessionId, record));
   }
 

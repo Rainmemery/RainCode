@@ -39,7 +39,9 @@
     "smoke:ssh": "tsx scripts/smoke-ssh.mts",
     "smoke:web": "tsx scripts/smoke-web.mts",
     "walkthrough:web": "tsx scripts/walkthrough-web.mts",
-    "walkthrough:desktop": "tsx scripts/walkthrough-desktop.mts"
+    "walkthrough:desktop": "tsx scripts/walkthrough-desktop.mts",
+    "shots:web": "tsx scripts/product-shots-web.mts",
+    "shots:desktop": "tsx scripts/product-shots-desktop.mts"
   },
   "devDependencies": {
     "@types/ssh2": "^1.15.6",

@@ -9,6 +9,14 @@
 
 > **🤖 本项目为 vibecoding 产物**：由 AI 编程助手（vibe coding 工作流）全程协作设计与开发，人类角色定位为需求提出、方案评审与验收。设计与实现过程见 [PROGRESS.md](PROGRESS.md) 与 [docs/](docs/README.md)。
 
+## 产品一览
+
+| Web 会话工作台 | Windows 桌面端 |
+| --- | --- |
+| ![RainCode Web 会话工作台](picture/web-chat.png) | ![RainCode 桌面端](picture/desktop-chat.png) |
+
+视觉遵循 [docs/03-ui-design](docs/03-ui-design.md) v1.3「赤陶磷光」token 体系：思考块（`✻ 思考过程` 流式展开 / 完成折叠，随会话持久化）、工具卡五状态（glyph 语言 ◇✱←$ 与 CLI 同源 + 参数摘要按工具域提炼 + 状态底色 tint + diff 行着色）、代码围栏头行语言芯片与一键复制、kbd 快捷键芯片、取景框角标。截图由 `pnpm shots:web` / `pnpm shots:desktop` 驱动**真实产品入口**自动生成（mock LLM + CDP，[scripts/](scripts/)），非设计稿。
+
 RainCode 的功能定位与 Claude Code / Codex 对齐：整合**代码生成、工具调用、MCP 调用、子代理管理、沙箱执行环境、命令权限控制、项目记忆**七大核心模块，提供 **CLI 与 Windows 桌面应用**双端形态，两端共享同一套后端服务（`@raincode/server` 唯一组装点）与同一套 RPC 协议（传输无关：进程内 in-memory / 子进程 stdio）。
 
 ## 当前状态
@@ -157,7 +165,20 @@ pnpm --filter @raincode/desktop build
 pnpm --filter @raincode/desktop dist
 ```
 
-Alpha 功能范围：三栏主界面（会话列表 + 会话流 + 输入区）、思考块（`✻ 思考过程` 流式展开 / 完成后自动折叠，reducer 层 reasoning 独立累积）、工具调用卡片（五状态：排队 / 运行中 / 成功 / 失败 / 已作废；glyph 语言与 CLI 同源 ◇✱←$；`mcp__` 调用与子代理派发带模块徽标；参数摘要按工具域提炼；结果 diff 行着色）、权限审批弹窗（顶部琥珀色带 + 风险徽章 + kbd 快捷键芯片 + `1-4` 直选 + `Esc` 拒绝，弹窗出现时自动接管焦点——消息输入框聚焦时快捷键同样生效）、Provider 设置（添加 / 切换 / 活跃徽章）、记忆管理器（MEMORY.md 预览 / 晋升草案确认 / 条目检索与晋升）、**扩展面板（MCP 服务器启停 / 健康检查 / 重试 + 插件启停与状态 + 「刷新」重扫描免重启装载新插件，全局事件活更）**、**斜杠命令面板（`/` 唤起技能清单，↑↓ + Tab 补全，Enter 经 `skills.invoke` 端到端执行）**、**会话用量统计（↑/↓ tokens / 回合数 / 费用估算）**、工作区目录选择、流式输出与光标、代码围栏一键复制、子进程崩溃自动重启提示。视觉遵循 [docs/03-ui-design](docs/03-ui-design.md) v1.2「赤陶磷光」体系（取景框角标 / 模块标识色 / 减动效偏好全覆盖）。与 CLI 共享同一 `RAINCODE_HOME` 数据目录——CLI 里开始的会话，桌面端打开即续接。会话列表为数据根**全量会话**（跨工作区共享、跨端可见，不按工作区过滤——过滤属后续候选）。GUI 回归走查：`pnpm walkthrough:desktop`（CDP 驱动构建产物，14 断言；`RAINCODE_WALKTHROUGH_APP_PATH` 指向静默安装后的 RainCode.exe 即对安装产物冒烟——T4.7 已验证 nsis 安装包全链路）。
+Alpha 功能范围：三栏主界面（会话列表 + 会话流 + 输入区）、思考块（`✻ 思考过程` 流式展开 / 完成后自动折叠，reducer 层 reasoning 独立累积）、工具调用卡片（五状态：排队 / 运行中 / 成功 / 失败 / 已作废；glyph 语言与 CLI 同源 ◇✱←$；`mcp__` 调用与子代理派发带模块徽标；参数摘要按工具域提炼；结果 diff 行着色）、权限审批弹窗（顶部琥珀色带 + 风险徽章 + kbd 快捷键芯片 + `1-4` 直选 + `Esc` 拒绝，弹窗出现时自动接管焦点——消息输入框聚焦时快捷键同样生效）、Provider 设置（添加 / 切换 / 活跃徽章）、记忆管理器（MEMORY.md 预览 / 晋升草案确认 / 条目检索与晋升）、**扩展面板（MCP 服务器启停 / 健康检查 / 重试 + 插件启停与状态 + 「刷新」重扫描免重启装载新插件，全局事件活更）**、**斜杠命令面板（`/` 唤起技能清单，↑↓ + Tab 补全，Enter 经 `skills.invoke` 端到端执行）**、**会话用量统计（↑/↓ tokens / 回合数 / 费用估算）**、工作区目录选择、流式输出与光标、代码围栏一键复制、子进程崩溃自动重启提示。视觉遵循 [docs/03-ui-design](docs/03-ui-design.md) v1.3「赤陶磷光」体系（取景框角标 / 模块标识色 / 减动效偏好全覆盖）。与 CLI 共享同一 `RAINCODE_HOME` 数据目录——CLI 里开始的会话，桌面端打开即续接。会话列表为数据根**全量会话**（跨工作区共享、跨端可见，不按工作区过滤——过滤属后续候选）。GUI 回归走查：`pnpm walkthrough:desktop`（CDP 驱动构建产物，14 断言；`RAINCODE_WALKTHROUGH_APP_PATH` 指向静默安装后的 RainCode.exe 即对安装产物冒烟——T4.7 已验证 nsis 安装包全链路）。
+
+| 工具卡（摘要 v2 + 展开态） | 权限审批弹窗 |
+| --- | --- |
+| ![桌面端工具卡](picture/desktop-tools.png) | ![桌面端审批弹窗](picture/desktop-approval.png) |
+
+<details>
+<summary><strong>更多桌面端截图</strong></summary>
+
+| 记忆管理器 | 扩展面板（MCP / 插件） |
+| --- | --- |
+| ![桌面端记忆管理器](picture/desktop-memory.png) | ![桌面端扩展面板](picture/desktop-extensions.png) |
+
+</details>
 
 ## Web 界面（浏览器会话工作台）
 
@@ -182,7 +203,20 @@ raincode web --port 8787
 - **多连接扇出**：多个浏览器标签页可同时连接，会话事件投递到全部活跃连接；多标签审批弹窗互相同步（同一 `pendingApprovals` 投影）。
 - **心跳**：宿主 30s 周期 WS ping 探活，空闲连接自动断开；`RAINCODE_WS_DELTA_WINDOW_MS` 可调大流式批量窗口（广域网）。
 
-Alpha 功能范围：会话列表 / 新建 / 切换、工作区路径输入、会话流式渲染（markdown 轻渲染、思考块流式展开 / 完成后自动折叠、工具卡五状态与模块徽标、代码围栏一键复制）、交互审批（四级决策 + kbd 快捷键芯片 + 键盘直选）、Provider 设置、连接状态条（重连可视化）、管理面板四件套——记忆管理器（MEMORY.md 预览 / 草案确认 / 条目检索晋升）、扩展面板（MCP 状态启停与健康检查 + 插件启停）、斜杠命令面板（`/` 唤起技能清单，↑↓/Tab 补全）、用量统计（侧栏 ↑/↓ token 与回合数）——与桌面端同构消费同一服务面（T4.5，L-08 核销）。视觉与桌面端统一（[docs/03-ui-design](docs/03-ui-design.md) v1.2「赤陶磷光」token 体系，UI 重设计轮自 `ink-*` 简化盘迁移）。真浏览器回归走查：`pnpm walkthrough:web`（Edge/Chrome headless CDP 驱动真实 `raincode web` 入口，19 断言：鉴权 / 会话 / 审批落盘 / 宿主重启恢复 / 多标签扇出与标签冻结补偿——T4.7，L-05 核销）。
+Alpha 功能范围：会话列表 / 新建 / 切换、工作区路径输入、会话流式渲染（markdown 轻渲染、思考块流式展开 / 完成后自动折叠、工具卡五状态与模块徽标、代码围栏一键复制）、交互审批（四级决策 + kbd 快捷键芯片 + 键盘直选）、Provider 设置、连接状态条（重连可视化）、管理面板四件套——记忆管理器（MEMORY.md 预览 / 草案确认 / 条目检索晋升）、扩展面板（MCP 状态启停与健康检查 + 插件启停）、斜杠命令面板（`/` 唤起技能清单，↑↓/Tab 补全）、用量统计（侧栏 ↑/↓ token 与回合数）——与桌面端同构消费同一服务面（T4.5，L-08 核销）。视觉与桌面端统一（[docs/03-ui-design](docs/03-ui-design.md) v1.3「赤陶磷光」token 体系，UI 重设计轮自 `ink-*` 简化盘迁移）。真浏览器回归走查：`pnpm walkthrough:web`（Edge/Chrome headless CDP 驱动真实 `raincode web` 入口，19 断言：鉴权 / 会话 / 审批落盘 / 宿主重启恢复 / 多标签扇出与标签冻结补偿——T4.7，L-05 核销）。
+
+| 会话流（思考块 + 工具卡 + 语言芯片围栏） | 权限审批弹窗（kbd 快捷键直选） |
+| --- | --- |
+| ![Web 工具卡](picture/web-tools.png) | ![Web 审批弹窗](picture/web-approval.png) |
+
+<details>
+<summary><strong>更多 Web 端截图</strong></summary>
+
+| 斜杠命令面板 | 记忆管理器 | 扩展面板 | Provider 设置 |
+| --- | --- | --- | --- |
+| ![斜杠命令面板](picture/web-slash.png) | ![记忆管理器](picture/web-memory.png) | ![扩展面板](picture/web-extensions.png) | ![Provider 设置](picture/web-settings.png) |
+
+</details>
 
 ## Provider 配置
 
@@ -399,6 +433,10 @@ pnpm smoke:e2e            # 端到端主链路（单独运行）
 # NFR 基准（口径见 docs/benchmarks/）
 pnpm bench:all                        # NFR-1/2/3/5/7（冷启动 / 发送开销 / 渲染延迟 / 会话恢复 / 崩溃恢复）
 pnpm bench:mem:desktop                # NFR-4 桌面端空载内存（先 pnpm --filter @raincode/desktop build；窗口会弹出）
+
+# 产品截图再生（README picture/ 素材；真实入口 + mock LLM + CDP，先构建对应端）
+pnpm shots:web                        # web 7 张（会话流 / 工具卡 / 斜杠面板 / 记忆 / 扩展 / 设置 / 审批）
+pnpm shots:desktop                    # desktop 5 张（会话流 / 工具卡 / 审批 / 记忆 / 扩展）
 ```
 
 测试体系与各脚本覆盖范围详见 [docs/testing.md](docs/testing.md)；基准留存见 [docs/benchmarks/](docs/benchmarks/)。

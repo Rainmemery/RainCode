@@ -51,13 +51,16 @@ export function parseLooseJson(argsJSON: string): unknown {
   }
 }
 
-/** assistant 行内容：纯文本 → string；含工具调用 → text + tool_call 块数组（05 §4.2）。 */
+/** assistant 行内容：纯文本 → string；含工具调用 → text + tool_call 块数组（05 §4.2）；
+ * reasoning 随行落盘（协议 v1.13 additive，冷重建恢复思考块；空串省略）。 */
 export function buildAssistantRecord(
   text: string,
   calls: Array<{ toolCallId: string; toolName: string; argumentsJSON: string }> | null,
+  reasoning = "",
 ): MessageRecord {
+  const reasoningField = reasoning.length > 0 ? { reasoning } : {};
   if (calls === null || calls.length === 0) {
-    return { id: `msg_${ulid()}`, role: "assistant", content: text };
+    return { id: `msg_${ulid()}`, role: "assistant", content: text, ...reasoningField };
   }
   const blocks: ContentBlock[] = [];
   if (text.length > 0) {
@@ -71,7 +74,7 @@ export function buildAssistantRecord(
       arguments: parseLooseJson(call.argumentsJSON),
     });
   }
-  return { id: `msg_${ulid()}`, role: "assistant", content: blocks };
+  return { id: `msg_${ulid()}`, role: "assistant", content: blocks, ...reasoningField };
 }
 
 /** registry 描述符 → OpenAI tools 线格式（zod→JSON Schema 投影在 registry.list 内完成）。 */
