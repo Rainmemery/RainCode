@@ -2,10 +2,18 @@
  * session-view reducer 单测（UI 重设计二轮）：Web 端与桌面端同语义镜像——
  * message.delta reasoning 累积（思考块）+ summarizeInput v2（工具域主参数提炼）。
  * reducer 为纯函数，node:test 直跑。
+ * refine-ui-context-panel 轮追加：applySubagentEvent（全局子代理事件归并）+
+ * groupSessions（会话列表时间分组）+ ctxLevel（context 用量阈值）。
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { applySessionEvent, initialWebState, rebuildItemsFromHistory, summarizeInput } from "../src/session-view.js";
+import {
+  applySessionEvent,
+  initialWebState,
+  rebuildItemsFromHistory,
+  summarizeInput,
+} from "../src/session-view.js";
+import { applySubagentEvent, ctxLevel, groupSessions } from "../src/subagent-view.js";
 import type { ChatItem, ToolItem } from "../src/session-view.js";
 
 describe("message.delta reasoning 累积（思考块，03 §6.1 v1.2）", () => {
@@ -144,5 +152,159 @@ describe("rebuildItemsFromHistory（冷重建：v1.13 reasoning 落盘恢复 + �
 
   it("空 history → 空视图", () => {
     assert.equal(rebuildItemsFromHistory([]).length, 0);
+  });
+});
+
+describe("applySubagentEvent（全局子代理事件归并，06 §3.2 C 组；归属=事件到达时活跃会话）", () => {
+  it("spawned 建行并绑定事件到达时的 activeId；非法 status 回退 Running", () => {
+    const next = applySubagentEvent({ activeId: "s1", subagents: [] }, "subagent.spawned", {
+      ts: 1000,
+      subagentId: "a1",
+      profileName: "reviewer",
+      taskPreview: "审查 src/rpc",
+      status: "Whatever", // 非法值
+    });
+    assert.equal(next.activeId, "s1");
+    assert.equal(next.subagents.length, 1);
+    const row = next.subagents[0]!;
+    assert.equal(row.subagentId, "a1");
+    assert.equal(row.sessionId, "s1");
+    assert.equal(row.status, "Running");
+    assert.equal(row.profileName, "reviewer");
+    assert.equal(row.taskPreview, "审查 src/rpc");
+    assert.equal(row.startedAt, 1000);
+    assert.equal(row.stage, null);
+    assert.equal(row.completedAt, null);
+    assert.equal(row.turnsUsed, null);
+  });
+
+  it("同 id 重派发更新原行不重复（顺序保留，startedAt 不改写）；新 id 追加尾部", () => {
+    let state = applySubagentEvent({ activeId: "s1", subagents: [] }, "subagent.spawned", {
+      ts: 1000,
+      subagentId: "a1",
+      profileName: "reviewer",
+      taskPreview: "审查 src/rpc",
+      status: "Running",
+    });
+    state = applySubagentEvent(state, "subagent.spawned", {
+      ts: 2000,
+      subagentId: "a1",
+      profileName: "reviewer",
+      taskPreview: "审查 src/rpc v2",
+      status: "Pending",
+      queuePosition: 1, // 忽略
+    });
+    assert.equal(state.subagents.length, 1);
+    assert.equal(state.subagents[0]!.status, "Pending");
+    assert.equal(state.subagents[0]!.taskPreview, "审查 src/rpc v2");
+    assert.equal(state.subagents[0]!.startedAt, 1000);
+    state = applySubagentEvent(state, "subagent.spawned", {
+      ts: 3000,
+      subagentId: "a2",
+      profileName: "builder",
+      taskPreview: "x",
+      status: "Pending",
+    });
+    assert.equal(state.subagents.length, 2);
+    assert.equal(state.subagents[0]!.subagentId, "a1");
+    assert.equal(state.subagents[1]!.subagentId, "a2");
+  });
+
+  it("progress 更新 stage/summary（字符串才写）；未跟踪 subagentId 整体忽略", () => {
+    let state = applySubagentEvent({ activeId: "s1", subagents: [] }, "subagent.spawned", {
+      ts: 1000,
+      subagentId: "a1",
+      profileName: "reviewer",
+      taskPreview: "审查 src/rpc",
+      status: "Running",
+    });
+    state = applySubagentEvent(state, "subagent.progress", {
+      ts: 1500,
+      subagentId: "a1",
+      stage: "tool",
+      toolName: "read",
+      summary: "读 src/rpc/client.ts",
+    });
+    assert.equal(state.subagents[0]!.stage, "tool");
+    assert.equal(state.subagents[0]!.summary, "读 src/rpc/client.ts");
+    const ghost = applySubagentEvent(state, "subagent.progress", { ts: 1600, subagentId: "ghost", stage: "done" });
+    assert.equal(ghost, state); // 原样返回（同引用）
+  });
+
+  it("completed 收束 status/summary/completedAt/turnsUsed；非法终态不写", () => {
+    let state = applySubagentEvent({ activeId: "s1", subagents: [] }, "subagent.spawned", {
+      ts: 1000,
+      subagentId: "a1",
+      profileName: "reviewer",
+      taskPreview: "审查 src/rpc",
+      status: "Running",
+    });
+    state = applySubagentEvent(state, "subagent.completed", {
+      ts: 5000,
+      subagentId: "a1",
+      status: "Completed",
+      summary: "审查完成：2 处问题",
+      usage: { inputTokens: 10, outputTokens: 5 },
+      turnsUsed: 3,
+    });
+    assert.equal(state.subagents[0]!.status, "Completed");
+    assert.equal(state.subagents[0]!.summary, "审查完成：2 处问题");
+    assert.equal(state.subagents[0]!.completedAt, 5000);
+    assert.equal(state.subagents[0]!.turnsUsed, 3);
+    const before = state;
+    state = applySubagentEvent(state, "subagent.completed", {
+      ts: 6000,
+      subagentId: "a1",
+      status: "Running", // 非终态
+      summary: "x",
+      turnsUsed: 9,
+    });
+    assert.equal(state, before); // 原样返回
+  });
+
+  it("未知事件名与缺 subagentId 原样返回（同引用）", () => {
+    const state = applySubagentEvent({ activeId: "s1", subagents: [] }, "subagent.spawned", {
+      ts: 1000,
+      subagentId: "a1",
+      profileName: "reviewer",
+      taskPreview: "t",
+      status: "Running",
+    });
+    assert.equal(applySubagentEvent(state, "mcp.server_status_changed", { subagentId: "a1" }), state);
+    assert.equal(applySubagentEvent(state, "subagent.spawned", { profileName: "x" }), state); // 缺 subagentId
+    assert.equal(applySubagentEvent(state, "subagent.progress", {}), state);
+    assert.equal(applySubagentEvent(state, "subagent.completed", { subagentId: 42 }), state); // 非字符串
+  });
+});
+
+describe("groupSessions（会话列表时间分组，03 §6.1：本地时区自然日）", () => {
+  const now = new Date("2026-10-04T15:00:00").getTime(); // 本地时区解析
+  it("今天/昨天/三天前 → 三组归属与组内顺序保持", () => {
+    const rows = [
+      { id: "t1", lastActiveAt: new Date("2026-10-04T09:00:00").getTime() },
+      { id: "t2", lastActiveAt: new Date("2026-10-04T12:00:00").getTime() },
+      { id: "y1", lastActiveAt: new Date("2026-10-03T23:30:00").getTime() },
+      { id: "e1", lastActiveAt: new Date("2026-10-01T08:00:00").getTime() },
+    ];
+    const groups = groupSessions(rows, now);
+    assert.deepEqual(groups.today.map((r) => r.id), ["t1", "t2"]); // 组内保持入参顺序
+    assert.deepEqual(groups.yesterday.map((r) => r.id), ["y1"]);
+    assert.deepEqual(groups.earlier.map((r) => r.id), ["e1"]);
+  });
+
+  it("空列表 → 三组皆空", () => {
+    const groups = groupSessions([], now);
+    assert.deepEqual(groups, { today: [], yesterday: [], earlier: [] });
+  });
+});
+
+describe("ctxLevel（context 用量阈值，03 §7：>95 红 / >80 琥珀）", () => {
+  it("70→ok 85→warn 96→danger；边界 80/95/100", () => {
+    assert.equal(ctxLevel(70), "ok");
+    assert.equal(ctxLevel(85), "warn");
+    assert.equal(ctxLevel(96), "danger");
+    assert.equal(ctxLevel(80), "ok");
+    assert.equal(ctxLevel(95), "warn");
+    assert.equal(ctxLevel(100), "danger");
   });
 });

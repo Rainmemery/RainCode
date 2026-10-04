@@ -7,6 +7,7 @@ import { createRpcClient, RpcCallError } from "@raincode/rpc/client";
 import type { RpcClient } from "@raincode/rpc/client";
 import { getBridge } from "./bridge.js";
 import { applySessionEvent, initialDesktopState } from "./session-view.js";
+import { applySubagentEvent } from "./subagent-view.js";
 import { rebuildItemsFromHistory } from "./history-rebuild.js";
 import type { DesktopState, SessionView } from "./session-view.js";
 import { applyTheme, loadThemePref, saveThemePref } from "./theme.js";
@@ -16,6 +17,8 @@ interface SessionListRow {
   id: string;
   title: string;
   lastActiveAt: number;
+  /** 上下文用量（服务端已算好：session.list 随行，ctx 用量条直接消费）。 */
+  contextUsage?: { tokens: number; maxTokens: number };
 }
 
 interface SnapshotPayload {
@@ -25,6 +28,8 @@ interface SnapshotPayload {
   /** v1.3 冷重建字段：全量消息（桌面端首次打开 / renderer 刷新时端层无本地历史可拼）。 */
   history?: unknown[];
   pendingApprovals?: Array<Record<string, unknown>>;
+  /** 上下文用量（服务端已算好；resume 快照随行，回填 sessions 对应行）。 */
+  contextUsage?: { tokens: number; maxTokens: number };
 }
 
 interface DesktopStore extends DesktopState {
@@ -43,6 +48,8 @@ interface DesktopStore extends DesktopState {
   invokeSkill(name: string, args?: string): Promise<void>;
   /** 活跃会话用量刷新（session.usage；切会话与 done 后调用，UI-4 用量统计）。 */
   refreshUsage(): Promise<void>;
+  /** 右侧上下文面板折叠切换（refine-ui-context-panel 轮 §6.0）。 */
+  toggleContextPanel(): void;
   /** 主题偏好切换（03 §3.2）：持久化 + 立即落 <html data-theme>。 */
   setTheme(pref: ThemePref): void;
   dismissError(): void;
@@ -79,6 +86,15 @@ export const useDesktop = create<DesktopStore>((set, get) => {
   function onEvent(name: string): void {
     rpc().onEvent(name, (payload) => {
       const record = (payload ?? {}) as Record<string, unknown>;
+      // 子代理全局事件（不带 sessionId，归属=事件到达时活跃会话）：独立归并，不进会话流投影
+      if (
+        name === "subagent.spawned" ||
+        name === "subagent.progress" ||
+        name === "subagent.completed"
+      ) {
+        set(applySubagentEvent(get(), name, record));
+        return;
+      }
       set(applySessionEvent(get(), name, record));
       // 回合收束后刷新用量（UI-4）：done 每回合一次，拉取成本可忽略
       if (name === "done") void get().refreshUsage();
@@ -112,7 +128,19 @@ export const useDesktop = create<DesktopStore>((set, get) => {
       };
     });
     set({ approvals, streaming: false });
-    return { sessionId, title: sessionId, items };
+    // 上下文用量回填（服务端已算好）：sessions 对应行按 sessionId 更新，无则忽略
+    if (snapshot.contextUsage !== undefined) {
+      const contextUsage = snapshot.contextUsage;
+      set((state) => ({
+        sessions: state.sessions.map((row) => (row.id === sessionId ? { ...row, contextUsage } : row)),
+      }));
+    }
+    return {
+      sessionId,
+      title: sessionId,
+      items,
+      ...(snapshot.contextUsage !== undefined && { contextUsage: snapshot.contextUsage }),
+    };
   }
 
   return {
@@ -134,6 +162,9 @@ export const useDesktop = create<DesktopStore>((set, get) => {
           "session.snapshot",
           "mcp.server_status_changed", // 全局事件（扩展面板活更，UI-4）
           "plugin.status_changed", // 全局事件（扩展面板活更，UI-4）
+          "subagent.spawned", // 全局事件（右栏子代理 Tab + 会话流进度卡，refine-ui-context-panel 轮）
+          "subagent.progress",
+          "subagent.completed",
         ]) {
           onEvent(name);
         }
@@ -145,7 +176,12 @@ export const useDesktop = create<DesktopStore>((set, get) => {
         setState({ connection: "ready", runMode: meta.mode });
         const list = await call<{ items: SessionListRow[] }>("session.list", {});
         setState({
-          sessions: list.items.map((row) => ({ id: row.id, title: row.title, lastActiveAt: row.lastActiveAt })),
+          sessions: list.items.map((row) => ({
+            id: row.id,
+            title: row.title,
+            lastActiveAt: row.lastActiveAt,
+            ...(row.contextUsage !== undefined && { contextUsage: row.contextUsage }),
+          })),
         });
         const providers = await call<{ providers: Array<{ id: string; name: string; baseURL: string; model: string; maxContextTokens: number; apiKeyConfigured: boolean }>; activeProviderId?: string }>(
           "config.providers.list",
@@ -210,12 +246,28 @@ export const useDesktop = create<DesktopStore>((set, get) => {
       const sessionId = get().activeId;
       if (sessionId === null) return;
       try {
-        const usage = await call<NonNullable<DesktopState["usage"]>>("session.usage", { sessionId });
+        // 并行拉取用量与会话列表：list 重建 sessions 行（透传 contextUsage），done 后 ctx 条同步
+        const [usage, list] = await Promise.all([
+          call<NonNullable<DesktopState["usage"]>>("session.usage", { sessionId }),
+          call<{ items: SessionListRow[] }>("session.list", {}),
+        ]);
+        setState({
+          sessions: list.items.map((row) => ({
+            id: row.id,
+            title: row.title,
+            lastActiveAt: row.lastActiveAt,
+            ...(row.contextUsage !== undefined && { contextUsage: row.contextUsage }),
+          })),
+        });
         // 会话可能已切换：只写回仍是活跃会话的用量
         if (get().activeId === sessionId) set({ usage });
       } catch {
         // 用量展示为附加信息：失败静默（条目缺失/旧服务端不影响主流程）
       }
+    },
+
+    toggleContextPanel(): void {
+      setState({ contextPanelCollapsed: !get().contextPanelCollapsed });
     },
 
     async send(text): Promise<void> {

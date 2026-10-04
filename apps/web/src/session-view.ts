@@ -4,6 +4,7 @@
  * Web 特有：connection 四态由 ReconnectingRpcClient 驱动（connecting/ready/reconnecting/closed）。
  */
 import type { ThemePref } from "./theme.js";
+import type { SubagentRecord } from "./subagent-view.js";
 
 export interface ChatItem {
   kind: "message";
@@ -48,6 +49,14 @@ export interface SessionView {
   contextUsage?: { tokens: number; maxTokens: number };
 }
 
+/** 会话列表行（session.list 投影；contextUsage 右栏/用量条直消费，服务端已算好无需近似）。 */
+export interface SessionListEntry {
+  id: string;
+  title: string;
+  lastActiveAt: number;
+  contextUsage?: { tokens: number; maxTokens: number };
+}
+
 export interface ApprovalItem {
   grantId: string;
   toolName: string;
@@ -74,7 +83,7 @@ export interface WebState {
   /** 视图路由（T4.5 面板对齐：chat / settings / memory / extensions）。 */
   view: "chat" | "settings" | "memory" | "extensions";
   workspace: string | null;
-  sessions: Array<{ id: string; title: string; lastActiveAt: number }>;
+  sessions: SessionListEntry[];
   activeId: string | null;
   views: Record<string, SessionView>;
   approvals: ApprovalItem[];
@@ -88,6 +97,10 @@ export interface WebState {
   /** 扩展域全局事件通道：mcp.server_status_changed / plugin.status_changed 到达即自增，
    * 面板监听 tick 重拉全量投影（桌面端 extensionsTick 同口径）。 */
   extTick: number;
+  /** 子代理派发记录（subagent.* 全局事件归并，03 §6.1 右栏子代理 Tab + 会话流进度卡共用）。 */
+  subagents: SubagentRecord[];
+  /** 右侧上下文面板折叠态（03 §6.1：折叠后右缘竖条唤起；仅 chat 视图挂载）。 */
+  contextPanelCollapsed: boolean;
   /** 主题偏好（03 §3.2）：dark / light / system，localStorage 持久化（theme.ts）。 */
   theme: ThemePref;
 }
@@ -109,6 +122,8 @@ export function initialWebState(themePref: ThemePref = "dark"): WebState {
     error: null,
     usage: null,
     extTick: 0,
+    subagents: [],
+    contextPanelCollapsed: false,
     theme: themePref,
   };
 }
@@ -343,6 +358,11 @@ function patchView(state: WebState, sessionId: string, patch: Partial<SessionVie
   const current = state.views[sessionId] ?? { sessionId, title: sessionId, items: [] };
   return { ...state, views: { ...state.views, [sessionId]: { ...current, ...patch } } };
 }
+
+// ---------------------------------------------------------------------------
+// 子代理呈现（refine-ui-context-panel 轮）：实现拆分至 subagent-view.ts（500 行治理），
+// SubagentRecord/applySubagentEvent/groupSessions/ctxLevel 由该模块导出。
+// ---------------------------------------------------------------------------
 
 /**
  * 斜杠命令解析（T4.5 对齐桌面端同语义）："/name args" → { name, args }；

@@ -4,6 +4,7 @@
  */
 import type { McpServerStatusEntry, McpServerStatus, PluginStatus, PluginSummary } from "@raincode/shared";
 import type { ThemePref } from "./theme.js";
+import type { SubagentRecord } from "./subagent-view.js";
 
 export interface ChatItem {
   kind: "message";
@@ -67,13 +68,18 @@ export interface ProviderRow {
   apiKeyConfigured: boolean;
 }
 
+/**
+ * 子代理呈现（refine-ui-context-panel 轮）：实现拆分至 subagent-view.ts（500 行治理），
+ * SubagentRecord/applySubagentEvent/groupSessions/ctxLevel 由该模块导出。
+ */
+
 export interface DesktopState {
   connection: "connecting" | "ready" | "agent-down";
   runMode: string;
   /** extensions = MCP / 插件面板（UI-4，T3.9）。 */
   view: "chat" | "settings" | "memory" | "extensions";
   workspace: string | null;
-  sessions: Array<{ id: string; title: string; lastActiveAt: number }>;
+  sessions: Array<{ id: string; title: string; lastActiveAt: number; contextUsage?: { tokens: number; maxTokens: number } }>;
   activeId: string | null;
   views: Record<string, SessionView>;
   approvals: ApprovalItem[];
@@ -90,6 +96,10 @@ export interface DesktopState {
   extensionsTick: number;
   /** 活跃会话用量（session.usage；done 事件后与切会话时刷新，UI-4 用量统计）。 */
   usage: { inputTokens: number; outputTokens: number; turnsCount: number; costEstimateUsd?: number } | null;
+  /** 子代理派发记录（subagent.* 全局事件归并，refine-ui-context-panel 轮）。 */
+  subagents: SubagentRecord[];
+  /** 右侧上下文面板折叠态（refine-ui-context-panel 轮 §6.0；默认展开）。 */
+  contextPanelCollapsed: boolean;
   /** 主题偏好（03 §3.2）：dark / light / system，localStorage 持久化（theme.ts）。 */
   theme: ThemePref;
 }
@@ -113,6 +123,8 @@ export function initialDesktopState(themePref: ThemePref = "dark"): DesktopState
     plugins: [],
     extensionsTick: 0,
     usage: null,
+    subagents: [],
+    contextPanelCollapsed: false,
     theme: themePref,
   };
 }

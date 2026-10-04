@@ -207,10 +207,10 @@ async function main(): Promise<number> {
     const conn = await connectClient("http://127.0.0.1:8791");
     client = conn.client;
     clientClose = conn.close;
-    // MCP 工具与 todo_write 审批自动放行（后台事件守卫；write 审批保留 pending 供截图）
+    // MCP 工具与 todo_write / agent 审批自动放行（后台事件守卫；write 审批保留 pending 供截图）
     client.onEvent("permission.requested", (payload) => {
       const record = payload as { grantId?: string; toolName?: string };
-      if (record.grantId !== undefined && (record.toolName === "todo_write" || record.toolName?.startsWith("mcp__") === true)) {
+      if (record.grantId !== undefined && (record.toolName === "todo_write" || record.toolName === "agent" || record.toolName?.startsWith("mcp__") === true)) {
         void client!.call("permission.respond", { grantId: record.grantId, decision: "allow" }).catch(() => undefined);
       }
     });
@@ -256,6 +256,20 @@ async function main(): Promise<number> {
     await cdp.eval<boolean>(clickButtonExpr("设定"));
     await sleep(300);
 
+    // 回合 4（页面在线跑，refine-ui-context-panel 轮）：agent 工具派发子代理——subagent.* 为
+    // 瞬态全局事件，页面后开将错过（web-context-subagent 假空态教训）；右栏 Tab 与进度卡素材
+    mock.setScript([
+      { frames: [{ choices: [{ index: 0, delta: { role: "assistant" } }] },
+          toolCallFrame("t-agent", "agent", { profile: "researcher", task: "调研 flex-wrap 布局下拖拽排序的边界情况" }, 0)],
+        finish: "tool_calls" },
+      textScript("调研结论：flex-wrap 下按 DOM 顺序计算插入位置可行，需注意换行行的插入点归属。"),
+      textScript("子代理调研完成：拖拽按 DOM 顺序计算可行，边界情况与结论已同步。"),
+    ]);
+    const t4 = beginTurn(client, s1.sessionId, "派个子代理调研拖拽排序的边界情况");
+    await cdp.waitFor(bodyContains("子代理调研完成"), "回合 4（agent 子代理）完成", 40_000);
+    await withTimeout(t4.done, 20_000, "turn 4");
+    await sleep(1000);
+
     await cdp.eval<boolean>(clickButtonExpr("思考过程")); // 展开思考块
     await sleep(300);
     await cdp.eval<boolean>(scrollTop());
@@ -267,6 +281,21 @@ async function main(): Promise<number> {
     await shot(cdp, "web-chat-light");
     await cdp.eval(`document.documentElement.dataset.theme = "dark"`);
     await sleep(250);
+    // 右侧上下文面板（refine-ui-context-panel 轮）：MCP Tab 与子代理 Tab（记忆 Tab 已入 web-chat 全景）
+    await cdp.eval<boolean>(`(() => { const b = [...document.querySelectorAll("button")].find(x => x.textContent.trim() === "MCP"); if (!b) return false; b.click(); return true; })()`);
+    await cdp.waitFor(bodyContains("fixture"), "右栏 MCP Tab 投影", 15_000);
+    await sleep(300);
+    await shot(cdp, "web-context-mcp");
+    await cdp.eval<boolean>(`(() => { const b = [...document.querySelectorAll("button")].find(x => x.textContent.trim() === "子代理"); if (!b) return false; b.click(); return true; })()`);
+    await cdp.waitFor(bodyContains("researcher"), "右栏子代理 Tab 投影", 15_000);
+    await sleep(300);
+    await shot(cdp, "web-context-subagent");
+    // 侧栏折叠图标态（56px）
+    await cdp.eval<boolean>(`(() => { const b = [...document.querySelectorAll("button")].find(x => x.getAttribute("title") === "折叠侧栏"); if (!b) return false; b.click(); return true; })()`);
+    await sleep(350);
+    await shot(cdp, "web-sidebar-collapsed");
+    await cdp.eval<boolean>(`(() => { const b = [...document.querySelectorAll("button")].find(x => x.getAttribute("title") === "展开侧栏"); if (!b) return false; b.click(); return true; })()`);
+    await sleep(300);
     // 工具卡：展开 read 卡并居中
     await cdp.eval<boolean>(`(() => { const b = [...document.querySelectorAll("button")].find(x => x.textContent.includes("src/store.ts")); if (!b) return false; b.click(); b.closest(".rounded-lg")?.scrollIntoView({ block: "center" }); return true; })()`);
     await sleep(400);

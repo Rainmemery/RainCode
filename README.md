@@ -15,7 +15,7 @@
 | --- | --- |
 | ![RainCode Web 会话工作台](picture/web-chat.png) | ![RainCode 桌面端](picture/desktop-chat.png) |
 
-视觉遵循 [docs/03-ui-design](docs/03-ui-design.md) v1.4「赤陶磷光」token 体系：思考块（`✻ 思考过程` 流式展开 / 完成折叠，随会话持久化）、工具卡五状态（glyph 语言 ◇✱←$ 与 CLI 同源 + 参数摘要按工具域提炼 + 状态底色 tint + diff 行着色）、代码围栏头行语言芯片与一键复制、kbd 快捷键芯片、取景框角标、**浅色主题（深色 / 浅色 / 跟随系统三态切换，同一套语义 token 重映射）**。截图由 `pnpm shots:web` / `pnpm shots:desktop` 驱动**真实产品入口**自动生成（mock LLM + CDP，[scripts/](scripts/)），非设计稿。
+视觉遵循 [docs/03-ui-design](docs/03-ui-design.md) v1.5「赤陶磷光」token 体系：**三栏工作台（左侧栏可折叠图标态 · 会话流 · 右侧上下文面板 300px：记忆 / MCP / 子代理三 Tab）**、思考块（`✻ 思考过程` 流式展开 / 完成折叠，随会话持久化）、子代理进度卡（violet 标识，完成折叠汇总）、工具卡五状态（glyph 语言 ◇✱←$ 与 CLI 同源 + 参数摘要按工具域提炼 + 状态底色 tint + diff 行着色）、代码围栏头行语言芯片与一键复制、kbd 快捷键芯片、取景框角标、context 用量条（>80% 琥珀 / >95% 红）、**浅色主题（深色 / 浅色 / 跟随系统三态切换，同一套语义 token 重映射）**。截图由 `pnpm shots:web` / `pnpm shots:desktop` 驱动**真实产品入口**自动生成（mock LLM + CDP，[scripts/](scripts/)），非设计稿。
 
 RainCode 的功能定位与 Claude Code / Codex 对齐：整合**代码生成、工具调用、MCP 调用、子代理管理、沙箱执行环境、命令权限控制、项目记忆**七大核心模块，提供 **CLI 与 Windows 桌面应用**双端形态，两端共享同一套后端服务（`@raincode/server` 唯一组装点）与同一套 RPC 协议（传输无关：进程内 in-memory / 子进程 stdio）。
 
@@ -35,7 +35,7 @@ RainCode 的功能定位与 Claude Code / Codex 对齐：整合**代码生成、
 | 项目记忆（MEMORY.md 注入 / FTS5 检索 / 会话记忆抽取 / 晋升草案待确认区 / 桌面记忆管理器） | ✅ M2/M3 |
 | P1 工具（`web_fetch` SSRF 防护 / `ask_user_question` 交互提问） | ✅ M2 |
 | rpc stdio 绑定 + headless 宿主（`raincode serve`） | ✅ M2 |
-| 桌面端 Alpha（Electron 三泳道 + React，会话流 / 工具卡 / 审批弹窗 / Provider 设置 / 记忆管理器 / 扩展面板 / 斜杠命令面板 / 用量统计） | ✅ M2/M3 |
+| 桌面端 Alpha（Electron 三泳道 + React，三栏工作台 / 会话流 / 工具卡 / 审批弹窗 / Provider 设置 / 记忆管理器 / 扩展面板 / 斜杠命令面板 / 用量统计 / 右侧上下文面板（记忆·MCP·子代理三 Tab）/ 子代理进度卡 / 侧栏折叠图标态 / 会话时间分组 / ctx 用量条） | ✅ M2/M3 |
 | 会话管理（rename / fork / usage 费用估算 / archive / mode） | ✅ M2 |
 | 容器沙箱（Docker / WSL 执行域 + 不可用回退，config.json `sandbox` 节） | ✅ M3 |
 | 远程执行（SSH 远程工作区，复用 Executor 抽象，本地审计保留） | ✅ M3 |
@@ -165,7 +165,7 @@ pnpm --filter @raincode/desktop build
 pnpm --filter @raincode/desktop dist
 ```
 
-Alpha 功能范围：三栏主界面（会话列表 + 会话流 + 输入区）、思考块（`✻ 思考过程` 流式展开 / 完成后自动折叠，reducer 层 reasoning 独立累积）、工具调用卡片（五状态：排队 / 运行中 / 成功 / 失败 / 已作废；glyph 语言与 CLI 同源 ◇✱←$；`mcp__` 调用与子代理派发带模块徽标；参数摘要按工具域提炼；结果 diff 行着色）、权限审批弹窗（顶部琥珀色带 + 风险徽章 + kbd 快捷键芯片 + `1-4` 直选 + `Esc` 拒绝，弹窗出现时自动接管焦点——消息输入框聚焦时快捷键同样生效）、Provider 设置（添加 / 切换 / 活跃徽章）、记忆管理器（MEMORY.md 预览 / 晋升草案确认 / 条目检索与晋升）、**扩展面板（MCP 服务器启停 / 健康检查 / 重试 + 插件启停与状态 + 「刷新」重扫描免重启装载新插件，全局事件活更）**、**斜杠命令面板（`/` 唤起技能清单，↑↓ + Tab 补全，Enter 经 `skills.invoke` 端到端执行）**、**会话用量统计（↑/↓ tokens / 回合数 / 费用估算）**、工作区目录选择、流式输出与光标、代码围栏一键复制、子进程崩溃自动重启提示、**浅色主题（侧栏「◐」按钮循环 深/浅/跟随系统，localStorage 持久化，跟随系统经 prefers-color-scheme 实时重映射）**。视觉遵循 [docs/03-ui-design](docs/03-ui-design.md) v1.4「赤陶磷光」体系（取景框角标 / 模块标识色 / 减动效偏好全覆盖）。与 CLI 共享同一 `RAINCODE_HOME` 数据目录——CLI 里开始的会话，桌面端打开即续接。会话列表为数据根**全量会话**（跨工作区共享、跨端可见，不按工作区过滤——过滤属后续候选）。GUI 回归走查：`pnpm walkthrough:desktop`（CDP 驱动构建产物，14 断言；`RAINCODE_WALKTHROUGH_APP_PATH` 指向静默安装后的 RainCode.exe 即对安装产物冒烟——T4.7 已验证 nsis 安装包全链路）。
+Alpha 功能范围：三栏主界面（可折叠侧栏 + 会话流 + **右侧上下文面板（记忆 / MCP / 子代理三 Tab，300px 可折叠 / 竖条唤起）** + 输入区）、思考块（`✻ 思考过程` 流式展开 / 完成后自动折叠，reducer 层 reasoning 独立累积）、**子代理进度卡（violet 标识，运行中行级状态灯，完成折叠为单行汇总）**、工具调用卡片（五状态：排队 / 运行中 / 成功 / 失败 / 已作废；glyph 语言与 CLI 同源 ◇✱←$；`mcp__` 调用与子代理派发带模块徽标；参数摘要按工具域提炼；结果 diff 行着色）、权限审批弹窗（顶部琥珀色带 + 风险徽章 + kbd 快捷键芯片 + `1-4` 直选 + `Esc` 拒绝，弹窗出现时自动接管焦点——消息输入框聚焦时快捷键同样生效）、Provider 设置（添加 / 切换 / 活跃徽章）、记忆管理器（MEMORY.md 预览 / 晋升草案确认 / 条目检索与晋升）、**扩展面板（MCP 服务器启停 / 健康检查 / 重试 + 插件启停与状态 + 「刷新」重扫描免重启装载新插件，全局事件活更）**、**斜杠命令面板（`/` 唤起技能清单，↑↓ + Tab 补全，Enter 经 `skills.invoke` 端到端执行）**、**会话用量统计（↑/↓ tokens / 回合数 / 费用估算）**、**会话列表时间分组（今天 / 昨天 / 更早）**、**侧栏折叠图标态（56px）**、**ctx 用量条（>80% 琥珀 / >95% 红）**、工作区目录选择、流式输出与光标、代码围栏一键复制、子进程崩溃自动重启提示、**浅色主题（侧栏「◐」按钮循环 深/浅/跟随系统，localStorage 持久化，跟随系统经 prefers-color-scheme 实时重映射）**。视觉遵循 [docs/03-ui-design](docs/03-ui-design.md) v1.5「赤陶磷光」体系（取景框角标 / 模块标识色 / 减动效偏好全覆盖）。与 CLI 共享同一 `RAINCODE_HOME` 数据目录——CLI 里开始的会话，桌面端打开即续接。会话列表为数据根**全量会话**（跨工作区共享、跨端可见，不按工作区过滤——过滤属后续候选）。GUI 回归走查：`pnpm walkthrough:desktop`（CDP 驱动构建产物，14 断言；`RAINCODE_WALKTHROUGH_APP_PATH` 指向静默安装后的 RainCode.exe 即对安装产物冒烟——T4.7 已验证 nsis 安装包全链路）。
 
 | 工具卡（摘要 v2 + 展开态） | 权限审批弹窗 |
 | --- | --- |
@@ -178,9 +178,13 @@ Alpha 功能范围：三栏主界面（会话列表 + 会话流 + 输入区）�
 | --- | --- |
 | ![桌面端记忆管理器](picture/desktop-memory.png) | ![桌面端扩展面板](picture/desktop-extensions.png) |
 
-| 浅色主题（侧栏「◐」切换，深/浅/跟随系统三态） |
+| 浅色主题（侧栏「◐」切换，深/浅/跟随系统三态） | 右侧上下文面板 · 子代理 Tab（历史派发 + 轮次） |
+| --- | --- |
+| ![桌面端浅色主题](picture/desktop-chat-light.png) | ![桌面端右栏子代理 Tab](picture/desktop-context-subagent.png) |
+
+| 侧栏折叠图标态（56px，悬停出 title 提示） |
 | --- |
-| ![桌面端浅色主题](picture/desktop-chat-light.png) |
+| ![桌面端侧栏折叠](picture/desktop-sidebar-collapsed.png) |
 
 </details>
 
@@ -207,7 +211,7 @@ raincode web --port 8787
 - **多连接扇出**：多个浏览器标签页可同时连接，会话事件投递到全部活跃连接；多标签审批弹窗互相同步（同一 `pendingApprovals` 投影）。
 - **心跳**：宿主 30s 周期 WS ping 探活，空闲连接自动断开；`RAINCODE_WS_DELTA_WINDOW_MS` 可调大流式批量窗口（广域网）。
 
-Alpha 功能范围：会话列表 / 新建 / 切换、工作区路径输入、会话流式渲染（markdown 轻渲染、思考块流式展开 / 完成后自动折叠、工具卡五状态与模块徽标、代码围栏一键复制）、交互审批（四级决策 + kbd 快捷键芯片 + 键盘直选）、Provider 设置、连接状态条（重连可视化）、管理面板四件套——记忆管理器（MEMORY.md 预览 / 草案确认 / 条目检索晋升）、扩展面板（MCP 状态启停与健康检查 + 插件启停）、斜杠命令面板（`/` 唤起技能清单，↑↓/Tab 补全）、用量统计（侧栏 ↑/↓ token 与回合数）——与桌面端同构消费同一服务面（T4.5，L-08 核销）、**浅色主题（与桌面端同语义：侧栏「◐」循环 深/浅/跟随系统，localStorage 持久化）**。视觉与桌面端统一（[docs/03-ui-design](docs/03-ui-design.md) v1.4「赤陶磷光」token 体系，UI 重设计轮自 `ink-*` 简化盘迁移）。真浏览器回归走查：`pnpm walkthrough:web`（Edge/Chrome headless CDP 驱动真实 `raincode web` 入口，19 断言：鉴权 / 会话 / 审批落盘 / 宿主重启恢复 / 多标签扇出与标签冻结补偿——T4.7，L-05 核销）。
+Alpha 功能范围：会话列表（今天/昨天/更早时间分组）/ 新建 / 切换、工作区路径输入、三栏布局（右侧上下文面板：记忆 Tab 摘要卡与检索 / MCP Tab 状态灯实时刷新与启停重试 / 子代理 Tab 运行中与历史）、子代理进度卡（violet 标识 + 完成折叠汇总）、会话流式渲染（markdown 轻渲染、思考块流式展开 / 完成后自动折叠、工具卡五状态与模块徽标、代码围栏一键复制）、交互审批（四级决策 + kbd 快捷键芯片 + 键盘直选）、Provider 设置、连接状态条（重连可视化）、ctx 用量条（>80% 琥珀 / >95% 红）、管理面板四件套——记忆管理器（MEMORY.md 预览 / 草案确认 / 条目检索晋升）、扩展面板（MCP 状态启停与健康检查 + 插件启停）、斜杠命令面板（`/` 唤起技能清单，↑↓/Tab 补全）、用量统计（侧栏 ↑/↓ token 与回合数）——与桌面端同构消费同一服务面（T4.5，L-08 核销）、**浅色主题（与桌面端同语义：侧栏「◐」循环 深/浅/跟随系统，localStorage 持久化）**。视觉与桌面端统一（[docs/03-ui-design](docs/03-ui-design.md) v1.5「赤陶磷光」token 体系，UI 重设计轮自 `ink-*` 简化盘迁移）。真浏览器回归走查：`pnpm walkthrough:web`（Edge/Chrome headless CDP 驱动真实 `raincode web` 入口，19 断言：鉴权 / 会话 / 审批落盘 / 宿主重启恢复 / 多标签扇出与标签冻结补偿——T4.7，L-05 核销）。
 
 | 会话流（思考块 + 工具卡 + 语言芯片围栏） | 权限审批弹窗（kbd 快捷键直选） |
 | --- | --- |
@@ -220,9 +224,13 @@ Alpha 功能范围：会话列表 / 新建 / 切换、工作区路径输入、�
 | --- | --- | --- | --- |
 | ![斜杠命令面板](picture/web-slash.png) | ![记忆管理器](picture/web-memory.png) | ![扩展面板](picture/web-extensions.png) | ![Provider 设置](picture/web-settings.png) |
 
-| 浅色主题（与桌面端同语义三态切换） |
+| 浅色主题（与桌面端同语义三态切换） | 右侧上下文面板 · 子代理 Tab（历史派发 + 轮次） |
+| --- | --- |
+| ![Web 浅色主题](picture/web-chat-light.png) | ![Web 右栏子代理 Tab](picture/web-context-subagent.png) |
+
+| 侧栏折叠图标态（56px，悬停出 title 提示） |
 | --- |
-| ![Web 浅色主题](picture/web-chat-light.png) |
+| ![Web 侧栏折叠](picture/web-sidebar-collapsed.png) |
 
 </details>
 

@@ -1,6 +1,6 @@
 # RainCode UI 设计规范
 
-> 版本 v1.4 · 2026-10-04（v1.0 · 2026-09-24 初稿；v1.1 双端统一；v1.2 思考块与工具卡深化；v1.3 组件化重构与冷重建；v1.4 变更见文末「14. v1.4 变更记录」）
+> 版本 v1.5 · 2026-10-04（v1.0 · 2026-09-24 初稿；v1.1 双端统一；v1.2 思考块与工具卡深化；v1.3 组件化重构与冷重建；v1.4 浅色主题落地；v1.5 变更见文末「15. v1.5 变更记录」）
 > 适用范围：RainCode 个人代码智能助手——Windows 桌面端（Electron + React 18 + Zustand + Tailwind CSS，shadcn/ui 风格组件）、Web 工作台（React 18 + Zustand + Tailwind CSS）与 CLI 端（readline REPL + ANSI）。
 > 配套高保真设计稿见文末「设计稿索引」，四张稿件与本文档 tokens 严格一致。
 
@@ -267,12 +267,12 @@ flowchart TD
 6. **权限审批弹窗态**（模态叠加）：遮罩 `rgba(6,9,14,.62)` + `--shadow-3` 对话框（`--r-xl`，带取景框角标）。内容：风险徽章（低/中/高）、工具名与完整命令（等宽、可复制）、影响文件列表、四级决策按钮「仅本次允许（主按钮）/ 本会话允许 / 始终允许 / 拒绝（danger 幽灵按钮）」、「记住此选择并写入权限规则」复选框。键盘 `1–4` 直选，`Esc`=拒绝。
 7. **输入区**：底部输入框（`--bg-raised`，聚焦边框转 `--accent-dim`），支持 `/` 命令面板、`@` 文件引用、模型快切；右侧发送主按钮，生成中变为「停止」方块按钮；下方一行弱化提示（当前模型 · context 用量）。
 
-**右侧上下文面板**（Tab：记忆 | MCP | 子代理 | 沙箱，激活 Tab 底部 2px 模块色指示条）：
+**右侧上下文面板**（Tab：记忆 | MCP | 子代理 | 沙箱，激活 Tab 底部 2px 模块色指示条）——**v1.5 实现注记**：三 Tab（记忆 | MCP | 子代理）已双端落地（300px 可折叠 + 竖条唤起 + 非会话视图隐藏）；**沙箱 Tab 未实现**（06 全文无 `sandbox.*` RPC 域，禁做有 Tab 无数据的假 UI；沙箱域登记协议缺口，补域后在此扩展 Tab 槽位）。子代理 Tab 的数据口径：`subagent.*` 事件为全局事件（payload 无 sessionId），前端按「事件到达时活跃会话」归属，记录为瞬态不落盘（resume 后右栏与进度卡重置为 `subagent.list` 可及范围，历史派发由事件到达期间在线时呈现）：
 
-- **记忆 Tab**（默认，绿色标识）：MEMORY.md 摘要卡（条目数 + 最近更新时间 +「打开管理器」链接）、检索框、最近记忆条目列表（类型徽章：项目约定 / 用户偏好 / 命令速查 / 架构决策，含来源会话号与引用次数）。
-- **MCP Tab**（蓝色标识）：已连接服务器列表（名称、状态灯、工具数、传输方式 stdio/SSE），点击展开工具清单；底部「管理服务器」跳设置页。
-- **子代理 Tab**（紫色标识）：当前运行中子代理实时列表（名称、任务、耗时、token 消耗）与历史派发记录。
-- **沙箱 Tab**（薄荷绿标识）：沙箱总开关、当前模式（只读/工作区可写/完全离线）、资源限制读数（CPU/内存/网络）、最近被拦截操作列表。
+- **记忆 Tab**（默认，绿色标识）：MEMORY.md 摘要卡（条目数 +「打开管理器」链接）、检索框（300ms 防抖 `memory.search`）、最近记忆条目列表（类型徽章 + 两行截断摘要 + 来源·相对时间，`memory.entries.list`）。工作区未设定时显示一行引导。
+- **MCP Tab**（蓝色标识）：已连接服务器列表（名称、状态灯、工具数、传输方式 stdio/SSE），点击行展开工具清单；Failed 行「重试」按钮；行内启停开关；`mcp.server_status_changed` 事件经 store tick 驱动实时重拉。
+- **子代理 Tab**（紫色标识）：当前运行中子代理实时列表（名称、任务、阶段摘要、状态灯）与历史派发记录（终态 + turnsUsed）。
+- **沙箱 Tab**（薄荷绿标识）：沙箱总开关、当前模式（只读/工作区可写/完全离线）、资源限制读数（CPU/内存/网络）、最近被拦截操作列表。**（未实现——协议缺口，见上注记）**
 
 ### 6.2 设置页（稿件 02）
 
@@ -460,3 +460,18 @@ flowchart TD
 3. **三态主题切换（双端同语义，各端独立实现不抽公共包）**：侧栏品牌头「◐」按钮循环 深色 → 浅色 → 跟随系统；`theme.ts` 纯函数面（`resolveTheme` / `nextTheme` / 校验与存取）+ DOM 薄封装（`applyTheme` 落 `<html data-theme>`），localStorage 键 `raincode.theme` 双端同名同值；「跟随系统」经 `prefers-color-scheme` 监听实时重映射（main.tsx 渲染前应用防闪色）；偏好持久化、损坏值回退深色（§2.2 深色优先）。Web 端 theme 状态入 `WebState.theme`（`initialWebState(themePref)`），桌面端同构入 `DesktopState.theme`。
 4. **产品截图 +2**：`shots:web` / `shots:desktop` 各补一张浅色主题对照（`web-chat-light.png` / `desktop-chat-light.png`，导航态直接切 `data-theme` 截后还原），README 嵌入；双端 14 张（web 8 + desktop 6）。
 5. **验收留存**：门禁 typecheck 14 项目 / lint 12 warning 基线 0 error / architecture 255 文件 0 违规 / 单测 290（+12：双端 theme.test.ts 各 6——解析 / 循环 / 持久化纯函数面）；walkthrough-web 19/19、walkthrough-desktop 14/14（DOM 契约零破坏，桌面走查首跑「插件再激活」偶发超时复跑即绿）；双端构建通过；浅色截图人工核对（侧栏白底反转 / accent 橙加深对比 / 思考块 violet / 围栏头行 / 表格与工具卡 tint 全组件重映射正常）。
+
+---
+
+## 15. v1.5 变更记录（2026-10-04 · 三栏布局演进轮：右侧上下文面板落地 + 子代理呈现 + 侧栏折叠）
+
+本轮把 §6.0/§6.1 规格中「已设计未实现」的结构性缺口落地（三参照仓 UI 调研结论校准，见 docs/research/2026-10-04-m5-reference-repos.md），token 色值零变更（深浅两主题经既有语义 token 自动重映射，组件零硬编码色值）：
+
+1. **右侧上下文面板双端落地（§6.1，本轮主项）**：新组件 `ContextPanel.tsx`（web/desktop 同构）——300px 可折叠，三 Tab「记忆 | MCP | 子代理」（激活 Tab 底部 2px 模块色指示条：记忆=ok / MCP=info / 子代理=violet，§6.5 Tab 规范不加底色填充）；记忆 Tab（MEMORY.md 摘要卡 + 300ms 防抖 `memory.search` 检索框 + `memory.entries.list` 条目列表：中性类型徽章 + 两行截断 + 来源·相对时间；工作区未设定一行引导）；MCP Tab（`mcp.servers.list` 服务器行 memo 化：状态灯四态映射 + transport 芯片 + 工具数 + 行点击展开 `mcp.tools.list` 工具清单 + Failed 行重试 + 行内启停开关；`mcp.server_status_changed` 经 store tick 驱动实时重拉）；子代理 Tab（运行中组在上 + 历史组在下：状态灯 + profile 名 + 任务/阶段摘要 + 终态 turnsUsed）。**沙箱 Tab 不做**：06 全文无 `sandbox.*` RPC 域，禁做有 Tab 无数据的假 UI（真实数据原则），Tab 槽位预留扩展（§6.1 注记）。App.tsx 双端三栏装配：右栏仅 chat 视图常驻（settings/memory/extensions 整页视图独占主区，返回恢复折叠态），折叠后右缘 32px 竖条（「«」唤起按钮 + 三模块色点）。
+2. **子代理呈现链路双端补全（§6.1 第 4 条）**：`subagent-view.ts`（web/desktop 同构新模块，自 session-view 拆分满足 500 行治理）——`SubagentRecord` + `applySubagentEvent`（spawned upsert 绑定事件到达时活跃会话 / progress 字符串校验写 / completed 终态收束 / 未知事件与缺 subagentId 原样返回；`subagent.*` 为全局事件 payload 无 sessionId，06 §3.2 C 组，归属口径见 §6.1 注记）+ `groupSessions` + `ctxLevel` 纯函数；store 订阅三事件走独立归并分支。**子代理进度卡**入 ChatFlow（violet 卡 `◈ 子代理`：运行中全展开行级状态灯，全部终态折叠单行「N 个子代理已完成」可再展开）。
+3. **左侧栏折叠 + 会话时间分组（§6.0/§6.1）**：Sidebar 264px 展开态（结构文案零变更，走查 DOM 契约保持）⇄ 56px 图标态（品牌 ✦ / + 新建 / 会话色点列带 title / 底部面板入口模块色点 / ◐ 主题 / 连接状态灯，用户主动切换默认展开）；会话列表按「今天 / 昨天 / 更早」三组标题分组（本地时区自然日，组内 lastActiveAt 降序）。
+4. **context 用量条（§7 状态表落地）**：InputArea 下方提示行「当前模型 · ctx N%」+ 微型进度条（`ctxLevel` 分档：>80% warn 琥珀 / >95% danger 红）；数据源直接消费 `session.list`/`session.snapshot` 既有的 `contextUsage {tokens, maxTokens}` 服务端投影（非前端估算），`session.usage` 与 `session.list` 并行刷新（done 后同步）。
+5. **产品缺陷修复（B2 同款，截图验收反哺）**：三端真实入口（`raincode web` CLI / `raincode serve` stdio host / 桌面 agent entry）此前均未装配 `subagent` 域——`agent` 工具与 `subagent.*` 方法/事件三端全不可达，且被 smoke-subagent 自建节点手装该域完全掩盖（T4.9 B2「memory 三端未装配」同款盲区）。三入口补 `subagent: {}`（无装配期工作区，profile 解析 global+builtin 层，`dataRoot` 随 storage）。**协议零变更**（全部消费既有方法与事件）；CLI 端零改动申报：CLI 视觉 = 终端原生美学，右侧面板/进度卡为 GUI 概念，子代理域装配对 CLI 用户表现为 `agent` 工具可用性修复。
+6. **产品截图 +6（双端 20 张）**：web/desktop 各增右栏 MCP Tab、右栏子代理 Tab、侧栏折叠图标态三张（`*-context-mcp.png` / `*-context-subagent.png` / `*-sidebar-collapsed.png`）；shots 脚本补 agent 回合素材（builtin researcher 子代理端到端真实 spawn——web 端修正「页面后开错过瞬态全局事件」时序，回合 4 改为页面在线后驱动）；桌面端电脑控制（UI Automation）真机验收：三栏布局 / Tab 切换 / 右栏折叠唤起 / 侧栏折叠 / 浅色主题右栏渲染逐项通过。
+7. **验收留存**：门禁 typecheck 14 项目 / lint 12 warning 基线 0 error / architecture 259 文件 0 违规（双端 session-view 拆分 subagent-view 后达标）/ 单测 305（+15：双端 applySubagentEvent 5+4、groupSessions 2+2、ctxLevel 1+1）；walkthrough-web 19/19 + walkthrough-desktop 14/14（装配改动后复跑全绿）；双端构建通过；截图人工核对（三栏密度 / 状态灯映射 / violet 进度卡 / ctx 条阈值配色 / 深浅两主题）。
+8. **已知口径登记**：子会话（`[subagent:<profile>]` 前缀）随 `session.list` 进入侧栏会话列表（真实投影、前缀可辨识，过滤留待后续轮）；`mcp.json` 缺失时宿主落一条「INTERNAL: internal error」错误横幅（域装配降级既有行为，电脑控制验收发现，legacy-items 登记）。设置页 6 组导航（§6.2）与消息数徽章维持未实现（无数据源 / 独立轮次）。

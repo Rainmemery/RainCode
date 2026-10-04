@@ -1,7 +1,9 @@
-﻿/**
+/**
  * 底部输入区（03 §6.1 第 6 条）：bg-raised 圆角框聚焦转 accent-dim 边框；textarea 自适应
  * 3~8 行，Enter 发送（Shift+Enter 换行，IME 组合中不发送）；流式中发送钮变「停止」；
- * 下方弱化提示行显示当前模型或 Provider 引导。
+ * 下方弱化提示行显示当前模型或 Provider 引导；ctx 用量条（refine-ui-context-panel 轮 §7）：
+ * 「模型 · ctx N%」+ 微型进度条（N=累计 tokens/窗口 tokens，服务端已算好），
+ * >80% 琥珀 >95% 红（ctxLevel 分档）；无 contextUsage 数据仅显示模型名。
  * T3.9 斜杠命令面板（UI-4）：输入以「/」开头时浮出技能面板（skills.list，含 workspace 层），
  * ↑↓ 选择 / Tab 补全 / Enter 直发；发送路径解析 /name args → skills.invoke（展开在 server 侧，
  * 06 §2.9，与 CLI 同语义），SKILL_NOT_FOUND 经错误横条呈现。
@@ -9,6 +11,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { SkillSummary } from "@raincode/shared";
 import { parseSlashInvocation } from "../session-view.js";
+import { ctxLevel } from "../subagent-view.js";
 import { rpcCall, useDesktop } from "../store.js";
 
 const MAX_HEIGHT_PX = 168;
@@ -18,6 +21,10 @@ export default function InputArea() {
   const activeId = useDesktop((s) => s.activeId);
   const providers = useDesktop((s) => s.providers);
   const activeProviderId = useDesktop((s) => s.activeProviderId);
+  // 活跃会话 ctx 用量（session.list/snapshot 随行，服务端已算好；refine-ui-context-panel 轮）
+  const contextUsage = useDesktop((s) =>
+    s.activeId === null ? undefined : s.sessions.find((row) => row.id === s.activeId)?.contextUsage,
+  );
   const send = useDesktop((s) => s.send);
   const invokeSkill = useDesktop((s) => s.invokeSkill);
   const cancel = useDesktop((s) => s.cancel);
@@ -86,6 +93,14 @@ export default function InputArea() {
     setText("");
     setPaletteDismissed(false);
   }
+
+  // ctx 用量条（§7）：pct = tokens/maxTokens*100 clamp 0-100；无 contextUsage 数据不渲染该段
+  const maxTokens = contextUsage?.maxTokens ?? 0;
+  const ctxPct =
+    contextUsage !== undefined && maxTokens > 0
+      ? Math.min(100, Math.max(0, Math.round((contextUsage.tokens / maxTokens) * 100)))
+      : null;
+  const level = ctxPct !== null ? ctxLevel(ctxPct) : "ok";
 
   return (
     <div className="px-6 pb-3 pt-2">
@@ -190,6 +205,20 @@ export default function InputArea() {
         {provider !== null ? (
           <span className="text-faint">
             {provider.name} · {provider.model}
+            {ctxPct !== null && contextUsage !== undefined && (
+              <span
+                className="ml-2 inline-flex items-center gap-1.5 align-middle"
+                title={`上下文用量估算：累计 ${String(contextUsage.tokens)} tokens / 窗口 ${String(contextUsage.maxTokens)} tokens`}
+              >
+                ctx {String(ctxPct)}%
+                <span className="inline-block h-1 w-16 rounded bg-raised">
+                  <span
+                    className={`block h-1 rounded ${level === "danger" ? "bg-danger" : level === "warn" ? "bg-warn" : "bg-ok"}`}
+                    style={{ width: `${String(ctxPct)}%` }}
+                  />
+                </span>
+              </span>
+            )}
           </span>
         ) : (
           <button type="button" onClick={() => setView("settings")} className="text-warn hover:underline">

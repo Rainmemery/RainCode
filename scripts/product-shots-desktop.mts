@@ -203,6 +203,46 @@ async function main(): Promise<number> {
     await sleep(400);
     await shot(cdp, "desktop-tools");
 
+    // 回合 2.5：agent 工具派发子代理（builtin researcher）——右栏子代理 Tab 与进度卡素材；
+    // 脚本队列 = 主回合 tool_calls 帧 → 子代理子 turn 文本 → 主回合收束文本
+    mock.setScript([
+      { frames: [{ choices: [{ index: 0, delta: { role: "assistant" } }] },
+          toolCallFrame("t-agent", "agent", { profile: "researcher", task: "调研 flex-wrap 布局下拖拽排序的边界情况" }, 0)],
+        finish: "tool_calls" },
+      textScript("调研结论：flex-wrap 下按 DOM 顺序计算插入位置可行，需注意换行行的插入点归属。"),
+      textScript("子代理调研完成：拖拽按 DOM 顺序计算可行，边界情况与结论已同步。"),
+    ]);
+    await sendTurn(cdp, "派个子代理调研拖拽排序的边界情况");
+    try {
+      await cdp.waitFor(bodyContains("仅本次允许"), "agent 审批弹窗", 20_000);
+      await sleep(200);
+      await cdp.eval<boolean>(clickButtonExpr("仅本次允许"));
+    } catch { /* agent 免审批则直行 */ }
+    try {
+      await cdp.waitFor(bodyContains("子代理调研完成"), "回合 2.5 完成", 40_000);
+    } catch (err) {
+      console.log("[t2.5 诊断] 错误横幅 =", await cdp.eval<string | null>(`(() => { const el = [...document.querySelectorAll("div")].find(d => String(d.className).includes("border-danger")); return el ? el.innerText.slice(0, 300) : null; })()`));
+      console.log("[t2.5 诊断] store =", (await cdp.eval<string>(`JSON.stringify(window.__raincodeStore.getState(), (k, v) => (k === "views" || k === "sessions" || k === "providers") ? undefined : v)`)));
+      console.log("[t2.5 诊断] mock.served =", String(mock.served()));
+      throw err;
+    }
+
+    // 右侧上下文面板（refine-ui-context-panel 轮）：MCP Tab 与子代理 Tab（记忆 Tab 已入 desktop-chat 全景）
+    await cdp.eval<boolean>(`(() => { const b = [...document.querySelectorAll("button")].find(x => x.textContent.trim() === "MCP"); if (!b) return false; b.click(); return true; })()`);
+    await cdp.waitFor(bodyContains("fixture"), "右栏 MCP Tab 投影", 15_000);
+    await sleep(300);
+    await shot(cdp, "desktop-context-mcp");
+    await cdp.eval<boolean>(`(() => { const b = [...document.querySelectorAll("button")].find(x => x.textContent.trim() === "子代理"); if (!b) return false; b.click(); return true; })()`);
+    await cdp.waitFor(bodyContains("researcher"), "右栏子代理 Tab 投影", 15_000);
+    await sleep(300);
+    await shot(cdp, "desktop-context-subagent");
+    // 侧栏折叠图标态（56px）
+    await cdp.eval<boolean>(`(() => { const b = [...document.querySelectorAll("button")].find(x => x.getAttribute("title") === "折叠侧栏"); if (!b) return false; b.click(); return true; })()`);
+    await sleep(350);
+    await shot(cdp, "desktop-sidebar-collapsed");
+    await cdp.eval<boolean>(`(() => { const b = [...document.querySelectorAll("button")].find(x => x.getAttribute("title") === "展开侧栏"); if (!b) return false; b.click(); return true; })()`);
+    await sleep(300);
+
     // 回合 3：write 审批弹窗（kbd 芯片素材）
     mock.setScript([writeCallScript("t-write", "docs/api.md", "# notes-cli API\n\n- NoteStore：速记存储\n- renderNoteList：列表渲染\n"), textScript(ANSWER_3)]);
     await sendTurn(cdp, "把导出函数补进 docs/api.md");

@@ -1,12 +1,14 @@
-﻿/**
- * 输入区（03 §6.5 Web 适配；T4.5 斜杠命令面板对齐桌面端 UI-4）：Enter 发送 / Shift+Enter 换行 /
- * IME 组合中不发送 / 流式中发送钮变「停止」；输入以「/」开头时浮出技能面板（skills.list，
- * workspace+global 双层），↑↓ 选择 / Tab 补全 / Enter 执行 / Esc 关闭；发送路径解析
- * /name args → skills.invoke（展开在 server 侧，06 §2.9，与 CLI/桌面端同语义）。
+/**
+ * 输入区（03 §6.5 Web 适配；T4.5 斜杠命令面板对齐桌面端 UI-4；refine-ui-context-panel 轮
+ * 增 ctx 用量提示行）：Enter 发送 / Shift+Enter 换行 / IME 组合中不发送 / 流式中发送钮变
+ * 「停止」；输入以「/」开头时浮出技能面板（skills.list，workspace+global 双层），↑↓ 选择 /
+ * Tab 补全 / Enter 执行 / Esc 关闭；发送路径解析 /name args → skills.invoke（展开在 server 侧，
+ * 06 §2.9，与 CLI/桌面端同语义）。
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { SkillSummary } from "@raincode/shared";
 import { parseSlashInvocation } from "../session-view.js";
+import { ctxLevel } from "../subagent-view.js";
 import { rpcCall, useWeb } from "../state.js";
 
 const MAX_HEIGHT_PX = 168;
@@ -17,11 +19,21 @@ export function InputArea(): JSX.Element {
   const invokeSkill = useWeb((s) => s.invokeSkill);
   const streaming = useWeb((s) => s.streaming);
   const activeId = useWeb((s) => s.activeId);
+  // ctx 用量条数据源（refine-ui-context-panel 轮，03 §7）：sessions 行 contextUsage + 活跃 Provider 模型名
+  const contextUsage = useWeb((s) => (s.activeId !== null ? s.sessions.find((row) => row.id === s.activeId)?.contextUsage : undefined));
+  const model = useWeb((s) => s.providers.find((p) => p.id === s.activeProviderId)?.model);
   const [draft, setDraft] = useState("");
   const [skills, setSkills] = useState<SkillSummary[]>([]);
   const [paletteDismissed, setPaletteDismissed] = useState(false);
   const [highlight, setHighlight] = useState(0);
   const areaRef = useRef<HTMLTextAreaElement>(null);
+
+  // ctx 百分比（clamp 0-100）；maxTokens 缺失/为 0 时不显示用量段
+  const pct =
+    contextUsage !== undefined && contextUsage.maxTokens > 0
+      ? Math.min(100, Math.max(0, Math.round((contextUsage.tokens / contextUsage.maxTokens) * 100)))
+      : null;
+  const level = pct !== null ? ctxLevel(pct) : null;
 
   const slashMode = draft.startsWith("/");
   const query = slashMode ? draft.slice(1).replace(/\s+[\s\S]*$/, "") : "";
@@ -176,6 +188,29 @@ export function InputArea(): JSX.Element {
           )}
         </div>
       </div>
+      {/* ctx 用量提示行（03 §7）：「模型 · ctx N%」+ 微型进度条；>80% 琥珀、>95% 红；无数据不渲染 */}
+      {model !== undefined || pct !== null ? (
+        <div className="mt-1.5 flex items-center gap-2 px-1 text-2xs text-faint">
+          {model !== undefined && <span className="mono truncate" title="活跃 Provider 模型">{model}</span>}
+          {pct !== null && level !== null && contextUsage !== undefined && (
+            <>
+              {model !== undefined && <span>·</span>}
+              <span className={`shrink-0 ${level === "ok" ? "text-low" : level === "warn" ? "text-warn" : "text-danger"}`}>
+                ctx {pct}%
+              </span>
+              <span
+                className="h-1 w-16 shrink-0 rounded bg-raised"
+                title={`上下文用量估算：累计 ${contextUsage.tokens} tokens / 窗口 ${contextUsage.maxTokens} tokens`}
+              >
+                <span
+                  className={`block h-1 rounded ${level === "ok" ? "bg-ok" : level === "warn" ? "bg-warn" : "bg-danger"}`}
+                  style={{ width: `${pct}%` }}
+                />
+              </span>
+            </>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

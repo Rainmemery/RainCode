@@ -36,6 +36,7 @@ export async function createStdioHostContext(argv: string[] = []): Promise<Stdio
     plugins: {}, // plugins 域启用（T3.5）：与 CLI in-process 同语义（06 §2.10）
     mcp: {}, // mcp 域启用（T3.9 全量对齐补装配）：stdio 宿主无装配期工作区，全局层 mcp.json 生效（06 §2.5）
     memory: {}, // memory 域启用（B2 缺陷修复：stdio 宿主无装配期工作区，MEMORY.md 按会话工作区逐会话解析）（06 §2.6）
+    subagent: {}, // subagent 域启用（refine-ui-context-panel 轮缺陷修复：B2 同款三端装配缺口；无装配期工作区，profile 解析 global+builtin 层）（06 §2.5）
   });
   return {
     node,

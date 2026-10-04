@@ -10,7 +10,8 @@ import { create } from "zustand";
 import { createReconnectingRpcClient, RpcCallError } from "@raincode/rpc/web";
 import type { ReconnectingRpcClient } from "@raincode/rpc/web";
 import { applySessionEvent, initialWebState, rebuildItemsFromHistory } from "./session-view.js";
-import type { SessionView, WebState } from "./session-view.js";
+import { applySubagentEvent } from "./subagent-view.js";
+import type { SessionListEntry, SessionView, WebState } from "./session-view.js";
 import { applyTheme, loadThemePref, saveThemePref } from "./theme.js";
 import type { ThemePref } from "./theme.js";
 
@@ -21,13 +22,12 @@ interface SnapshotPayload {
   /** v1.3 冷重建字段：全量消息（resume 冷恢复/幂等路径双填充，06 §3.2）。 */
   history?: unknown[];
   pendingApprovals?: Array<Record<string, unknown>>;
+  /** 右栏/用量条 context 用量（服务端 session-support 已算好，直接消费）。 */
+  contextUsage?: { tokens: number; maxTokens: number };
 }
 
-interface SessionListRow {
-  id: string;
-  title: string;
-  lastActiveAt: number;
-}
+/** 会话列表行类型（session.list 投影；contextUsage 透传右栏/用量条）。 */
+type SessionListRow = SessionListEntry;
 
 interface WebStore extends WebState {
   bootstrap(): Promise<void>;
@@ -48,6 +48,8 @@ interface WebStore extends WebState {
   invokeSkill(name: string, args?: string): Promise<void>;
   /** 主题偏好切换（03 §3.2）：持久化 + 立即落 <html data-theme>。 */
   setTheme(pref: ThemePref): void;
+  /** 右侧上下文面板折叠切换（03 §6.1：折叠后右缘竖条唤起）。 */
+  toggleContextPanel(): void;
   dismissError(): void;
 }
 
@@ -112,6 +114,14 @@ export const useWeb = create<WebStore>((set, get) => {
       };
     });
     set({ approvals, streaming: false });
+    // 快照携带 context 用量（服务端 session-support 已算好）：回填 sessions 对应行（找不到行忽略）
+    if (snapshot.contextUsage !== undefined) {
+      set((state) => ({
+        sessions: state.sessions.map((row) =>
+          row.id === sessionId ? { ...row, contextUsage: snapshot.contextUsage } : row,
+        ),
+      }));
+    }
     // 补偿完成回填：seq 缺口检测基线对齐服务端（06 §6.3 第 4 条）
     rpc().setSeqBaseline(sessionId, snapshot.lastSeq);
     return { sessionId, title: sessionId, items };
@@ -137,6 +147,11 @@ export const useWeb = create<WebStore>((set, get) => {
         return;
       }
       const record = (payload ?? {}) as Record<string, unknown>;
+      // 子代理域全局事件（无 sessionId，06 §3.2 C 组）：归属=事件到达时活跃会话（refine-ui-context-panel 轮）
+      if (name === "subagent.spawned" || name === "subagent.progress" || name === "subagent.completed") {
+        set(applySubagentEvent(get(), name, record));
+        return;
+      }
       set(applySessionEvent(get(), name, record));
       if (name === "done") void get().refreshUsage(); // 回合收束即刷新用量行
     });
@@ -160,6 +175,9 @@ export const useWeb = create<WebStore>((set, get) => {
         "session.snapshot",
         "mcp.server_status_changed",
         "plugin.status_changed",
+        "subagent.spawned",
+        "subagent.progress",
+        "subagent.completed",
       ]) {
         onEvent(name);
       }
@@ -190,7 +208,13 @@ export const useWeb = create<WebStore>((set, get) => {
       try {
         const list = await call<{ items: SessionListRow[] }>("session.list", {});
         setState({
-          sessions: list.items.map((row) => ({ id: row.id, title: row.title, lastActiveAt: row.lastActiveAt })),
+          sessions: list.items.map((row) => ({
+            id: row.id,
+            title: row.title,
+            lastActiveAt: row.lastActiveAt,
+            // contextUsage 透传（服务端 session-support 已算好；row 缺省时不写字段）
+            ...(row.contextUsage !== undefined && { contextUsage: row.contextUsage }),
+          })),
           connection: "ready",
         });
         const providers = await call<{
@@ -254,9 +278,21 @@ export const useWeb = create<WebStore>((set, get) => {
       const sessionId = get().activeId;
       if (sessionId === null) return;
       try {
-        const usage = await call<NonNullable<WebState["usage"]>>("session.usage", { sessionId });
+        // 并行拉取用量与会话列表：list 重建顺带刷新各行 contextUsage（回合结束 ctx 条同步）
+        const [usage, list] = await Promise.all([
+          call<NonNullable<WebState["usage"]>>("session.usage", { sessionId }),
+          call<{ items: SessionListRow[] }>("session.list", {}),
+        ]);
         // 会话可能已切换：只写回仍是活跃会话的用量
         if (get().activeId === sessionId) set({ usage });
+        setState({
+          sessions: list.items.map((row) => ({
+            id: row.id,
+            title: row.title,
+            lastActiveAt: row.lastActiveAt,
+            ...(row.contextUsage !== undefined && { contextUsage: row.contextUsage }),
+          })),
+        });
       } catch {
         // 用量展示为附加信息：失败静默（条目缺失/旧服务端不影响主流程）
       }
@@ -346,10 +382,14 @@ export const useWeb = create<WebStore>((set, get) => {
       setState({ activeProviderId: result.activeProviderId });
     },
 
+    setTheme,
+
+    toggleContextPanel(): void {
+      set((state) => ({ contextPanelCollapsed: !state.contextPanelCollapsed }));
+    },
+
     dismissError(): void {
       setState({ error: null });
     },
-
-    setTheme,
   };
 });

@@ -1,7 +1,9 @@
 /**
- * Web 会话工作台（T3.8 / UI-5；T4.5 管理面板对齐）：侧栏（连接状态/工作区/会话/用量/面板入口）+
- * 会话流 + 审批弹窗 + Provider 设置 + 记忆管理器 + 扩展面板。服务能力与桌面端同源
- * （同一 AgentService 方法表，06 §6.3）；面板按端最小实现，复用协议与状态机语义（04 §2.3 policy）。
+ * Web 会话工作台（T3.8 / UI-5；T4.5 管理面板对齐；refine-ui-context-panel 轮三栏装配）：
+ * 侧栏（可折叠）+ 主区（chat/settings/memory/extensions 视图切换）+ 右侧上下文面板
+ * （03 §6.1：仅 chat 视图常驻 300px，可折叠为右缘竖条；fatal 态不渲染右栏）。
+ * 服务能力与桌面端同源（同一 AgentService 方法表，06 §6.3）；面板按端最小实现，
+ * 复用协议与状态机语义（04 §2.3 policy）。
  */
 import { useEffect } from "react";
 import { useWeb } from "./state.js";
@@ -12,6 +14,28 @@ import { ApprovalDialog } from "./components/ApprovalDialog.js";
 import { ProviderSettings } from "./components/ProviderSettings.js";
 import { MemoryManager } from "./components/MemoryManager.js";
 import { ExtensionsPanel } from "./components/ExtensionsPanel.js";
+import { ContextPanel } from "./components/ContextPanel.js";
+
+/** 折叠态右缘竖条（03 §6.0：折叠后以图标组唤起）：「«」展开按钮 + 三模块色点纯视觉提示。 */
+function ContextRail(): JSX.Element {
+  const toggleContextPanel = useWeb((s) => s.toggleContextPanel);
+  return (
+    <div className="flex w-8 shrink-0 flex-col items-center gap-3 border-l border-border-faint bg-panel py-3">
+      <button
+        type="button"
+        className="rounded-sm px-1.5 py-0.5 text-2xs text-low transition-colors duration-fast hover:bg-hover hover:text-hi"
+        onClick={toggleContextPanel}
+        title="展开上下文面板"
+      >
+        «
+      </button>
+      {/* 三模块色点（记忆=ok / MCP=info / 子代理=violet），纯视觉提示，div 即可 */}
+      <div className="h-1.5 w-1.5 rounded-full bg-ok" />
+      <div className="h-1.5 w-1.5 rounded-full bg-info" />
+      <div className="h-1.5 w-1.5 rounded-full bg-violet" />
+    </div>
+  );
+}
 
 export function App(): JSX.Element {
   const bootstrap = useWeb((s) => s.bootstrap);
@@ -19,6 +43,7 @@ export function App(): JSX.Element {
   const connection = useWeb((s) => s.connection);
   const fatal = useWeb((s) => s.fatal);
   const activeId = useWeb((s) => s.activeId);
+  const contextPanelCollapsed = useWeb((s) => s.contextPanelCollapsed);
 
   useEffect(() => {
     void bootstrap();
@@ -59,6 +84,8 @@ export function App(): JSX.Element {
         )}
         <ApprovalDialog />
       </main>
+      {/* 右栏仅在非 fatal 且 chat 视图挂载；settings/memory/extensions 整页视图独占主区 */}
+      {fatal === null && view === "chat" ? contextPanelCollapsed ? <ContextRail /> : <ContextPanel /> : null}
     </div>
   );
 }

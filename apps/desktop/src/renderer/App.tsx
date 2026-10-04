@@ -1,6 +1,8 @@
 /**
  * 顶层布局：连接状态横条 + 可关闭错误横条 + 视图切换（chat 三栏主界面 / settings 设置页 /
  * memory 记忆管理器 / extensions 扩展面板）+ 审批弹窗模态叠加（03 §6.1 / §7）。
+ * chat 三栏：侧栏（可折叠）+ 会话流 + 右侧上下文面板（仅 chat 视图常驻，可折叠为右缘竖条；
+ * refine-ui-context-panel 轮）；settings/memory/extensions 整页视图右栏不渲染。
  */
 import { useDesktop } from "./store.js";
 import Sidebar from "./components/Sidebar.js";
@@ -8,12 +10,14 @@ import ChatFlow from "./components/ChatFlow.js";
 import ProviderSettings from "./components/ProviderSettings.js";
 import MemoryManager from "./components/MemoryManager.js";
 import ExtensionsPanel from "./components/ExtensionsPanel.js";
+import ContextPanel, { ContextPanelRail } from "./components/ContextPanel.js";
 import ApprovalDialog from "./components/ApprovalDialog.js";
 
 export default function App() {
   const connection = useDesktop((s) => s.connection);
   const view = useDesktop((s) => s.view);
   const error = useDesktop((s) => s.error);
+  const contextPanelCollapsed = useDesktop((s) => s.contextPanelCollapsed);
   const hasApprovals = useDesktop((s) => s.approvals.length > 0);
   const dismissError = useDesktop((s) => s.dismissError);
 
@@ -38,6 +42,7 @@ export default function App() {
           <>
             <Sidebar />
             <ChatFlow />
+            {contextPanelCollapsed ? <ContextPanelRail /> : <ContextPanel />}
           </>
         )}
         {view === "settings" && (

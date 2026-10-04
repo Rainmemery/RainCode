@@ -1,10 +1,14 @@
-﻿/**
- * 侧栏（03 §6.2 Web 适配；UI 重设计轮对齐赤陶磷光 v2）：品牌头（✦ RainCode）+ 连接状态徽章
- * + 工作区输入 + 新建会话主按钮 + 会话列表（当前项 accent 指示条）+ 用量统计行 + 管理面板入口
- * （模块标识色：记忆=ok / 扩展=info / 设置=accent）。T4.5 对齐桌面端 UI-4。
+/**
+ * 侧栏（03 §6.2 Web 适配；UI 重设计轮对齐赤陶磷光 v2；refine-ui-context-panel 轮增折叠与
+ * 时间分组）：品牌头（✦ RainCode）+ 连接状态徽章 + 工作区输入 + 新建会话主按钮 +
+ * 会话列表（今天/昨天/更早分组，当前项 accent 指示条）+ 用量统计行 + 管理面板入口
+ * （模块标识色：记忆=ok / 扩展=info / 设置=accent）。折叠态为 56px 图标态（品牌 ✦、新建 +、
+ * 会话色点列、面板入口模块点、主题 ◐、连接 dot，悬停出 title）；走查 DOM 契约在默认展开态
+ * 保持原样（aside 首个 input / 「+ 新会话」/「设定」/ 面板入口中文文案）。T4.5 对齐桌面端 UI-4。
  */
 import { useState } from "react";
 import { useWeb } from "../state.js";
+import { groupSessions } from "../subagent-view.js";
 import { nextTheme, THEME_LABEL } from "../theme.js";
 
 const CONNECTION_LABEL: Record<string, { text: string; className: string; dot: string }> = {
@@ -13,6 +17,13 @@ const CONNECTION_LABEL: Record<string, { text: string; className: string; dot: s
   reconnecting: { text: "重连中（断线补偿）…", className: "bg-warn/10 text-warn border border-warn/40", dot: "dot dot-warn" },
   closed: { text: "已断开", className: "bg-danger/10 text-danger border border-danger/40", dot: "dot dot-err" },
 };
+
+/** 面板入口（走查契约文案；模块标识色折叠态用 bg 色点投影）。 */
+const PANEL_ENTRIES = [
+  ["memory", "记忆管理器", "bg-ok"],
+  ["extensions", "扩展面板（MCP / 插件）", "bg-info"],
+  ["settings", "⚙ Provider 设置", "bg-accent"],
+] as const;
 
 /** token 数三档缩写（用量统计行，UI-4）：1234 → 1.2k。 */
 function formatTokens(count: number): string {
@@ -43,12 +54,83 @@ export function Sidebar(): JSX.Element {
   const selectSession = useWeb((s) => s.selectSession);
   const createSession = useWeb((s) => s.createSession);
   const [workspaceDraft, setWorkspaceDraft] = useState(workspace ?? "");
+  // 折叠态为本地交互态（默认展开，不进 store；03 §6.0：264px ↔ 56px）
+  const [collapsed, setCollapsed] = useState(false);
 
   const badge = CONNECTION_LABEL[connection] ?? CONNECTION_LABEL["connecting"]!;
+  const groups = groupSessions(sessions, Date.now());
 
+  // -----------------------------------------------------------------
+  // 折叠态：56px 图标态（品牌 ✦ / 新建 + / 会话色点列 / 面板模块点 / 主题 / 连接 dot）
+  // -----------------------------------------------------------------
+  if (collapsed) {
+    return (
+      <aside className="flex w-14 shrink-0 flex-col items-center gap-2 border-r border-border-base bg-panel py-3">
+        <button
+          type="button"
+          className="text-sm text-accent transition-opacity duration-fast hover:opacity-80"
+          onClick={() => setCollapsed(false)}
+          title="展开侧栏"
+        >
+          ✦
+        </button>
+        <button
+          type="button"
+          className="flex h-7 w-7 items-center justify-center rounded-md border border-border-strong text-2xs text-mid transition-colors duration-fast hover:bg-hover hover:text-hi"
+          onClick={() => void createSession()}
+          title="新建会话"
+        >
+          +
+        </button>
+        {/* 会话列表 → 色点列（active=accent 实心点，其余 border-strong 空心点） */}
+        <nav className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto py-1">
+          {sessions.map((row) => {
+            const active = row.id === activeId;
+            return (
+              <button
+                key={row.id}
+                type="button"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors duration-fast hover:bg-hover"
+                onClick={() => void selectSession(row.id)}
+                title={`${row.title} · ${relativeTime(row.lastActiveAt)}`}
+              >
+                <span className={`h-2 w-2 rounded-full ${active ? "bg-accent" : "border border-border-strong"}`} />
+              </button>
+            );
+          })}
+        </nav>
+        <div className="flex flex-col items-center gap-1.5 border-t border-border-faint pt-2">
+          {PANEL_ENTRIES.map(([target, label, dotBg]) => (
+            <button
+              key={target}
+              type="button"
+              className="flex h-6 w-6 items-center justify-center rounded-md transition-colors duration-fast hover:bg-hover"
+              onClick={() => setView(target)}
+              title={label}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${dotBg}`} />
+            </button>
+          ))}
+          <button
+            type="button"
+            className="flex h-6 w-6 items-center justify-center rounded-md text-2xs text-low transition-colors duration-fast hover:bg-hover hover:text-hi"
+            onClick={() => setTheme(nextTheme(theme))}
+            title="切换主题（深色 → 浅色 → 跟随系统）"
+          >
+            ◐
+          </button>
+          <span className={badge.dot} title={badge.text} />
+        </div>
+      </aside>
+    );
+  }
+
+  // -----------------------------------------------------------------
+  // 展开态：结构保持现状（走查契约：aside 首个 input 为工作区输入）
+  // -----------------------------------------------------------------
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r border-border-base bg-panel">
-      {/* 品牌头 + 连接状态 + 主题切换（03 §3.2：深色 → 浅色 → 跟随系统循环） */}
+      {/* 品牌头 + 连接状态 + 主题切换 + 折叠（03 §3.2：深色 → 浅色 → 跟随系统循环） */}
       <div className="border-b border-border-faint px-4 py-3">
         <div className="flex items-baseline gap-1.5">
           <span className="text-sm text-accent">✦</span>
@@ -60,6 +142,13 @@ export function Sidebar(): JSX.Element {
             title="切换主题（深色 → 浅色 → 跟随系统）"
           >
             ◐ {THEME_LABEL[theme]}
+          </button>
+          <button
+            className="rounded-sm px-1.5 py-0.5 text-2xs text-low transition-colors duration-fast hover:bg-hover hover:text-hi"
+            onClick={() => setCollapsed(true)}
+            title="折叠侧栏"
+          >
+            ‹
           </button>
         </div>
         <span className={`mt-2 inline-flex items-center gap-1.5 rounded-sm px-2 py-0.5 text-2xs ${badge.className}`}>
@@ -94,25 +183,34 @@ export function Sidebar(): JSX.Element {
           + 新会话
         </button>
       </div>
+      {/* 会话列表：今天 / 昨天 / 更早 三组（组内保持 lastActiveAt 降序入参顺序） */}
       <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         {sessions.length === 0 && <div className="px-2 py-2 text-2xs text-faint">暂无会话</div>}
-        {sessions.map((row) => {
-          const active = row.id === activeId;
-          return (
-            <button
-              key={row.id}
-              className={`relative mb-0.5 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-fast ${
-                active ? "bg-selected" : "hover:bg-hover"
-              }`}
-              onClick={() => void selectSession(row.id)}
-              title={row.title}
-            >
-              {active && <span className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-accent" />}
-              <span className={`min-w-0 flex-1 truncate text-2xs ${active ? "text-hi" : "text-mid"}`}>{row.title}</span>
-              <span className="shrink-0 text-2xs text-faint">{relativeTime(row.lastActiveAt)}</span>
-            </button>
-          );
-        })}
+        {([["今天", groups.today], ["昨天", groups.yesterday], ["更早", groups.earlier]] as const).map(
+          ([label, rows]) =>
+            rows.length === 0 ? null : (
+              <div key={label}>
+                <div className="px-2 pb-1 pt-2 text-2xs text-faint">{label}</div>
+                {rows.map((row) => {
+                  const active = row.id === activeId;
+                  return (
+                    <button
+                      key={row.id}
+                      className={`relative mb-0.5 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-fast ${
+                        active ? "bg-selected" : "hover:bg-hover"
+                      }`}
+                      onClick={() => void selectSession(row.id)}
+                      title={row.title}
+                    >
+                      {active && <span className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-accent" />}
+                      <span className={`min-w-0 flex-1 truncate text-2xs ${active ? "text-hi" : "text-mid"}`}>{row.title}</span>
+                      <span className="shrink-0 text-2xs text-faint">{relativeTime(row.lastActiveAt)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ),
+        )}
       </nav>
       <div className="border-t border-border-faint p-3">
         {activeId !== null && usage !== null && (
@@ -127,11 +225,7 @@ export function Sidebar(): JSX.Element {
           </div>
         )}
         <div className="flex flex-col gap-0.5">
-          {([
-            ["memory", "记忆管理器", "dot-ok"],
-            ["extensions", "扩展面板（MCP / 插件）", "bg-info"],
-            ["settings", "⚙ Provider 设置", "bg-accent"],
-          ] as const).map(([target, label, dotClass]) => (
+          {PANEL_ENTRIES.map(([target, label, dotBg]) => (
             <button
               key={target}
               className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-2xs transition-colors duration-fast ${
@@ -139,7 +233,7 @@ export function Sidebar(): JSX.Element {
               }`}
               onClick={() => setView(view === target ? "chat" : target)}
             >
-              <span className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}`} />
+              <span className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${dotBg}`} />
               {label}
             </button>
           ))}
