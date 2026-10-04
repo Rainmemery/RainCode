@@ -75,7 +75,7 @@ function renderBlocks(text: string): ReactNode[] {
       nodes.push(
         <pre
           key={`fence-${segIndex}`}
-          className="mono my-1 overflow-x-auto whitespace-pre rounded-md bg-raised px-3 py-2 text-left text-2xs leading-relaxed text-hi"
+          className="mono my-1 overflow-x-auto whitespace-pre rounded-md border border-border-faint bg-raised px-3 py-2 text-left text-2xs leading-relaxed text-hi"
         >
           {code.replace(/\n$/, "")}
         </pre>,

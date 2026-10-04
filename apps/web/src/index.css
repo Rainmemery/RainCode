@@ -2,8 +2,258 @@
 @tailwind components;
 @tailwind utilities;
 
-html, body, #root {
+/* ============================================================
+ * RainCode Web 工作台 · 赤陶磷光 v2（03-ui-design §3.1 同源）
+ * UI 重设计轮：Web 端自 ink-* 简化盘迁移至双端统一 token 体系。
+ * v2 增补（三仓调研借鉴，见 docs/03-ui-design.md v1.1）：
+ *   等宽字体栈补 CJK（dsh 教训：裸 monospace 令中文落宋体）、
+ *   shimmer / 流式渐隐、prefers-reduced-motion 全覆盖（MiMo）、
+ *   取景框角标 utility（03 §3.5 识别符号落地）、alpha 中性色（ZCode）。
+ * ============================================================ */
+
+:root {
+  /* 表面与结构 */
+  --bg-void: #0a0e13;
+  --bg-base: #0d1219;
+  --bg-panel: #111823;
+  --bg-card: #141c28;
+  --bg-raised: #1a2432;
+  --bg-hover: #1c2735;
+  --bg-selected: #24384f;
+  --bg-popover: #161f2c;
+  /* 边框 */
+  --border-faint: #1a2432;
+  --border: #223042;
+  --border-strong: #31435a;
+  /* 文本 */
+  --text-hi: #e8eef5;
+  --text-mid: #a3b3c7;
+  --text-low: #66798f;
+  --text-faint: #42546a;
+  /* 品牌强调与状态色 */
+  --accent: #e0784f;
+  --accent-hover: #f08d63;
+  --accent-dim: #a85a3b;
+  --accent-bg: rgba(224, 120, 79, 0.12);
+  --ok: #53c383;
+  --warn: #e0b354;
+  --danger: #e4655e;
+  --info: #58a6f5;
+  --violet: #a48afa;
+  --cyan: #4ec9d4;
+  --mint: #4fcfa0;
+  /* Diff 语义色 */
+  --diff-add-bg: rgba(83, 195, 131, 0.12);
+  --diff-add-tx: #6fd79a;
+  --diff-del-bg: rgba(228, 101, 94, 0.12);
+  --diff-del-tx: #f08a84;
+  /* 动效（03 §3.5） */
+  --t-fast: 120ms;
+  --t-med: 200ms;
+  --t-slow: 320ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.3, 1);
+  /* 字体 */
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+  --font-mono: "Cascadia Code", "Cascadia Mono", Consolas, "Microsoft YaHei UI", monospace;
+}
+
+html,
+body,
+#root {
   height: 100%;
-  background-color: #0d1117;
-  color: #e6edf3;
+  margin: 0;
+}
+
+body {
+  background: var(--bg-base);
+  color: var(--text-hi);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.55;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(224, 120, 79, 0.35);
+  color: var(--text-hi);
+}
+
+code,
+pre,
+.mono {
+  font-family: var(--font-mono);
+}
+
+/* 焦点环：键盘可达（03 §8.1），鼠标点击不显 */
+:focus-visible {
+  outline: 1px solid var(--accent-dim);
+  outline-offset: 1px;
+}
+
+/* 流式光标（03 §6.1：橙色光标块闪烁） */
+@keyframes cursor-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+.stream-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 16px;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--accent);
+  animation: cursor-blink 1.1s step-end infinite;
+}
+
+/* 状态灯四态（03 §6.5）：绿常亮 / 青脉冲 / 琥珀脉冲 / 红常亮 */
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-ok {
+  background: var(--ok);
+}
+.dot-run {
+  background: var(--cyan);
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}
+.dot-warn {
+  background: var(--warn);
+  animation: pulse-dot 1.6s ease-in-out infinite;
+}
+.dot-err {
+  background: var(--danger);
+}
+.dot-idle {
+  background: var(--text-faint);
+}
+
+/* shimmer 扫过（加载占位，03 §7：骨架条微 shimmer） */
+@keyframes shimmer {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: 200px 0;
+  }
+}
+.shimmer-text {
+  color: transparent;
+  background: linear-gradient(90deg, var(--text-faint) 30%, var(--text-mid) 50%, var(--text-faint) 70%);
+  background-size: 400px 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: shimmer 1.6s linear infinite;
+}
+
+/* 流式尾部渐隐（dsh：mask-image 48px） */
+.stream-fade {
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 48px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 48px), transparent);
+}
+
+/* 入场动效：视图切换 / 弹窗（120–320ms，克制动效原则） */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.anim-fade {
+  animation: fade-in var(--t-med) var(--ease);
+}
+.anim-rise {
+  animation: rise-in var(--t-med) var(--ease);
+}
+
+/* 取景框角标（03 §3.5 标志性视觉细节）：主会话流 / 审批弹窗专用，勿滥用 */
+.corner-ticks {
+  --tick: var(--accent-dim);
+  background-image: linear-gradient(var(--tick), var(--tick)), linear-gradient(var(--tick), var(--tick)),
+    linear-gradient(var(--tick), var(--tick)), linear-gradient(var(--tick), var(--tick)),
+    linear-gradient(var(--tick), var(--tick)), linear-gradient(var(--tick), var(--tick)),
+    linear-gradient(var(--tick), var(--tick)), linear-gradient(var(--tick), var(--tick));
+  background-repeat: no-repeat;
+  background-size:
+    8px 1px,
+    1px 8px,
+    8px 1px,
+    1px 8px,
+    8px 1px,
+    1px 8px,
+    8px 1px,
+    1px 8px;
+  background-position:
+    0 0,
+    0 0,
+    100% 0,
+    100% 0,
+    0 100%,
+    0 100%,
+    100% 100%,
+    100% 100%;
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-faint);
+}
+
+/* 减动效偏好：循环/入场动效全部收敛（状态可判读性不依赖动效，03 §2.4） */
+@media (prefers-reduced-motion: reduce) {
+  .stream-cursor,
+  .dot-run,
+  .dot-warn,
+  .shimmer-text {
+    animation: none;
+  }
+  .anim-fade,
+  .anim-rise {
+    animation: none;
+  }
+  * {
+    scroll-behavior: auto !important;
+  }
 }

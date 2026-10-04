@@ -14,7 +14,7 @@
 
 | 文档 | 内容 | 阅读时机 |
 | --- | --- | --- |
-| [03-ui-design](03-ui-design.md) | 设计 tokens、桌面端布局、CLI TUI 形态、审批交互 | 桌面端 / TUI 开发前 |
+| [03-ui-design](03-ui-design.md) | 设计 tokens、桌面端布局、CLI 形态、审批交互（v1.1：Web 对齐 + 组件精修 + 减动效，§11 变更记录） | 桌面端 / Web 开发前 |
 | [04-architecture](04-architecture.md) | 包划分与依赖治理、进程模型、RPC 抽象、ADR 决策记录 | 架构级改动前 |
 | [05-database](05-database.md) | SQLite 表结构、JSONL 会话流格式、migration 策略、密钥引用制 | 存储层改动前 |
 | [06-api-spec](06-api-spec.md) | 控制面方法 / 数据面事件协议全集、错误码 | 协议层改动前 |

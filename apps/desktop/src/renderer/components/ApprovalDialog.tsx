@@ -64,46 +64,57 @@ export default function ApprovalDialog() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div ref={dialogRef} tabIndex={-1} className="w-[520px] rounded-xl border border-border-strong bg-popover p-5 shadow-2xl outline-none">
-        <div className="flex items-center gap-2">
-          <span className={`shrink-0 rounded-sm border px-1.5 py-0.5 text-2xs ${risk.badge}`}>{risk.label}</span>
-          <span className="mono min-w-0 truncate text-hi">{approval.toolName}</span>
+      <div
+        ref={dialogRef}
+        tabIndex={-1}
+        className="corner-ticks anim-rise w-[520px] overflow-hidden rounded-xl border border-border-strong bg-popover shadow-3 outline-none"
+      >
+        {/* 顶部色带：等待审批语义（warn，dsh 审批卡范式） */}
+        <div className="flex items-center gap-2 bg-warn/10 px-5 py-2">
+          <span className="dot dot-warn" />
+          <span className="text-2xs font-medium text-warn">等待你的确认 · 权限审批</span>
         </div>
-        {approval.reason !== "" && <div className="mt-2 truncate text-2xs text-low">{approval.reason}</div>}
-        <pre className="mono mt-3 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-md bg-raised px-3 py-2 text-2xs leading-relaxed text-mid">
-          {inputText}
-        </pre>
-        <div className="mt-4 flex gap-2">
-          <button
-            type="button"
-            onClick={() => void respondApproval(approval.grantId, "allow", false)}
-            className="h-8 flex-1 rounded-md bg-accent text-2xs text-void hover:bg-accent-hover"
-          >
-            仅本次允许
-          </button>
-          <button
-            type="button"
-            onClick={() => void respondApproval(approval.grantId, "allow", false, "session")}
-            className="h-8 flex-1 rounded-md border border-border-strong text-2xs text-mid hover:bg-hover"
-          >
-            本会话允许
-          </button>
-          <button
-            type="button"
-            onClick={() => void respondApproval(approval.grantId, "allow", true, "global")}
-            className="h-8 flex-1 rounded-md border border-border-strong text-2xs text-mid hover:bg-hover"
-          >
-            始终允许
-          </button>
-          <button
-            type="button"
-            onClick={() => void respondApproval(approval.grantId, "deny", false)}
-            className="h-8 flex-1 rounded-md border border-border-faint text-2xs text-danger hover:border-danger hover:bg-hover"
-          >
-            拒绝
-          </button>
+        <div className="p-5 pt-4">
+          <div className="flex items-center gap-2">
+            <span className={`shrink-0 rounded-sm border px-1.5 py-0.5 text-2xs ${risk.badge}`}>{risk.label}</span>
+            <span className="mono min-w-0 truncate text-hi">{approval.toolName}</span>
+          </div>
+          {approval.reason !== "" && <div className="mt-2 truncate text-2xs text-low">{approval.reason}</div>}
+          <pre className="mono mt-3 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-md border border-border-faint bg-raised px-3 py-2 text-2xs leading-relaxed text-mid">
+            {inputText}
+          </pre>
+          <div className="mt-4 flex gap-2">
+            <button
+              type="button"
+              onClick={() => void respondApproval(approval.grantId, "allow", false)}
+              className="h-8 flex-1 rounded-md bg-accent text-2xs text-void transition-colors duration-fast hover:bg-accent-hover"
+            >
+              仅本次允许
+            </button>
+            <button
+              type="button"
+              onClick={() => void respondApproval(approval.grantId, "allow", false, "session")}
+              className="h-8 flex-1 rounded-md border border-border-strong text-2xs text-mid transition-colors duration-fast hover:bg-hover"
+            >
+              本会话允许
+            </button>
+            <button
+              type="button"
+              onClick={() => void respondApproval(approval.grantId, "allow", true, "global")}
+              className="h-8 flex-1 rounded-md border border-border-strong text-2xs text-mid transition-colors duration-fast hover:bg-hover"
+            >
+              始终允许
+            </button>
+            <button
+              type="button"
+              onClick={() => void respondApproval(approval.grantId, "deny", false)}
+              className="h-8 flex-1 rounded-md border border-border-faint text-2xs text-danger transition-colors duration-fast hover:border-danger hover:bg-hover"
+            >
+              拒绝
+            </button>
+          </div>
+          <div className="mt-2 text-center text-2xs text-faint">快捷键 1-4 直选 · Esc 拒绝</div>
         </div>
-        <div className="mt-2 text-center text-2xs text-faint">快捷键 1-4 直选 · Esc 拒绝</div>
       </div>
     </div>
   );

@@ -31,13 +31,13 @@ const EMPTY_ASCII = [
 function EmptyState() {
   const createSession = useDesktop((s) => s.createSession);
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-5 px-6">
+    <div className="anim-fade flex h-full flex-col items-center justify-center gap-5 px-6">
       <pre className="mono whitespace-pre text-2xs leading-relaxed text-faint">{EMPTY_ASCII}</pre>
       <div className="text-mid">这里还没有内容，从一次对话开始</div>
       <button
         type="button"
         onClick={() => void createSession()}
-        className="h-8 rounded-md bg-accent px-4 text-2xs text-void hover:bg-accent-hover"
+        className="h-8 rounded-md bg-accent px-4 text-2xs text-void transition-colors duration-fast hover:bg-accent-hover"
       >
         新建第一个会话
       </button>
@@ -47,7 +47,7 @@ function EmptyState() {
 
 function PendingBanner() {
   return (
-    <div className="flex items-center gap-2 border-b border-warn bg-[color-mix(in_srgb,var(--warn)_8%,transparent)] px-6 py-1.5 text-2xs text-warn">
+    <div className="flex items-center gap-2 border-b border-warn bg-warn/10 px-6 py-1.5 text-2xs text-warn">
       <span className="dot dot-warn" />
       等待你的确认
     </div>
@@ -93,7 +93,7 @@ export default function ChatFlow() {
         {items.length === 0 ? (
           <EmptyState />
         ) : (
-          <div className="mx-auto flex w-full max-w-[760px] flex-col gap-3 px-6 py-4">
+          <div className="corner-ticks mx-auto flex w-full max-w-[760px] flex-col gap-3 px-6 py-5">
             {items.map((item) =>
               item.kind === "message" ? (
                 <MessageBubble key={item.id} item={item} />

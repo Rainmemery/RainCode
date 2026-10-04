@@ -40,9 +40,21 @@ export default function App() {
             <ChatFlow />
           </>
         )}
-        {view === "settings" && <ProviderSettings />}
-        {view === "memory" && <MemoryManager />}
-        {view === "extensions" && <ExtensionsPanel />}
+        {view === "settings" && (
+          <div className="anim-fade flex min-w-0 flex-1">
+            <ProviderSettings />
+          </div>
+        )}
+        {view === "memory" && (
+          <div className="anim-fade flex min-w-0 flex-1">
+            <MemoryManager />
+          </div>
+        )}
+        {view === "extensions" && (
+          <div className="anim-fade flex min-w-0 flex-1">
+            <ExtensionsPanel />
+          </div>
+        )}
       </div>
       {hasApprovals && <ApprovalDialog />}
     </div>

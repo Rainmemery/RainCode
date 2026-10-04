@@ -25,23 +25,32 @@ export function App(): JSX.Element {
   }, [bootstrap]);
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full bg-base text-hi">
       <Sidebar />
-      <main className="flex flex-1 flex-col min-w-0">
+      <main className="flex min-w-0 flex-1 flex-col">
         {fatal !== null ? (
           <div className="flex flex-1 items-center justify-center p-8">
-            <div className="max-w-md rounded-lg border border-danger bg-ink-900 p-6 text-sm">
-              <p className="mb-2 font-semibold text-danger">连接被拒绝</p>
-              <p className="text-gray-400">{fatal}</p>
-              <p className="mt-3 text-xs text-gray-500">请核对 raincode web 输出的 token 后刷新页面。</p>
+            <div className="anim-rise max-w-md rounded-xl border border-danger bg-card p-6 text-sm shadow-3">
+              <div className="flex items-center gap-2">
+                <span className="dot dot-err" />
+                <p className="font-semibold text-danger">连接被拒绝</p>
+              </div>
+              <p className="mt-2 text-mid">{fatal}</p>
+              <p className="mt-3 text-2xs text-low">请核对 raincode web 输出的 token 后刷新页面。</p>
             </div>
           </div>
         ) : view === "settings" ? (
-          <ProviderSettings />
+          <div className="anim-fade flex min-h-0 flex-1 flex-col">
+            <ProviderSettings />
+          </div>
         ) : view === "memory" ? (
-          <MemoryManager />
+          <div className="anim-fade flex min-h-0 flex-1 flex-col">
+            <MemoryManager />
+          </div>
         ) : view === "extensions" ? (
-          <ExtensionsPanel />
+          <div className="anim-fade flex min-h-0 flex-1 flex-col">
+            <ExtensionsPanel />
+          </div>
         ) : (
           <>
             <ChatFlow />

@@ -1,7 +1,7 @@
 # RainCode UI 设计规范
 
-> 版本 v1.0 · 2026-09-24
-> 适用范围：RainCode 个人代码智能助手——Windows 桌面端（Electron + React 18 + Zustand + Tailwind CSS，shadcn/ui 风格组件）与 CLI 端（Ink TUI）。
+> 版本 v1.1 · 2026-10-04（v1.0 · 2026-09-24 初稿；v1.1 变更见文末「11. v1.1 变更记录」）
+> 适用范围：RainCode 个人代码智能助手——Windows 桌面端（Electron + React 18 + Zustand + Tailwind CSS，shadcn/ui 风格组件）、Web 工作台（React 18 + Zustand + Tailwind CSS）与 CLI 端（readline REPL + ANSI）。
 > 配套高保真设计稿见文末「设计稿索引」，四张稿件与本文档 tokens 严格一致。
 
 ---
@@ -10,7 +10,7 @@
 
 RainCode 是运行在开发者本机上的个人 AI 编程工作台，功能对齐 Claude Code / Codex，双端形态：
 
-- **CLI（Ink TUI）**：键盘驱动、纯文本流、最小装饰，与终端原生美学融为一体。
+- **CLI（readline REPL + ANSI 富文本）**：键盘驱动、纯文本流、最小装饰，与终端原生美学融为一体（ADR-02 中间形态落地事实）。
 - **桌面端**：以「会话流」为中心的三栏工作台，承载 Agent 会话、工具调用、MCP 调用、子代理、沙箱、审批与项目记忆七大能力。
 
 视觉基调：**赤陶磷光工作台（Terracotta Phosphor）**。深青黑底色承接终端经验，主强调色采用赤陶橙——致敬 Claude Code 的品牌血统，同时刻意避开 AI 工具泛滥的蓝紫渐变；界面语言是「精密仪器」而非「营销页面」：1px 线框、等宽铭牌、状态灯点、四角取景框角标。信息密度适中偏高，一切装饰为可读性与状态可判读性服务。
@@ -106,14 +106,14 @@ RainCode 是运行在开发者本机上的个人 AI 编程工作台，功能对�
 | `--ok` / `--warn` / `--danger` / `--info` | `#2E9E63` / `#B07F24` / `#C74840` / `#2F7CD6` | 状态色整体加深 |
 | `--violet` / `--cyan` / `--mint` | `#7C5CD6` / `#1795A0` / `#239970` | 模块色加深 |
 
-浅色主题不提供 CLI（CLI 遵循终端自身配色）；桌面端「跟随系统」选项映射到上述两套。
+浅色主题不提供 CLI（CLI 遵循终端自身配色）；桌面端「跟随系统」选项映射到上述两套。**实现状态（v1.1）**：浅色主题双端均未实现，本节仅为映射规范预留，登记为 M6+ 候选（见 07-dev-plan §11.5）。
 
 ### 3.3 字体
 
 | Token | 值 | 用途 |
 |---|---|---|
 | `--font-ui` | `"Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif` | 界面文案（本地优先，不引网络字体） |
-| `--font-mono` | `"Cascadia Code", "Cascadia Mono", "JetBrains Mono", Consolas, monospace` | 代码、路径、命令、diff、模型 ID、TUI 全部内容 |
+| `--font-mono` | `"Cascadia Code", "Cascadia Mono", Consolas, "Microsoft YaHei UI", monospace` | 代码、路径、命令、diff、模型 ID、TUI 全部内容（v1.1：等宽栈补 CJK 字体——裸 `monospace` 兜底会让中文落宋体，与代码块中西混排冲突） |
 
 ### 3.4 字号阶梯
 
@@ -144,6 +144,8 @@ RainCode 是运行在开发者本机上的个人 AI 编程工作台，功能对�
 | `--shadow-3` | `0 12px 40px rgba(0,0,0,.55)` | 模态对话框 |
 
 **动效**：`--t-fast: 120ms`（hover、按压）· `--t-med: 200ms`（Tab 切换、折叠展开、审批条入场）· `--t-slow: 320ms`（对话框、面板显隐）· 缓动统一 `--ease: cubic-bezier(.2,.8,.3,1)`。循环动画仅限：光标闪烁（1.1s steps）、运行中 spinner（0.9s linear）、等待审批状态灯脉冲（1.6s ease）。
+
+**减动效偏好（v1.1 落地）**：`prefers-reduced-motion: reduce` 下光标闪烁、状态灯脉冲、shimmer、入场动效全部收敛为静态——状态可判读性不得依赖动效（§2.4）。双端 CSS 同构实现（desktop `global.css` / web `index.css`）。
 
 **标志性视觉细节**：主内容面板四角绘制 1px「取景框角标」（corner ticks，长 8px），用于主工作区中部会话流、审批对话框与 CLI 面板边框——这是 RainCode 的识别符号，呼应「精密观测仪器」隐喻，其余面板一律普通 1px 线框，避免滥用。
 
@@ -398,3 +400,17 @@ flowchart TD
 - [x] 全文中文；仅创建任务要求的 5 个文件；未修改 ZCode 目录；未写产品实现代码。
 - [x] 四张稿件均为单文件自包含，仅使用上述 tokens 色值，无外部网络依赖（字体走 Windows 系统栈）。
 - [x] 异常态覆盖：空态 / 加载 / 流式中 / 审批中 / 工具错误 / MCP 失败 / 沙箱拦截 / 限流 / 超限（第 7 节）。
+
+---
+
+## 11. v1.1 变更记录（2026-10-04 · UI 重设计轮）
+
+本轮为 v1.0 规范的**实现深化与双端统一**，token 色值零变更（四张稿件与 §3.1 仍逐值一致），变更集中于实现层：
+
+1. **Web 工作台对齐本规范（本轮主项）**：Web 端自 T3.8 时期的 `ink-*` 简化盘（GitHub-dark 系硬编码色）整体迁移至 §3.1 token 体系——语义色 Tailwind 映射与桌面端同源（web `tailwind.config.cjs` / `index.css` ↔ desktop `tailwind.config.js` / `global.css`）。按端最小实现口径不变（04 §2.3）：各端独立 CSS 与映射，不抽公共 renderer 包；「统一令牌属设计系统立项」的 M5+ 候选在本轮以「同值异实现」方式落地，抽包仍留待第三端或令牌治理立项。
+2. **组件精修（双端）**：取景框角标自规范落地为 `.corner-ticks` utility（主会话流内容列 + 审批弹窗，识别符号不滥用）；工具卡增模块徽标（`mcp__<server>__<tool>` → info「MCP·server」、`agent` → violet「子代理」，§3.1 模块标识色）；审批弹窗增顶部琥珀色带「等待你的确认 · 权限审批」（含风险徽章右置）；侧栏增品牌头（✦ RainCode）与面板入口模块标识点；Web 端补齐空态 ASCII 引导、助手消息 ✦ 署名行与 model 标签、代码围栏 1px 边框、会话列表相对时间。
+3. **动效体系落地**：入场动效 `anim-fade` / `anim-rise`（200ms，视图切换与弹窗）、shimmer 加载占位、streaming 光标与状态灯脉冲沿用 §3.5 口径；`prefers-reduced-motion` 全覆盖（§3.5 减动效偏好）。
+4. **字体栈修订（§3.3）**：`--font-mono` 去掉 `"JetBrains Mono"` 与裸 `monospace` 兜底，补 `"Microsoft YaHei UI"`——等宽上下文中的中文不再落宋体（deepseek-harness 同款教训）。
+5. **三参照仓借鉴来源**：ZCode（中性色纪律、token 优先、CJK 字体防落宋体）、MiMo-Code（reduced-motion 降级、空态 ASCII、审批卡信息分层）、deepseek-harness（审批卡「色带+等宽命令+决策按钮」范式、两层 token 思路、shimmer/mask 细节）；见 [docs/research/2026-10-04-m5-reference-repos.md](research/2026-10-04-m5-reference-repos.md) 与三仓 UI 调研（ZCode `packages/ui/src/styles.css` / MiMo `tui/context/theme/*.json` / dsh `ui-theme/styles/`）。
+6. **浅色主题**：§3.2 维持映射规范预留，双端均未实现，登记 M6+ 候选。
+7. **验收留存**：门禁 typecheck 14 项目 / lint 12 warning 基线 / architecture 0 违规 / 单测 250 / walkthrough-web 19 断言 / walkthrough-desktop 14 断言全绿；CDP 截图 7 张（Web 会话流/审批/记忆/扩展 + 桌面会话流/审批/扩展）人工核对通过。

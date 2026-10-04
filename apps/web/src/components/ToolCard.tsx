@@ -1,8 +1,8 @@
 /**
- * 工具调用卡（03 §6.4；UI 重设计轮增补模块徽标）：折叠头 32px（状态灯 + mono 工具名 +
- * 模块徽标 + 参数摘要 + 耗时/状态 + ▸），展开区含参数 / 结果预览（超 30 行截断）/ 错误全文；
- * 五状态映射状态灯与 2px 左边框语义。模块徽标：`mcp__<server>__<tool>` → info「MCP·server」、
- * `agent` → violet「子代理」（03 §3.1 模块标识色，与 Web 端 ToolCard 同语义）。
+ * 工具调用卡（03 §6.4，与桌面端同构；UI 重设计轮自 ChatFlow 内联卡迁出）：
+ * 折叠头 32px（状态灯 + mono 工具名 + 模块徽标 + 参数摘要 + 耗时/状态 + ▸），展开区含
+ * 参数 / 结果预览（超 30 行截断）/ 错误全文；五状态映射状态灯与 2px 左边框语义。
+ * 模块徽标：`mcp__<server>__<tool>` → info「MCP·server」；`agent` → violet「子代理」（03 §3.1 模块标识色）。
  */
 import { useState } from "react";
 import type { ToolItem } from "../session-view.js";
@@ -50,12 +50,8 @@ function moduleBadge(toolName: string): { label: string; className: string } | n
   return null;
 }
 
-interface ContentPreviewProps {
-  content: string;
-}
-
 /** 结果预览：超 30 行截断，「显示全部 / 收起」受控切换（03 §6.4 结果渲染 · 文本）。 */
-function ContentPreview({ content }: ContentPreviewProps) {
+function ContentPreview({ content }: { content: string }) {
   const [showAll, setShowAll] = useState(false);
   const lines = content.split("\n");
   const capped = !showAll && lines.length > 30;
@@ -75,7 +71,7 @@ function ContentPreview({ content }: ContentPreviewProps) {
   );
 }
 
-export default function ToolCard({ item }: ToolCardProps) {
+export function ToolCard({ item }: ToolCardProps) {
   const [expanded, setExpanded] = useState(false);
   const meta = stateMeta(item);
   const badge = moduleBadge(item.toolName);

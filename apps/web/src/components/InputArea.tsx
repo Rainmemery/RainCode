@@ -79,33 +79,35 @@ export function InputArea(): JSX.Element {
   }
 
   return (
-    <div className="border-t border-ink-700 p-3">
+    <div className="border-t border-border-base bg-panel px-4 pb-3 pt-2.5">
       <div className="relative">
         {paletteOpen && filtered.length > 0 && (
-          <div className="absolute bottom-full left-0 right-0 mb-1 overflow-hidden rounded border border-ink-700 bg-ink-900 shadow-lg">
+          <div className="anim-rise absolute bottom-full left-0 right-0 mb-1.5 overflow-hidden rounded-lg border border-border-base bg-popover shadow-2">
             {filtered.slice(0, 8).map((skill, index) => (
               <button
                 key={skill.name}
                 type="button"
                 onClick={() => completeWith(skill)}
                 onMouseEnter={() => setHighlight(index)}
-                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left ${index === highlight ? "bg-ink-700" : ""}`}
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors duration-fast ${
+                  index === highlight ? "bg-selected" : ""
+                }`}
               >
-                <span className="shrink-0 font-mono text-xs text-white">/{skill.name}</span>
-                {skill.argumentHint !== undefined && <span className="shrink-0 text-xs text-gray-500">{skill.argumentHint}</span>}
-                <span className="shrink-0 rounded border border-ink-700 px-1 text-xs text-gray-500">{skill.source}</span>
-                <span className="min-w-0 flex-1 truncate text-xs text-gray-400">{skill.description}</span>
+                <span className="mono shrink-0 text-2xs text-accent">/{skill.name}</span>
+                {skill.argumentHint !== undefined && <span className="mono shrink-0 text-2xs text-faint">{skill.argumentHint}</span>}
+                <span className="shrink-0 rounded-sm border border-border-strong px-1 text-2xs text-low">{skill.source}</span>
+                <span className="min-w-0 flex-1 truncate text-2xs text-mid">{skill.description}</span>
               </button>
             ))}
-            <div className="border-t border-ink-700 px-3 py-1 text-xs text-gray-500">
+            <div className="border-t border-border-faint px-3 py-1 text-2xs text-faint">
               ↑↓ 选择 · Tab 补全 · Enter 执行 · Esc 关闭
             </div>
           </div>
         )}
-        <div className="flex gap-2">
+        <div className="flex items-end gap-2 rounded-lg border border-border-base bg-raised px-3 py-2 transition-colors duration-fast focus-within:border-accent-dim">
           <textarea
             ref={areaRef}
-            className="max-h-[168px] min-h-[44px] flex-1 resize-none rounded border border-ink-700 bg-ink-950 px-3 py-2 text-sm outline-none focus:border-accent"
+            className="max-h-[168px] min-h-[44px] flex-1 resize-none bg-transparent text-sm text-hi outline-none placeholder:text-faint"
             placeholder="输入指令，/ 唤起技能命令（Enter 发送，Shift+Enter 换行）"
             value={draft}
             rows={2}
@@ -147,12 +149,17 @@ export function InputArea(): JSX.Element {
             }}
           />
           {streaming ? (
-            <button className="self-end rounded bg-danger px-3 py-1.5 text-sm text-white" onClick={() => void cancel()}>
+            <button
+              className="h-8 shrink-0 rounded-md bg-danger px-3 text-2xs text-void transition-colors duration-fast hover:opacity-90"
+              onClick={() => void cancel()}
+              title="停止生成"
+            >
+              <span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-sm bg-current align-middle" />
               停止
             </button>
           ) : (
             <button
-              className="self-end rounded bg-accent-dim px-3 py-1.5 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40"
+              className="h-8 shrink-0 rounded-md bg-accent px-3 text-2xs text-void transition-colors duration-fast hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
               onClick={submit}
               disabled={activeId === null || draft.trim() === "" || streaming}
             >

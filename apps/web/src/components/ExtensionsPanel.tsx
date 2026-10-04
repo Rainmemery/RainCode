@@ -10,18 +10,18 @@ import { RpcCallError } from "@raincode/rpc/web";
 import type { McpHealthReport, McpServerStatus, McpServerStatusEntry, PluginSummary } from "@raincode/shared";
 import { rpcCall, useWeb } from "../state.js";
 
-/** 状态灯四态映射：绿常亮 / 琥珀脉冲 / 红常亮；Disconnected 灰常亮。 */
+/** 状态灯映射（03 §6.5）：绿常亮 / 琥珀脉冲 / 红常亮；Disconnected 灰常亮。 */
 function statusDotClass(status: McpServerStatus): string {
   switch (status) {
     case "Connected":
-      return "bg-ok";
+      return "dot dot-ok";
     case "Connecting":
     case "Reconnecting":
-      return "bg-warn animate-pulse";
+      return "dot dot-run";
     case "Failed":
-      return "bg-danger";
+      return "dot dot-err";
     default:
-      return "bg-gray-500";
+      return "dot dot-idle";
   }
 }
 
@@ -46,13 +46,16 @@ function pluginBadgeClass(status: PluginSummary["status"]): string {
     case "failed":
       return "border-danger text-danger";
     default:
-      return "border-ink-700 text-gray-400";
+      return "border-border-strong text-mid";
   }
 }
 
 function reasonText(reason: unknown): string {
   return reason instanceof RpcCallError ? `${reason.code}: ${reason.message}` : String(reason);
 }
+
+const ROW_BUTTON_CLASS =
+  "h-6 rounded-md border border-border-strong px-2 text-2xs text-mid transition-colors duration-fast hover:bg-hover disabled:opacity-50";
 
 export function ExtensionsPanel(): JSX.Element {
   const extTick = useWeb((s) => s.extTick);
@@ -163,24 +166,25 @@ export function ExtensionsPanel(): JSX.Element {
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      <header className="flex h-10 shrink-0 items-center gap-3 border-b border-ink-700 bg-ink-900 px-4">
-        <button type="button" onClick={() => setView("chat")} className="text-xs text-gray-400 hover:text-white" title="返回主工作区">
+      <header className="flex h-10 shrink-0 items-center gap-3 border-b border-border-base bg-panel px-4">
+        <button type="button" onClick={() => setView("chat")} className="text-2xs text-mid transition-colors duration-fast hover:text-hi" title="返回主工作区">
           ← 返回
         </button>
-        <span className="text-xs font-semibold text-white">扩展面板</span>
-        <span className="min-w-0 flex-1 truncate text-xs text-gray-500">MCP 服务器 · 插件</span>
-        <button type="button" onClick={() => void refresh()} className="text-xs text-gray-400 hover:text-white">
+        <span className="text-2xs text-hi">扩展面板</span>
+        <span className="min-w-0 flex-1 truncate text-2xs text-faint">MCP 服务器 · 插件</span>
+        <button type="button" onClick={() => void refresh()} className="text-2xs text-mid transition-colors duration-fast hover:text-hi">
           刷新
         </button>
       </header>
-      {error !== null && <div className="border-b border-danger bg-ink-900 px-4 py-1.5 text-xs text-danger">{error}</div>}
+      {error !== null && <div className="border-b border-danger bg-raised px-4 py-1.5 text-2xs text-danger">{error}</div>}
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
         <div className="mx-auto flex w-full max-w-[760px] flex-col gap-6">
           {/* MCP 服务器 */}
           <section>
             <div className="flex items-center gap-2 pb-2">
-              <span className="text-xs font-semibold text-white">MCP 服务器</span>
-              <span className="text-xs text-gray-500">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-info" />
+              <span className="text-2xs font-medium text-hi">MCP 服务器</span>
+              <span className="text-2xs text-faint">
                 {mcpServers.length === 0 ? "无（mcp.json 配置后自动连接）" : `${mcpServers.length} 个`}
               </span>
               <span className="min-w-0 flex-1" />
@@ -189,15 +193,15 @@ export function ExtensionsPanel(): JSX.Element {
                   type="button"
                   disabled={healthBusy}
                   onClick={() => void runHealth()}
-                  className="h-6 rounded border border-ink-700 px-2 text-xs text-gray-300 hover:bg-ink-800 disabled:opacity-50"
+                  className={ROW_BUTTON_CLASS}
                   title="对全部已连接 server 发 MCP ping 实测 RTT；非连接状态只读投影"
                 >
-                  健康检查
+                  {healthBusy ? "检查中…" : "健康检查"}
                 </button>
               )}
             </div>
             {mcpUnavailable && (
-              <div className="rounded border border-ink-700 bg-ink-900 px-3 py-2 text-xs text-gray-500">
+              <div className="rounded-md border border-border-faint bg-card px-3 py-2 text-2xs text-faint">
                 MCP 域未装配（当前宿主未启用）
               </div>
             )}
@@ -205,22 +209,22 @@ export function ExtensionsPanel(): JSX.Element {
               {mcpServers.map((server) => {
                 const report = health[server.serverKey];
                 return (
-                  <div key={server.serverKey} className="rounded border border-ink-700 bg-ink-950 px-3 py-2">
+                  <div key={server.serverKey} className="rounded-lg border border-border-base bg-card px-3 py-2">
                     <div className="flex items-center gap-2">
-                      <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${statusDotClass(server.status)}`} title={STATUS_LABELS[server.status]} />
-                      <span className="font-mono text-xs text-white">{server.serverKey}</span>
-                      <span className="rounded border border-ink-700 px-1 text-xs text-gray-400">{server.transport}</span>
-                      <span className="text-xs text-gray-500">{STATUS_LABELS[server.status]}</span>
+                      <span className={statusDotClass(server.status)} title={STATUS_LABELS[server.status]} />
+                      <span className="mono text-2xs text-hi">{server.serverKey}</span>
+                      <span className="rounded-sm border border-border-strong px-1 text-2xs text-low">{server.transport}</span>
+                      <span className="text-2xs text-faint">{STATUS_LABELS[server.status]}</span>
                       {typeof server.toolCount === "number" && (
-                        <span className="text-xs text-gray-500" title="命名空间工具数（mcp__serverKey__tool）">
+                        <span className="text-2xs text-faint" title="命名空间工具数（mcp__serverKey__tool）">
                           {server.toolCount} 工具
                         </span>
                       )}
                       {report !== undefined && report.ok && typeof report.latencyMs === "number" && (
-                        <span className="text-xs text-ok" title="健康检查 RTT">{report.latencyMs}ms</span>
+                        <span className="mono text-2xs text-ok" title="健康检查 RTT">{report.latencyMs}ms</span>
                       )}
                       {report !== undefined && !report.ok && typeof report.lastError === "string" && (
-                        <span className="min-w-0 flex-1 truncate text-xs text-danger" title={report.lastError}>{report.lastError}</span>
+                        <span className="min-w-0 flex-1 truncate text-2xs text-danger" title={report.lastError}>{report.lastError}</span>
                       )}
                       <span className="min-w-0 flex-1" />
                       {server.status === "Failed" && (
@@ -228,7 +232,7 @@ export function ExtensionsPanel(): JSX.Element {
                           type="button"
                           disabled={busyKey === server.serverKey}
                           onClick={() => void retryServer(server.serverKey)}
-                          className="h-6 rounded border border-ink-700 px-2 text-xs text-gray-300 hover:bg-ink-800 disabled:opacity-50"
+                          className={ROW_BUTTON_CLASS}
                         >
                           重试
                         </button>
@@ -237,14 +241,14 @@ export function ExtensionsPanel(): JSX.Element {
                         type="button"
                         disabled={busyKey === server.serverKey}
                         onClick={() => void toggleServer(server)}
-                        className="h-6 rounded border border-ink-700 px-2 text-xs text-gray-300 hover:bg-ink-800 disabled:opacity-50"
+                        className={ROW_BUTTON_CLASS}
                         title={server.enabled ? "停用：断连 + 工具注销 + 配置保留" : "启用：受理即返重连，最终状态经事件"}
                       >
                         {server.enabled ? "停用" : "启用"}
                       </button>
                     </div>
                     {typeof server.lastError === "string" && (
-                      <div className="mt-1 truncate text-xs text-danger" title={server.lastError}>{server.lastError}</div>
+                      <div className="mt-1 truncate text-2xs text-danger" title={server.lastError}>{server.lastError}</div>
                     )}
                   </div>
                 );
@@ -255,43 +259,44 @@ export function ExtensionsPanel(): JSX.Element {
           {/* 插件 */}
           <section>
             <div className="flex items-center gap-2 pb-2">
-              <span className="text-xs font-semibold text-white">插件</span>
-              <span className="text-xs text-gray-500">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-violet" />
+              <span className="text-2xs font-medium text-hi">插件</span>
+              <span className="text-2xs text-faint">
                 {plugins.length === 0 ? "无（发布 = 插件目录拷入 <dataRoot>/plugins/ 后点「刷新」装载）" : `${plugins.length} 个`}
               </span>
             </div>
             {pluginsUnavailable && (
-              <div className="rounded border border-ink-700 bg-ink-900 px-3 py-2 text-xs text-gray-500">
+              <div className="rounded-md border border-border-faint bg-card px-3 py-2 text-2xs text-faint">
                 插件域未装配（当前宿主未启用）
               </div>
             )}
             <div className="flex flex-col gap-2">
               {plugins.map((plugin) => (
-                <div key={plugin.name} className="rounded border border-ink-700 bg-ink-950 px-3 py-2">
+                <div key={plugin.name} className="rounded-lg border border-border-base bg-card px-3 py-2">
                   <div className="flex items-center gap-2">
-                    <span className={`rounded border px-1 text-xs ${pluginBadgeClass(plugin.status)}`}>
+                    <span className={`shrink-0 rounded-sm border px-1 text-2xs ${pluginBadgeClass(plugin.status)}`}>
                       {PLUGIN_STATUS_LABELS[plugin.status]}
                     </span>
-                    <span className="font-mono text-xs text-white">{plugin.name}</span>
-                    {plugin.version !== undefined && <span className="text-xs text-gray-500">v{plugin.version}</span>}
-                    <span className="min-w-0 flex-1 truncate text-xs text-gray-300">{plugin.description}</span>
+                    <span className="mono text-2xs text-hi">{plugin.name}</span>
+                    {plugin.version !== undefined && <span className="mono text-2xs text-faint">v{plugin.version}</span>}
+                    <span className="min-w-0 flex-1 truncate text-2xs text-mid">{plugin.description}</span>
                     <button
                       type="button"
                       disabled={busyKey === plugin.name}
                       onClick={() => void togglePlugin(plugin)}
-                      className="h-6 shrink-0 rounded border border-ink-700 px-2 text-xs text-gray-300 hover:bg-ink-800 disabled:opacity-50"
+                      className={`${ROW_BUTTON_CLASS} shrink-0`}
                       title={plugin.enabled ? "停用（写入 plugins.json 停用名单，目录保留）" : "启用并加载激活"}
                     >
                       {plugin.enabled ? "停用" : "启用"}
                     </button>
                   </div>
                   {plugin.tools.length > 0 && (
-                    <div className="mt-1 truncate text-xs text-gray-500" title={plugin.tools.join(", ")}>
+                    <div className="mono mt-1 truncate text-2xs text-low" title={plugin.tools.join(", ")}>
                       {plugin.tools.length} 工具：{plugin.tools.join(", ")}
                     </div>
                   )}
                   {plugin.lastError !== null && (
-                    <div className="mt-1 truncate text-xs text-danger" title={plugin.lastError}>{plugin.lastError}</div>
+                    <div className="mt-1 truncate text-2xs text-danger" title={plugin.lastError}>{plugin.lastError}</div>
                   )}
                 </div>
               ))}

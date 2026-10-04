@@ -188,7 +188,7 @@ export default function MemoryManager() {
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
               {memoryMd === null ? (
-                <div className="text-2xs text-faint">加载中…</div>
+                <div className="shimmer-text text-2xs">加载中…</div>
               ) : (
                 <pre className="whitespace-pre-wrap break-words font-sans text-2xs leading-5 text-mid">
                   {memoryMd.content}

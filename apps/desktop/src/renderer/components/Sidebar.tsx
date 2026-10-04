@@ -1,5 +1,7 @@
 /**
- * 左侧栏（03 §6.1，宽 264px）：工作区切换器 + 新建会话主按钮 + 会话列表 + 底部 Provider 状态与设置入口。
+ * 左侧栏（03 §6.1，宽 264px；UI 重设计轮精修）：品牌头（✦ RainCode）+ 工作区切换器 + 新建会话
+ * 主按钮 + 会话列表（当前项 accent 指示条）+ 底部 Provider 状态与面板入口
+ * （模块标识色：记忆=ok / 扩展=info / 设置=accent，03 §3.1）。
  */
 import { useDesktop } from "../store.js";
 
@@ -39,20 +41,26 @@ export default function Sidebar() {
 
   return (
     <aside className="flex w-[264px] shrink-0 flex-col border-r border-border-base bg-panel">
+      <div className="border-b border-border-faint px-4 py-2.5">
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-sm text-accent">✦</span>
+          <span className="text-sm font-semibold text-hi">RainCode</span>
+        </div>
+      </div>
       <button
         type="button"
         onClick={() => void pickWorkspace()}
-        className="border-b border-border-faint px-4 py-2.5 text-left hover:bg-hover"
+        className="border-b border-border-faint px-4 py-2.5 text-left transition-colors duration-fast hover:bg-hover"
         title={workspace ?? "点击选择工作区目录"}
       >
         <div className="truncate text-hi">{workspace !== null ? shortName(workspace) : "选择工作区"}</div>
-        <div className="truncate text-2xs text-low">{workspace ?? "点击切换项目目录"}</div>
+        <div className="mono truncate text-2xs text-low">{workspace ?? "点击切换项目目录"}</div>
       </button>
       <div className="px-3 py-2">
         <button
           type="button"
           onClick={() => void createSession()}
-          className="h-8 w-full rounded-md bg-accent text-2xs text-void hover:bg-accent-hover"
+          className="h-8 w-full rounded-md bg-accent text-2xs text-void transition-colors duration-fast hover:bg-accent-hover"
         >
           + 新建会话
         </button>
@@ -66,7 +74,9 @@ export default function Sidebar() {
               key={session.id}
               type="button"
               onClick={() => void selectSession(session.id)}
-              className={`relative flex w-full items-center gap-2 px-4 py-1.5 text-left hover:bg-hover ${active ? "bg-selected" : ""}`}
+              className={`relative flex w-full items-center gap-2 px-4 py-1.5 text-left transition-colors duration-fast hover:bg-hover ${
+                active ? "bg-selected" : ""
+              }`}
             >
               {active && <span className="absolute inset-y-0 left-0 w-0.5 bg-accent" />}
               <span className={`min-w-0 flex-1 truncate text-2xs ${active ? "text-hi" : "text-mid"}`}>{session.title}</span>
@@ -78,7 +88,7 @@ export default function Sidebar() {
       <div className="border-t border-border-faint px-3 py-2.5">
         {activeId !== null && usage !== null && (
           <div
-            className="mb-2 flex items-center gap-2 px-1 text-2xs text-faint"
+            className="mono mb-2 flex items-center gap-2 px-1 text-2xs text-low"
             title={`本会话累计：输入 ${usage.inputTokens} tokens / 输出 ${usage.outputTokens} tokens / ${usage.turnsCount} 回合${usage.costEstimateUsd !== undefined ? `（按活跃 Provider 单价估算 $${usage.costEstimateUsd.toFixed(4)}）` : ""}`}
           >
             <span>↑{formatTokens(usage.inputTokens)}</span>
@@ -101,22 +111,25 @@ export default function Sidebar() {
           <button
             type="button"
             onClick={() => setView("memory")}
-            className="h-8 w-full rounded-md border border-border-strong text-2xs text-mid hover:bg-hover"
+            className="flex h-8 w-full items-center gap-2 rounded-md border border-border-strong px-2.5 text-2xs text-mid transition-colors duration-fast hover:bg-hover"
           >
+            <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-ok" />
             记忆管理器
           </button>
           <button
             type="button"
             onClick={() => setView("extensions")}
-            className="h-8 w-full rounded-md border border-border-strong text-2xs text-mid hover:bg-hover"
+            className="flex h-8 w-full items-center gap-2 rounded-md border border-border-strong px-2.5 text-2xs text-mid transition-colors duration-fast hover:bg-hover"
           >
+            <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-info" />
             扩展面板（MCP / 插件）
           </button>
           <button
             type="button"
             onClick={() => setView("settings")}
-            className="h-8 w-full rounded-md border border-border-strong text-2xs text-mid hover:bg-hover"
+            className="flex h-8 w-full items-center gap-2 rounded-md border border-border-strong px-2.5 text-2xs text-mid transition-colors duration-fast hover:bg-hover"
           >
+            <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
             设置
           </button>
         </div>

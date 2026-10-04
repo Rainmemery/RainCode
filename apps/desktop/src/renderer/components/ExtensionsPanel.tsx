@@ -21,7 +21,7 @@ function statusDotClass(status: McpServerStatus): string {
     case "Failed":
       return "dot dot-err";
     default:
-      return "dot";
+      return "dot dot-idle";
   }
 }
 

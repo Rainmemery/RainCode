@@ -1,9 +1,18 @@
-/** 审批弹窗：风险徽章 + 默认 ask reason + 参数预览 + 四级决策（03 §6.4 键盘 1-4/Esc）。 */
+/**
+ * 审批弹窗（03 §6.1 第 5 条 / §6.4）：顶部琥珀色带（dsh 审批卡范式）+ 风险徽章 + mono 工具名
+ * 与参数预览 + 四级决策；键盘 1-4/Esc。B8：风险徽章中文文案与桌面端同源。
+ */
 import { useEffect } from "react";
 import { useWeb } from "../state.js";
 
 /** 风险徽章中文文案（B8 缺陷修复：与桌面端同文案，此前直出英文 riskLevel）。 */
 const RISK_LABEL: Record<string, string> = { high: "高风险", medium: "中风险", low: "低风险" };
+
+const RISK_BADGE: Record<string, string> = {
+  high: "border-danger text-danger bg-danger/10",
+  medium: "border-warn text-warn bg-warn/10",
+  low: "border-ok text-ok bg-ok/10",
+};
 
 export function ApprovalDialog(): JSX.Element {
   const approvals = useWeb((s) => s.approvals);
@@ -28,35 +37,55 @@ export function ApprovalDialog(): JSX.Element {
   const risk = pending.metadata.riskLevel ?? "medium";
 
   return (
-    <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/60">
-      <div className="w-[480px] rounded-lg border border-ink-700 bg-ink-900 p-4">
-        <div className="mb-2 flex items-center gap-2">
+    <div className="anim-fade absolute inset-0 z-10 flex items-center justify-center bg-black/60">
+      <div className="corner-ticks anim-rise w-[500px] overflow-hidden rounded-xl border border-border-strong bg-popover shadow-3">
+        {/* 顶部色带：等待审批语义（warn） */}
+        <div className="flex items-center gap-2 bg-warn/10 px-5 py-2.5">
+          <span className="dot dot-warn" />
+          <span className="text-2xs font-medium text-warn">等待你的确认 · 权限审批</span>
           <span
-            className={`rounded px-2 py-0.5 text-xs ${
-              risk === "high" ? "bg-danger/20 text-danger" : risk === "low" ? "bg-ok/20 text-ok" : "bg-warn/20 text-warn"
-            }`}
+            className={`ml-auto shrink-0 rounded-sm border px-1.5 py-0.5 text-2xs ${RISK_BADGE[risk] ?? RISK_BADGE["medium"]}`}
           >
             {RISK_LABEL[risk] ?? `${risk} risk`}
           </span>
-          <span className="font-mono text-sm">{pending.toolName}</span>
         </div>
-        <p className="mb-2 text-xs text-gray-400">{pending.reason}</p>
-        <pre className="mb-4 max-h-40 overflow-auto rounded bg-ink-950 p-2 text-xs text-gray-300">
-          {JSON.stringify(pending.normalizedInput, null, 2)}
-        </pre>
-        <div className="grid grid-cols-2 gap-2 text-sm">
-          <button className="rounded bg-accent-dim px-3 py-1.5 text-white" onClick={() => void respondApproval(pending.grantId, "allow", false)}>
-            1 仅本次允许
-          </button>
-          <button className="rounded bg-ink-700 px-3 py-1.5" onClick={() => void respondApproval(pending.grantId, "allow", true, "session")}>
-            2 本会话始终
-          </button>
-          <button className="rounded bg-ink-700 px-3 py-1.5" onClick={() => void respondApproval(pending.grantId, "allow", true, "project")}>
-            3 项目始终
-          </button>
-          <button className="rounded bg-danger px-3 py-1.5 text-white" onClick={() => void respondApproval(pending.grantId, "deny", false)}>
-            4 拒绝
-          </button>
+        <div className="px-5 py-4">
+          <div className="flex items-center gap-2">
+            <span className="mono min-w-0 truncate text-sm text-hi">{pending.toolName}</span>
+          </div>
+          {pending.reason !== undefined && pending.reason !== "" && (
+            <p className="mt-1.5 text-2xs text-low">{pending.reason}</p>
+          )}
+          <pre className="mono mt-3 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-md border border-border-faint bg-raised px-3 py-2 text-2xs leading-relaxed text-mid">
+            {JSON.stringify(pending.normalizedInput, null, 2)}
+          </pre>
+          <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
+            <button
+              className="h-8 rounded-md bg-accent text-2xs text-void transition-colors duration-fast hover:bg-accent-hover"
+              onClick={() => void respondApproval(pending.grantId, "allow", false)}
+            >
+              1 仅本次允许
+            </button>
+            <button
+              className="h-8 rounded-md border border-border-strong text-2xs text-mid transition-colors duration-fast hover:bg-hover"
+              onClick={() => void respondApproval(pending.grantId, "allow", true, "session")}
+            >
+              2 本会话始终
+            </button>
+            <button
+              className="h-8 rounded-md border border-border-strong text-2xs text-mid transition-colors duration-fast hover:bg-hover"
+              onClick={() => void respondApproval(pending.grantId, "allow", true, "project")}
+            >
+              3 项目始终
+            </button>
+            <button
+              className="h-8 rounded-md border border-danger/50 text-2xs text-danger transition-colors duration-fast hover:bg-hover hover:border-danger"
+              onClick={() => void respondApproval(pending.grantId, "deny", false)}
+            >
+              4 拒绝
+            </button>
+          </div>
+          <div className="mt-2.5 text-center text-2xs text-faint">快捷键 1-4 直选 · Esc 拒绝</div>
         </div>
       </div>
     </div>

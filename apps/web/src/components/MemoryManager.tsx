@@ -29,12 +29,13 @@ const KIND_LABELS: Record<MemoryEntry["kind"], string> = {
   todo: "待办",
 };
 
+/** kind 徽章（03 §3.1 模块标识色，与桌面端 MemoryManager 同映射）。 */
 const KIND_BADGE: Record<MemoryEntry["kind"], string> = {
-  decision: "border-accent text-accent",
-  convention: "border-ok text-ok",
+  decision: "border-violet text-violet",
+  convention: "border-info text-info",
   pitfall: "border-warn text-warn",
-  preference: "border-accent-dim text-accent-dim",
-  todo: "border-ink-700 text-gray-400",
+  preference: "border-cyan text-cyan",
+  todo: "border-border-strong text-mid",
 };
 
 const SOURCE_LABELS: Record<MemoryEntry["source"], string> = {
@@ -132,88 +133,92 @@ export function MemoryManager(): JSX.Element {
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      <header className="flex h-10 shrink-0 items-center gap-3 border-b border-ink-700 bg-ink-900 px-4">
-        <button type="button" onClick={() => setView("chat")} className="text-xs text-gray-400 hover:text-white" title="返回主工作区">
+      <header className="flex h-10 shrink-0 items-center gap-3 border-b border-border-base bg-panel px-4">
+        <button type="button" onClick={() => setView("chat")} className="text-2xs text-mid transition-colors duration-fast hover:text-hi" title="返回主工作区">
           ← 返回
         </button>
-        <span className="text-xs font-semibold text-white">记忆管理器</span>
-        <span className="min-w-0 flex-1 truncate text-xs text-gray-500">{workspace ?? "未设定工作区"}</span>
-        <button type="button" onClick={() => void refresh()} className="text-xs text-gray-400 hover:text-white">
+        <span className="text-2xs text-hi">记忆管理器</span>
+        <span className="mono min-w-0 flex-1 truncate text-2xs text-faint">{workspace ?? "未设定工作区"}</span>
+        <button type="button" onClick={() => void refresh()} className="text-2xs text-mid transition-colors duration-fast hover:text-hi">
           刷新
         </button>
       </header>
       {workspace === null ? (
-        <div className="flex flex-1 items-center justify-center text-xs text-gray-500">先在侧栏设定工作区目录</div>
+        <div className="flex flex-1 items-center justify-center text-2xs text-faint">先在侧栏设定工作区目录</div>
       ) : (
         <div className="flex min-h-0 flex-1">
           {/* 左栏：记忆源列表 */}
-          <aside className="flex w-[200px] shrink-0 flex-col border-r border-ink-700 bg-ink-900">
+          <aside className="flex w-[200px] shrink-0 flex-col border-r border-border-base bg-panel">
             <button
               type="button"
               onClick={() => setKindFilter(null)}
-              className={`border-b border-ink-700 px-4 py-3 text-left hover:bg-ink-800 ${kindFilter === null ? "bg-ink-800" : ""}`}
+              className={`border-b border-border-faint px-4 py-3 text-left transition-colors duration-fast hover:bg-hover ${
+                kindFilter === null ? "bg-selected" : ""
+              }`}
             >
               <div className="flex items-center gap-2">
-                <span className={`inline-block h-2 w-2 rounded-full ${memoryMd?.exists ? "bg-ok" : "bg-gray-500"}`} />
-                <span className="flex-1 text-xs text-white">MEMORY.md</span>
-                <span className="text-xs text-gray-500">{memoryMd?.exists ? "已建" : "未建"}</span>
+                <span className={`dot ${memoryMd?.exists ? "dot-ok" : "dot-idle"}`} />
+                <span className="flex-1 text-2xs text-hi">MEMORY.md</span>
+                <span className="text-2xs text-faint">{memoryMd?.exists ? "已建" : "未建"}</span>
               </div>
-              <div className="mt-1 truncate text-xs text-gray-500">.raincode/MEMORY.md（文件真源）</div>
+              <div className="mono mt-1 truncate text-2xs text-faint">.raincode/MEMORY.md</div>
             </button>
             <div className="px-2 py-2">
-              <div className="px-2 pb-1 text-xs text-gray-500">记忆条目（{entries.length}）</div>
+              <div className="px-2 pb-1 text-2xs text-faint">记忆条目（{entries.length}）</div>
               {(Object.keys(KIND_LABELS) as Array<MemoryEntry["kind"]>).map((kind) => (
                 <button
                   key={kind}
                   type="button"
                   onClick={() => setKindFilter(kindFilter === kind ? null : kind)}
-                  className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-ink-800 ${kindFilter === kind ? "bg-ink-800" : ""}`}
+                  className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-fast hover:bg-hover ${
+                    kindFilter === kind ? "bg-selected" : ""
+                  }`}
                 >
-                  <span className={`min-w-0 flex-1 truncate text-xs ${kindFilter === kind ? "text-white" : "text-gray-300"}`}>
+                  <span className={`min-w-0 flex-1 truncate text-2xs ${kindFilter === kind ? "text-hi" : "text-mid"}`}>
                     {KIND_LABELS[kind]}
                   </span>
-                  <span className="text-xs text-gray-500">{kindCounts.get(kind) ?? 0}</span>
+                  <span className="mono text-2xs text-faint">{kindCounts.get(kind) ?? 0}</span>
                 </button>
               ))}
             </div>
           </aside>
 
           {/* 中栏：MEMORY.md 预览（只读） */}
-          <section className="flex min-w-0 flex-1 flex-col border-r border-ink-700">
-            <div className="flex h-9 shrink-0 items-center border-b border-ink-700 px-3 text-xs text-gray-500">
+          <section className="flex min-w-0 flex-1 flex-col border-r border-border-base">
+            <div className="flex h-9 shrink-0 items-center border-b border-border-faint px-3 text-2xs text-faint">
               MEMORY.md 预览（只读；Agent 专用章节经会话增量更新）
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
               {memoryMd === null ? (
-                <div className="text-xs text-gray-500">加载中…</div>
+                <div className="shimmer-text text-2xs">加载中…</div>
               ) : (
-                <pre className="whitespace-pre-wrap break-words font-sans text-xs leading-5 text-gray-300">{memoryMd.content}</pre>
+                <pre className="whitespace-pre-wrap break-words font-sans text-2xs leading-5 text-mid">{memoryMd.content}</pre>
               )}
             </div>
           </section>
 
           {/* 右栏：待确认区 + 条目检索与列表 */}
           <section className="flex w-[400px] shrink-0 flex-col">
-            {error !== null && <div className="border-b border-danger bg-ink-900 px-3 py-1.5 text-xs text-danger">{error}</div>}
+            {error !== null && <div className="border-b border-danger bg-raised px-3 py-1.5 text-2xs text-danger">{error}</div>}
             <div className="min-h-0 flex-1 overflow-y-auto">
-              <div className="border-b border-ink-700 px-3 py-2">
-                <div className="pb-1 text-xs text-white">
+              <div className="border-b border-border-faint px-3 py-2">
+                <div className="pb-1.5 text-2xs text-hi">
                   待确认草案
-                  <span className="ml-2 text-gray-500">{drafts.length === 0 ? "暂无" : `${drafts.length} 条`}</span>
+                  <span className="ml-2 text-faint">{drafts.length === 0 ? "暂无" : `${drafts.length} 条`}</span>
                 </div>
                 {drafts.map((row) => (
-                  <div key={row.id} className="mb-2 rounded border border-ink-700 bg-ink-900 px-2.5 py-2">
+                  <div key={row.id} className="mb-2 rounded-md border border-border-base bg-raised px-2.5 py-2">
                     <div className="flex items-center gap-2">
-                      <span className={`rounded border px-1 text-xs ${KIND_BADGE[row.entry.kind]}`}>{KIND_LABELS[row.entry.kind]}</span>
-                      <span className="min-w-0 flex-1 truncate text-xs text-gray-300">{row.entry.content}</span>
-                      <span className="text-xs text-gray-500">{Math.round(row.entry.confidence * 100)}%</span>
+                      <span className={`shrink-0 rounded-sm border px-1 text-2xs ${KIND_BADGE[row.entry.kind]}`}>{KIND_LABELS[row.entry.kind]}</span>
+                      <span className="min-w-0 flex-1 truncate text-2xs text-mid">{row.entry.content}</span>
+                      <span className="mono shrink-0 text-2xs text-faint">{Math.round(row.entry.confidence * 100)}%</span>
                     </div>
                     <div className="mt-1.5 flex items-center gap-1.5">
-                      <span className="text-xs text-gray-500">合入</span>
+                      <span className="shrink-0 text-2xs text-faint">合入</span>
                       <select
                         defaultValue={row.section}
                         onChange={(event) => setPromoteSection((prev) => ({ ...prev, [row.id]: event.target.value as MemorySection }))}
-                        className="h-6 min-w-0 flex-1 rounded border border-ink-700 bg-ink-950 px-1 text-xs text-gray-300 outline-none"
+                        className="h-6 min-w-0 flex-1 rounded-md border border-border-base bg-raised px-1 text-2xs text-mid outline-none"
                       >
                         {SECTIONS.map((section) => (
                           <option key={section} value={section}>{section}</option>
@@ -223,7 +228,7 @@ export function MemoryManager(): JSX.Element {
                         type="button"
                         disabled={busyId === row.id}
                         onClick={() => void handleResolve(row.id, "confirm", promoteSection[row.id])}
-                        className="h-6 rounded bg-accent-dim px-2 text-xs text-white disabled:opacity-50"
+                        className="h-6 rounded-md bg-accent px-2 text-2xs text-void transition-colors duration-fast hover:bg-accent-hover disabled:opacity-50"
                       >
                         确认合入
                       </button>
@@ -231,7 +236,7 @@ export function MemoryManager(): JSX.Element {
                         type="button"
                         disabled={busyId === row.id}
                         onClick={() => void handleResolve(row.id, "reject")}
-                        className="h-6 rounded border border-ink-700 px-2 text-xs text-gray-300 hover:bg-ink-800 disabled:opacity-50"
+                        className="h-6 rounded-md border border-border-strong px-2 text-2xs text-mid transition-colors duration-fast hover:bg-hover disabled:opacity-50"
                       >
                         忽略
                       </button>
@@ -245,39 +250,39 @@ export function MemoryManager(): JSX.Element {
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder="检索记忆条目…"
-                  className="h-7 w-full rounded border border-ink-700 bg-ink-950 px-2 text-xs text-white outline-none placeholder:text-gray-500 focus:border-accent"
+                  className="h-7 w-full rounded-md border border-border-base bg-raised px-2 text-2xs text-hi outline-none placeholder:text-faint transition-colors duration-fast focus:border-accent-dim"
                 />
               </div>
               <div className="px-3 pb-3">
                 {visibleEntries.length === 0 && (
-                  <div className="px-1 py-3 text-xs text-gray-500">
+                  <div className="px-1 py-3 text-2xs text-faint">
                     {entries.length === 0 ? "暂无记忆条目：会话结束 / 压缩时自动抽取" : "无匹配条目"}
                   </div>
                 )}
                 {visibleEntries.map((entry) => (
-                  <div key={entry.id} className="mb-2 rounded border border-ink-700 bg-ink-950 px-2.5 py-2">
+                  <div key={entry.id} className="mb-2 rounded-md border border-border-base bg-card px-2.5 py-2">
                     <div className="flex items-center gap-2">
-                      <span className={`rounded border px-1 text-xs ${KIND_BADGE[entry.kind]}`}>{KIND_LABELS[entry.kind]}</span>
+                      <span className={`shrink-0 rounded-sm border px-1 text-2xs ${KIND_BADGE[entry.kind]}`}>{KIND_LABELS[entry.kind]}</span>
                       {entry.status === "superseded" && (
-                        <span className="rounded border border-danger px-1 text-xs text-danger" title={`已被 ${entry.supersededBy ?? ""} 取代`}>
+                        <span className="shrink-0 rounded-sm border border-danger px-1 text-2xs text-danger" title={`已被 ${entry.supersededBy ?? ""} 取代`}>
                           已被取代
                         </span>
                       )}
                       <span className="min-w-0 flex-1" />
-                      <span className="text-xs text-gray-500" title="置信度">{Math.round(entry.confidence * 100)}%</span>
+                      <span className="mono shrink-0 text-2xs text-faint" title="置信度">{Math.round(entry.confidence * 100)}%</span>
                     </div>
-                    <div className={`mt-1 text-xs leading-4 ${entry.status === "superseded" ? "text-gray-500 line-through" : "text-gray-300"}`}>
+                    <div className={`mt-1 text-2xs leading-4 ${entry.status === "superseded" ? "text-faint line-through" : "text-mid"}`}>
                       {entry.content}
                     </div>
                     <div className="mt-1.5 flex items-center gap-2">
-                      <span className="text-xs text-gray-500">{SOURCE_LABELS[entry.source]} · {relativeTime(entry.lastSeenAt)}</span>
+                      <span className="shrink-0 text-2xs text-faint">{SOURCE_LABELS[entry.source]} · {relativeTime(entry.lastSeenAt)}</span>
                       <span className="min-w-0 flex-1" />
                       {entry.status === "active" && (
                         <>
                           <select
                             value={promoteSection[entry.id] ?? SECTIONS[0]}
                             onChange={(event) => setPromoteSection((prev) => ({ ...prev, [entry.id]: event.target.value as MemorySection }))}
-                            className="h-6 rounded border border-ink-700 bg-ink-950 px-1 text-xs text-gray-300 outline-none"
+                            className="h-6 rounded-md border border-border-base bg-raised px-1 text-2xs text-mid outline-none"
                           >
                             {SECTIONS.map((section) => (
                               <option key={section} value={section}>{section}</option>
@@ -288,7 +293,7 @@ export function MemoryManager(): JSX.Element {
                             disabled={busyId === entry.id}
                             onClick={() => void handlePromote(entry.id)}
                             title="合入 MEMORY.md 指定章节（调用即用户确认动作）"
-                            className="h-6 rounded border border-ink-700 px-2 text-xs text-gray-300 hover:bg-ink-800 disabled:opacity-50"
+                            className="h-6 rounded-md border border-border-strong px-2 text-2xs text-mid transition-colors duration-fast hover:bg-hover disabled:opacity-50"
                           >
                             晋升
                           </button>

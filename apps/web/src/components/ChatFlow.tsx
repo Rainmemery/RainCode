@@ -1,8 +1,13 @@
-/** 会话流：当前会话 items 渲染 + 阶段横条（03 §6.3）。
- * 助手消息轻量 markdown 渲染（B6 缺陷修复，与桌面端同解析语义、web ink-* 令牌按端实现 04 §2.3）：
- * `行内code`、**粗体**、*斜体*、```围栏```、#/##/### 标题、| 表格、- 列表。 */
+/**
+ * 会话流（UI-5；UI 重设计轮对齐桌面端 03 §6.1）：消息气泡（用户右对齐浅橙底 / 助手左对齐卡片
+ * ✦ 署名 + model 标签）、ToolCard 五状态、hook 执行行、空态 ASCII 引导、流式尾部光标、
+ * 审批中琥珀横条、自动滚动。助手消息轻量 markdown 渲染（B6，与桌面端同解析语义）：
+ * `行内code`、**粗体**、*斜体*、```围栏```、#/##/### 标题、| 表格、- 列表。
+ */
 import { useEffect, useRef, type ReactNode } from "react";
 import { useWeb } from "../state.js";
+import { ToolCard } from "./ToolCard.js";
+import type { HookItem } from "../session-view.js";
 
 const INLINE_PATTERN = /`([^`]+)`|\*\*([^*]+)\*\*|\*([^*]+)\*/g;
 
@@ -16,13 +21,13 @@ function renderInline(text: string): ReactNode[] {
     if (match.index > cursor) nodes.push(text.slice(cursor, match.index));
     if (code !== undefined) {
       nodes.push(
-        <code key={key} className="rounded bg-ink-950 px-1 font-mono text-xs text-cyan-300">
+        <code key={key} className="mono rounded-sm bg-raised px-1 text-2xs text-cyan">
           {code}
         </code>,
       );
     } else if (bold !== undefined) {
       nodes.push(
-        <strong key={key} className="font-semibold text-white">
+        <strong key={key} className="font-semibold text-hi">
           {bold}
         </strong>,
       );
@@ -51,12 +56,12 @@ const LINE_IS_LIST_ITEM = /^\s*[-*]\s+/;
 const LINE_IS_HEADING = /^(#{1,6})\s+(.*)$/;
 
 const HEADING_CLASS: Record<number, string> = {
-  1: "mt-1 text-base font-semibold text-white",
-  2: "mt-1 text-sm font-semibold text-white",
-  3: "mt-1 text-sm font-semibold text-white",
-  4: "mt-1 text-sm font-medium text-white",
-  5: "mt-1 text-xs font-medium text-white",
-  6: "mt-1 text-xs font-medium text-gray-300",
+  1: "mt-1 text-base font-semibold text-hi",
+  2: "mt-1 text-sm font-semibold text-hi",
+  3: "mt-1 text-sm font-semibold text-hi",
+  4: "mt-1 text-sm font-medium text-hi",
+  5: "mt-1 text-2xs font-medium text-hi",
+  6: "mt-1 text-2xs font-medium text-mid",
 };
 
 /** 块级解析（与桌面端 MessageBubble 同语义，按端最小实现 04 §2.3）。 */
@@ -71,7 +76,7 @@ function renderBlocks(text: string): ReactNode[] {
       nodes.push(
         <pre
           key={`fence-${segIndex}`}
-          className="my-1 overflow-x-auto whitespace-pre rounded bg-ink-950 p-2 text-left font-mono text-xs text-gray-200"
+          className="mono my-1 overflow-x-auto whitespace-pre rounded-md border border-border-faint bg-raised p-2 text-left text-2xs leading-relaxed text-mid"
         >
           {code.replace(/\n$/, "")}
         </pre>,
@@ -107,11 +112,11 @@ function renderBlocks(text: string): ReactNode[] {
           i += 1;
         }
         nodes.push(
-          <table key={key} className="my-1 w-full border-collapse text-left text-xs">
+          <table key={key} className="my-1 w-full border-collapse text-left text-2xs">
             <thead>
               <tr>
                 {header.map((cell, col) => (
-                  <th key={col} className="border border-ink-700 bg-ink-950 px-2 py-1 font-semibold text-white">
+                  <th key={col} className="border border-border-base bg-raised px-2 py-1 font-semibold text-hi">
                     {renderInline(cell)}
                   </th>
                 ))}
@@ -121,7 +126,7 @@ function renderBlocks(text: string): ReactNode[] {
               {rows.map((row, rowIndex) => (
                 <tr key={rowIndex}>
                   {row.map((cell, col) => (
-                    <td key={col} className="border border-ink-700 px-2 py-1 align-top text-gray-300">
+                    <td key={col} className="border border-border-base px-2 py-1 align-top text-mid">
                       {renderInline(cell)}
                     </td>
                   ))}
@@ -168,6 +173,45 @@ function renderBlocks(text: string): ReactNode[] {
   return nodes;
 }
 
+const ASCII_BOX_WIDTH = 29;
+const EMPTY_ASCII = [
+  "┌" + "─".repeat(ASCII_BOX_WIDTH) + "┐",
+  "│" + " ".repeat(ASCII_BOX_WIDTH) + "│",
+  "│" + "       RAINCODE  WEB        " + "│",
+  "│" + "       › _" + " ".repeat(ASCII_BOX_WIDTH - 10) + "│",
+  "│" + " ".repeat(ASCII_BOX_WIDTH) + "│",
+  "└" + "─".repeat(ASCII_BOX_WIDTH) + "┘",
+].join("\n");
+
+const HOOK_OUTCOME_LABEL: Record<HookItem["outcome"], string> = {
+  running: "执行中",
+  success: "完成",
+  blocked: "已拦截",
+  failed: "失败（不阻塞）",
+  timed_out: "超时（不阻塞）",
+  skipped_untrusted: "未授信跳过",
+};
+
+/** hook 执行行（T5.1）：单行紧凑投影，拦截/失败态用警示色强调。 */
+function HookRow({ item }: { item: HookItem }) {
+  const emphasized = item.outcome === "blocked" || item.outcome === "failed" || item.outcome === "timed_out";
+  return (
+    <div
+      className={`flex items-center gap-2 rounded-md border px-3 py-1.5 text-2xs ${
+        emphasized ? "border-warn text-warn" : "border-border-faint text-mid"
+      }`}
+    >
+      <span className={item.outcome === "running" ? "dot dot-run" : emphasized ? "dot dot-warn" : "dot dot-ok"} />
+      <span className="mono">hooks</span>
+      <span>{item.phase}</span>
+      <span>{HOOK_OUTCOME_LABEL[item.outcome]}</span>
+      <span className="text-faint">×{String(item.hookCount)}</span>
+      {item.durationMs !== undefined && <span className="text-faint">{String(item.durationMs)}ms</span>}
+      {item.reason !== undefined && <span className="truncate text-faint">— {item.reason}</span>}
+    </div>
+  );
+}
+
 export function ChatFlow(): JSX.Element {
   const activeId = useWeb((s) => s.activeId);
   const view = useWeb((s) => (activeId !== null ? s.views[activeId] : undefined));
@@ -182,81 +226,54 @@ export function ChatFlow(): JSX.Element {
   }, [view?.items.length, view?.items[view.items.length - 1]]);
 
   return (
-    <div className="flex-1 overflow-y-auto p-4">
+    <div className="min-h-0 flex-1 overflow-y-auto">
       {error !== null ? (
-        <div className="mb-3 flex items-center justify-between rounded border border-danger bg-danger/10 px-3 py-2 text-sm text-danger">
+        <div className="mx-4 mt-3 flex items-center justify-between rounded-md border border-danger bg-danger/10 px-3 py-2 text-sm text-danger">
           <span>{error}</span>
           <button className="text-xs underline" onClick={dismissError}>关闭</button>
         </div>
       ) : null}
       {view === undefined ? (
-        <p className="mt-10 text-center text-sm text-gray-500">选择或新建一个会话</p>
+        <div className="flex h-full flex-col items-center justify-center gap-5 px-6">
+          <pre className="mono whitespace-pre text-2xs leading-relaxed text-faint">{EMPTY_ASCII}</pre>
+          <div className="text-mid">选择或新建一个会话，从一次对话开始</div>
+        </div>
       ) : (
-        <>
+        <div className="corner-ticks mx-auto flex w-full max-w-[760px] flex-col gap-3 px-6 py-5">
           {view.items.map((item) =>
             item.kind === "message" ? (
-              <div
-                key={item.id}
-                className={`mb-3 flex ${item.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={`max-w-2xl rounded-lg px-3 py-2 text-sm ${
-                    item.role === "user" ? "bg-accent-dim text-white" : "bg-ink-800"
-                  }`}
-                >
-                  {item.role === "assistant" ? (
-                    renderBlocks(item.text)
-                  ) : (
-                    <span className="whitespace-pre-wrap">{item.text}</span>
-                  )}
-                  {item.streaming ? <span className="ml-1 animate-pulse">▊</span> : null}
+              item.role === "user" ? (
+                <div key={item.id} className="flex justify-end">
+                  <div className="max-w-[76%] whitespace-pre-wrap break-words rounded-lg bg-accent-bg px-4 py-2 text-hi">
+                    {item.text}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div key={item.id} className="max-w-[76%] whitespace-pre-wrap break-words rounded-lg border border-border-faint bg-card px-4 py-2.5">
+                  <div className="mb-1 flex items-baseline gap-2">
+                    <span className="text-2xs text-accent">✦ RainCode</span>
+                    {item.model !== undefined && <span className="text-2xs text-low">{item.model}</span>}
+                  </div>
+                  <div>
+                    {renderBlocks(item.text)}
+                    {item.streaming ? <span className="stream-cursor" /> : null}
+                  </div>
+                </div>
+              )
             ) : item.kind === "hook" ? (
-              <div
-                key={item.id}
-                className={`mb-2 rounded border px-3 py-1.5 text-xs ${
-                  item.outcome === "blocked" || item.outcome === "failed" || item.outcome === "timed_out"
-                    ? "border-warn text-warn"
-                    : "border-ink-700 text-gray-400"
-                }`}
-              >
-                <span className="font-mono">hooks</span> {item.phase} · {item.outcome} ×
-                {String(item.hookCount)}
-                {item.durationMs !== undefined ? ` · ${String(item.durationMs)}ms` : null}
-                {item.reason !== undefined ? ` — ${item.reason}` : null}
-              </div>
+              <HookRow key={item.id} item={item} />
             ) : (
-              <div key={item.toolCallId} className="mb-3">
-                <div className="rounded border border-ink-700 bg-ink-900 px-3 py-2 text-xs">
-                  <span
-                    className={
-                      item.state === "ok"
-                        ? "text-ok"
-                        : item.state === "error" || item.state === "denied"
-                          ? "text-danger"
-                          : "text-accent"
-                    }
-                  >
-                    ● {item.state}
-                  </span>{" "}
-                  <span className="font-mono">{item.toolName}</span>
-                  {item.argsPreview !== undefined ? (
-                    <span className="ml-2 text-gray-500">{item.argsPreview}</span>
-                  ) : null}
-                  {item.contentPreview !== undefined ? (
-                    <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap text-gray-400">{item.contentPreview}</pre>
-                  ) : null}
-                  {item.errorText !== undefined ? <p className="mt-1 text-danger">{item.errorText}</p> : null}
-                </div>
-              </div>
+              <ToolCard key={item.toolCallId} item={item} />
             ),
           )}
           {streaming && turnPhase !== null ? (
-            <div className="mt-2 text-xs text-gray-500">turn 进行中：{turnPhase}</div>
+            <div className="mt-1 text-2xs">
+              <span className="dot dot-run mr-2 inline-block align-middle" />
+              <span className="shimmer-text">turn 进行中：{turnPhase}</span>
+            </div>
           ) : null}
           <div ref={bottomRef} />
-        </>
+        </div>
       )}
     </div>
   );
