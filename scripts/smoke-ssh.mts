@@ -279,7 +279,12 @@ async function main(): Promise<void> {
     const resolved = await resolveSandboxExecutor(sshConfig);
     assert.equal(resolved.executor.kind, "ssh", "探针通过后应为 ssh 执行域");
     assert.equal(resolved.warnings.length, 0, "探针通过不应有回退告警");
-    console.log(`A 探针：ssh://127.0.0.1:${String(server.port)} 探测通过，kind=ssh ✓`);
+    assert.equal(
+      resolved.executor.enforcement,
+      "partial",
+      "T5.2：远端 enforcement 探针不可得 → partial（v1 无远端沙箱机制）",
+    );
+    console.log(`A 探针：ssh://127.0.0.1:${String(server.port)} 探测通过，kind=ssh，enforcement=partial ✓`);
 
     // F：诊断面（display 前置验证，失败时输出可诊断）
     const probeExecutor = resolved.executor;
@@ -315,6 +320,11 @@ async function main(): Promise<void> {
     assert.ok(toolCompleted.length >= 2, `应至少两次工具调用完成（实际 ${String(toolCompleted.length)}）`);
     assert.ok(toolCompleted.every((e) => e.isError === false), "两次 bash 调用应均成功完成");
     assert.equal(server.records.length, 2, `服务端应记录两次 exec（实际 ${String(server.records.length)}）`);
+    // T5.2：结果首行（contentPreview）携带真实执行域与边界强度（模型可见面）
+    assert.ok(
+      toolCompleted.every((e) => (e.contentPreview ?? "").includes("sandbox: ssh (enforcement: partial)")),
+      "completed 首行应标注 ssh 执行域与 enforcement=partial",
+    );
 
     // cwd 映射线上核对：会话 cwd（workspace 根）→ remoteWorkspaceRoot（两次调用逐条核对）
     const normalized = (p: string): string => p.replaceAll("\\", "/").replace(/\/+$/, "");

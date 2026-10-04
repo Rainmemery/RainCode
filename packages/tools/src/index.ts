@@ -75,6 +75,7 @@ export type {
   SandboxProbes,
   SshTarget,
 } from "./sandbox/executor.js";
+export { sandboxDenialMarker, SANDBOX_RETRY_HINT } from "./sandbox/enforcement.js";
 
 // 路径守卫与投影工具
 export { guardPath, normalizeForGuard } from "./path-guard.js";

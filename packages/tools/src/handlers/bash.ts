@@ -4,7 +4,9 @@
  *   缺省 LocalExecutor（P0 约束语义不变）；工作目录仍经 path-guard 校验后才投递；
  * - 超时默认 120s（上限 600s）；输出环形截断；AbortSignal 取消 → 进程树终止（docker 附 rm -f 清理）；
  * - runInBackground：登记 BackgroundTaskRegistry（start/kill/list/output，registry 绑定同一执行域）；
- * - 结果 data 带 sandbox 字段；非 local 执行域在内容头行标注（02 §5.4：kind 保证 UI 展示真实执行环境）。
+ * - 结果 data 带 sandbox/enforcement 字段（T5.2：执行域与边界强度自报，每次调用持续携带，
+ *   非一次性告警）；非 local 执行域在内容头行标注（02 §5.4：kind 保证 UI 展示真实执行环境）；
+ *   约束面拒绝（PATH_ESCAPED）由 ToolExecutor 中央追加模型可见拒绝标记（sandbox/enforcement.ts）。
  * 元数据：scope=machine / risk=high / needsApproval=true（02 §6.2 高危根命令逐次审批）。
  */
 import { z } from "zod";
@@ -27,14 +29,21 @@ const parametersSchema = z.object({
 });
 
 type BashInput = z.infer<typeof parametersSchema>;
-type BashData = { exitCode: number | null; taskId?: string; sandbox: Executor["kind"] };
+type BashData = {
+  exitCode: number | null;
+  taskId?: string;
+  sandbox: Executor["kind"];
+  /** 边界强度自报（T5.2）：随每次调用持续携带（full=绝对边界；partial=约束/环境隔离）。 */
+  enforcement: Executor["enforcement"];
+};
 
 export function createBashTool(options: { executor?: Executor } = {}): Tool<BashInput, BashData> {
   const fallbackExecutor = options.executor ?? new LocalExecutor();
   return {
     name: "bash",
     description:
-      "Run a shell command inside the workspace (executor kind may be local, docker or wsl per sandbox config). " +
+      "Run a shell command inside the workspace (executor kind may be local, docker, wsl or ssh per sandbox config; " +
+      "results carry sandbox/enforcement metadata describing the real execution domain and its boundary strength). " +
       "Output is truncated to a budget. Use runInBackground for long-running processes; " +
       "the returned taskId can be used with background output queries.",
     parametersSchema,
@@ -69,7 +78,12 @@ export function createBashTool(options: { executor?: Executor } = {}): Tool<Bash
       if (input.runInBackground === true) {
         const task = ctx.background.start(execRequest);
         return {
-          data: { exitCode: null, taskId: task.info.taskId, sandbox: executor.kind },
+          data: {
+            exitCode: null,
+            taskId: task.info.taskId,
+            sandbox: executor.kind,
+            enforcement: executor.enforcement,
+          },
           content: `started background task ${task.info.taskId}: ${input.command}`,
         };
       }
@@ -80,8 +94,10 @@ export function createBashTool(options: { executor?: Executor } = {}): Tool<Bash
         result.timedOut ? " (timed out)" : ""
       }`;
       const sections: string[] = [
-        // 非 local 执行域标注真实执行环境（02 §5.4）；local 缺省不标注（输出与 P0 语义字节兼容）
-        ...(executor.kind !== "local" ? [`sandbox: ${executor.kind}`] : []),
+        // 非 local 执行域标注真实执行环境与边界强度（02 §5.4 / T5.2）；local 缺省不标注（输出与 P0 语义字节兼容）
+        ...(executor.kind !== "local"
+          ? [`sandbox: ${executor.kind} (enforcement: ${executor.enforcement})`]
+          : []),
         header,
       ];
       if (result.stdout.length > 0) sections.push(`--- stdout ---\n${result.stdout}`);
@@ -96,7 +112,7 @@ export function createBashTool(options: { executor?: Executor } = {}): Tool<Bash
         );
       }
       return {
-        data: { exitCode: result.exitCode, sandbox: executor.kind },
+        data: { exitCode: result.exitCode, sandbox: executor.kind, enforcement: executor.enforcement },
         content: sections.join("\n"),
       };
     },

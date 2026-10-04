@@ -8,18 +8,26 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { resolve } from "node:path";
+import { z } from "zod";
 import {
   createBashTool,
   BackgroundTaskRegistry,
   DockerExecutor,
   LocalExecutor,
   SshExecutor,
+  ToolExecutor,
+  ToolRegistry,
   WslExecutor,
   resolveSandboxExecutor,
   type ExecRequest,
   type ExecutorTransport,
   type SpawnHandle,
+  type Tool,
+  type ToolRunContext,
+  type SshTarget,
 } from "../src/index.js";
+import { ToolExecutionError } from "../src/executor.js";
+import { TOOL_ERROR_CODES } from "@raincode/shared";
 import type { ToolExecutionContext } from "../src/tool.js";
 
 /** 记录型替身 transport：spawn/exec 请求全量留存供 argv 断言；立即收敛。 */
@@ -287,7 +295,8 @@ describe("SshExecutor（T3.2 / ES-5 远程工作区）", () => {
       },
     );
     assert.equal(out.data.sandbox, "ssh");
-    assert.ok(out.content!.startsWith("sandbox: ssh\nexit code: 0"));
+    assert.equal(out.data.enforcement, "partial", "ssh 探针不可得时工厂缺省 partial");
+    assert.ok(out.content!.startsWith("sandbox: ssh (enforcement: partial)\nexit code: 0"));
     assert.ok(execed[0]!.command.startsWith("ssh '"), 'run/spawn 命令串应经 shell 单引号包装（argv 世界 → shell 字符串世界）');
     assert.ok(execed[0]!.command.includes("make all"));
   });
@@ -311,7 +320,8 @@ describe("bash 工具执行域接线（T3.1）", () => {
       ctx(WORKSPACE, WORKSPACE, new BackgroundTaskRegistry()),
     );
     assert.equal(out.data.sandbox, "docker");
-    assert.ok(out.content!.startsWith("sandbox: docker\nexit code: 0"));
+    assert.equal(out.data.enforcement, "full");
+    assert.ok(out.content!.startsWith("sandbox: docker (enforcement: full)\nexit code: 0"));
     assert.ok(spawned[0]!.command.startsWith("docker run"));
     assert.equal(spawned[0]!.workspaceRoot, WORKSPACE, "挂载基准随请求传递");
   });
@@ -321,6 +331,7 @@ describe("bash 工具执行域接线（T3.1）", () => {
     const tool = createBashTool({ executor: new LocalExecutor(transport) });
     const out = await tool.execute({ command: "echo hi" }, ctx(WORKSPACE, WORKSPACE, new BackgroundTaskRegistry()));
     assert.equal(out.data.sandbox, "local");
+    assert.equal(out.data.enforcement, "partial", "local 约束非隔离，如实自报 partial");
     assert.ok(out.content!.startsWith("exit code: 0"));
     assert.equal(execed.length, 1);
   });
@@ -346,6 +357,135 @@ describe("bash 工具执行域接线（T3.1）", () => {
     );
     assert.ok(out.data.taskId !== undefined);
     assert.equal(out.data.sandbox, "docker");
+    assert.equal(out.data.enforcement, "full", "后台路径同样持续携带 enforcement");
     assert.ok(spawned[0]!.command.startsWith("docker run"));
   });
 });
+
+describe("T5.2 enforcement 自报矩阵与拒绝标记", () => {
+  it("四执行域自报矩阵：local=partial / docker=full / wsl=partial（偏差申报）/ ssh 缺省 partial", () => {
+    const target: SshTarget = { host: "example.test", remoteWorkspaceRoot: "/srv/ws" };
+    assert.equal(new LocalExecutor().enforcement, "partial", "02 §5.1 约束非隔离（Windows ACL 档同构）");
+    assert.equal(new DockerExecutor().enforcement, "full", "workspace 独挂 + 缺省断网 = 绝对边界");
+    assert.equal(
+      new WslExecutor().enforcement,
+      "partial",
+      "wsl 非安全边界（/mnt/* 主机盘可达 + 网络开放），「绝对边界不得当作 full」",
+    );
+    assert.equal(new SshExecutor(target).enforcement, "partial", "探针不可得报 partial（缺省）");
+  });
+
+  it("工厂 ssh 分支：远端 enforcement 探针可得 → 注入 full；不可得/抛错 → partial", async () => {
+    const config = { executor: "ssh" as const, ssh: { host: "example.test", remoteWorkspaceRoot: "/srv/ws" } };
+    const base = { docker: async () => false, wsl: async () => false, ssh: async () => true };
+
+    const probedFull = await resolveSandboxExecutor(config, {
+      ...base,
+      sshEnforcement: async () => "full",
+    });
+    assert.equal(probedFull.executor.kind, "ssh");
+    assert.equal(probedFull.executor.enforcement, "full", "探针结果经工厂注入执行域自报");
+
+    const probeMissing = await resolveSandboxExecutor(config, base);
+    assert.equal(probeMissing.executor.enforcement, "partial", "探针未实现 = 不可得 → partial");
+
+    const probeThrows = await resolveSandboxExecutor(config, {
+      ...base,
+      sshEnforcement: async () => {
+        throw new Error("probe failed");
+      },
+    });
+    assert.equal(probeThrows.executor.enforcement, "partial", "探针抛错 = 不可得 → partial");
+  });
+
+  it("工厂回退路径：docker/wsl/ssh 不可用回退 local（enforcement=partial）", async () => {
+    const base = { docker: async () => false, wsl: async () => false, ssh: async () => false };
+    for (const requested of ["docker", "wsl", "ssh"] as const) {
+      const resolved = await resolveSandboxExecutor(
+        requested === "ssh" ? { executor: requested, ssh: { host: "h", remoteWorkspaceRoot: "/w" } } : { executor: requested },
+        base,
+      );
+      assert.equal(resolved.executor.kind, "local");
+      assert.equal(resolved.executor.enforcement, "partial");
+      assert.ok(resolved.warnings.length > 0);
+    }
+  });
+
+  it("拒绝标记：PATH_ESCAPED 经 ToolExecutor 中央追加 partial 标记 + 重试提示，且不重复追加", async () => {
+    const registry = new ToolRegistry();
+    registry.register(
+      makeDeniedTool("denied_once", TOOL_ERROR_CODES.PATH_ESCAPED, "path escapes workspace: /etc/passwd"),
+    );
+    registry.register(
+      makeDeniedTool(
+        "denied_prefixed",
+        TOOL_ERROR_CODES.PATH_ESCAPED,
+        "path escapes workspace: /etc [sandbox: path access denied under partial mode]",
+      ),
+    );
+    const executor = new ToolExecutor({ registry });
+    const result = await executor.execute(
+      { toolCallId: "t1", toolName: "denied_once", args: {} },
+      runT5Ctx(),
+    );
+    assert.equal(result.isError, true);
+    assert.equal(result.error?.code, "TOOL_PATH_ESCAPED");
+    assert.equal(
+      (result.error?.message.match(/\[sandbox: path access denied under partial mode\]/g) ?? []).length,
+      1,
+      "标记恰好一次",
+    );
+    assert.ok(result.error?.message.includes("retry with a workspace-relative path"));
+    assert.ok(result.content!.includes("[sandbox: path access denied under partial mode]"));
+
+    const prefixed = await executor.execute(
+      { toolCallId: "t2", toolName: "denied_prefixed", args: {} },
+      runT5Ctx(),
+    );
+    assert.equal(
+      (prefixed.error?.message.match(/\[sandbox:/g) ?? []).length,
+      1,
+      "工具自带标记时中央不再追加",
+    );
+  });
+
+  it("非路径类错误不携带拒绝标记", async () => {
+    const registry = new ToolRegistry();
+    registry.register(makeDeniedTool("boom", TOOL_ERROR_CODES.EXEC_FAILED, "io went wrong"));
+    const result = await new ToolExecutor({ registry }).execute(
+      { toolCallId: "t3", toolName: "boom", args: {} },
+      runT5Ctx(),
+    );
+    assert.equal(result.error?.code, "TOOL_EXEC_FAILED");
+    assert.ok(!result.error!.message.includes("[sandbox:"));
+  });
+});
+
+/** 错误桩工具：以指定错误码/消息收敛（验证中央拒绝标记接线与不重复追加）。 */
+function makeDeniedTool(name: string, code: string, message: string): Tool<Record<string, never>> {
+  return {
+    name,
+    description: "error stub",
+    parametersSchema: z.object({}),
+    metadata: {
+      readOnly: false,
+      destructive: false,
+      sideEffectScope: "workspace",
+      riskLevel: "low",
+      needsApproval: false,
+    },
+    async execute() {
+      throw new ToolExecutionError(code, message);
+    },
+  };
+}
+
+function runT5Ctx(): ToolRunContext {
+  return {
+    signal: new AbortController().signal,
+    workspaceRoot: WORKSPACE,
+    cwd: WORKSPACE,
+    sessionKey: "test",
+    background: new BackgroundTaskRegistry(),
+  };
+}

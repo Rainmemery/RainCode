@@ -76,6 +76,14 @@ export const sandboxConfigSchema = z.object({
 });
 export type SandboxConfig = z.infer<typeof sandboxConfigSchema>;
 
+/**
+ * 沙箱 enforcement 自报（T5.2）：执行域对「已放行操作」的边界强度。绝对边界（fs 独占挂载 +
+ * 缺省断网）方可自报 full；应用层约束（路径守卫/审批前置）与环境隔离（WSL 发行版 fs 完整可见、
+ * /mnt/* 主机盘可达）一律 partial——02 §5.1「约束非隔离」口径 + dsh 纪律「绝对边界不得当作 full」。
+ */
+export const sandboxEnforcementSchema = z.enum(["full", "partial"]);
+export type SandboxEnforcement = z.infer<typeof sandboxEnforcementSchema>;
+
 /** config.json 读路径文档（strip：未知字段忽略，出参宽松演进，06 §5）。 */
 export const configDocumentSchema = z.object({
   configVersion: z.number().int(),

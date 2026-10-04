@@ -16,6 +16,7 @@ import type {
 } from "./tool.js";
 import type { ToolRegistry } from "./registry.js";
 import { truncateToByteBudget } from "./truncate.js";
+import { sandboxDenialMarker, SANDBOX_RETRY_HINT } from "./sandbox/enforcement.js";
 
 /** 默认输出预算（02 §2.3：缺省 256KB）。 */
 const DEFAULT_MAX_OUTPUT_BYTES = 256 * 1024;
@@ -236,15 +237,22 @@ function errorResult(
   message: string,
   detail?: string,
 ): Omit<ToolResult, "durationMs"> {
+  // 沙箱约束面拒绝标记（T5.2）：path-guard 是应用层预检（02 §5.1 约束非隔离），由此产生的
+  // PATH_ESCAPED 一律 partial 并附同轮重试提示——与执行域是否 docker 无关（拒绝发生在投递前）。
+  // 中央接线覆盖全部 guardPath 拒绝点（含未来新增处理器）；标记已存在时不重复追加。
+  const finalMessage =
+    code === TOOL_ERROR_CODES.PATH_ESCAPED && !message.includes("[sandbox:")
+      ? `${message} ${sandboxDenialMarker()} ${SANDBOX_RETRY_HINT}`
+      : message;
   const toolError: NonNullable<ToolResult["error"]> = {
     code,
-    message,
+    message: finalMessage,
     ...(detail !== undefined && { detail }),
   };
   return {
     toolCallId: call.toolCallId,
     toolName: call.toolName,
-    content: `${code}: ${message}`,
+    content: `${code}: ${finalMessage}`,
     error: toolError,
     isError: true,
     truncated: false,

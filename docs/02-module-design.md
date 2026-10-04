@@ -749,7 +749,9 @@ flowchart TD
 ```typescript
 // packages/tools/src/sandbox/executor.ts —— P2 容器扩展点（本地实现为默认绑定）
 export interface Executor {
-  readonly kind: "local" | "docker" | "wsl";
+  readonly kind: "local" | "docker" | "wsl" | "ssh";
+  /** 边界强度自报（T5.2）：绝对边界方为 full，约束/环境隔离一律 partial。 */
+  readonly enforcement: "full" | "partial";
   run(req: ExecRequest): Promise<ExecResult>;          // 前台
   start(req: ExecRequest): Promise<BackgroundTaskHandle>; // 后台
   kill(taskId: string): Promise<KillOutcome>;
@@ -796,6 +798,8 @@ export interface ProcessTreeTerminator {
 ```
 
 环境变量策略：默认继承**最小集**（PATH、SystemRoot、TEMP、HOME 等平台必需项）+ 工具显式注入项；`SECRET_ENV_FILTER` 过滤明显的凭据类变量不进入审计日志。Windows 实现要点：经 `cmd.exe /c` 或用户配置 shell 执行；越界检测对 argv 与脚本中的绝对路径做规范化比对（大小写不敏感、短路径名展开）。
+
+**enforcement 自报与模型可见性（T5.2）**：各执行域对「已放行操作」的边界强度自报（shared `SandboxEnforcement = "full" | "partial"`，dsh 纪律「绝对边界不得当作 full」）——`local=partial`（约束非隔离，同构 dsh Windows ACL 档先例）、`docker=full`（workspace 独挂 + 缺省断网的绝对 fs 边界；bridge 属显式网络面放宽，fs 边界不变）、`wsl=partial`（环境隔离非安全边界：发行版 fs 完整可见、/mnt/* 主机盘可达、网络开放；对 07 §11.2 初稿 wsl=full 的偏差申报）、`ssh` 按远端探针注入（探针不可得报 partial，v1 无远端沙箱机制）。携带面：bash 结果 `data.sandbox/enforcement` **每次调用持续携带**（非一次性告警，后台路径同）；非 local 域内容首行 `sandbox: <kind> (enforcement: <mode>)` 模型可见标注。约束面拒绝（path-guard 产生的 `TOOL_PATH_ESCAPED`）由 ToolExecutor 中央追加模型可见标记 `[sandbox: path access denied under partial mode]` + 同轮重试提示——恒 partial（拒绝发生在投递前的应用层，与执行域是否 docker 无关）。
 
 ### 5.4 异常与边界场景
 

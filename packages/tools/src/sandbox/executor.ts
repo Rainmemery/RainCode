@@ -8,11 +8,14 @@
  *   + `--network none` 缺省断网（可配 bridge）；容器随 CLI 进程退出 best-effort `rm -f` 清理；
  * - WslExecutor（ES-4）：Linux 环境隔离（完整发行版 fs 可见），非安全边界（02 §5.1 口径）；
  * - resolveSandboxExecutor：不可用（CLI 探测失败）即回退 local 并产出告警（02 §5.4），
- *   kind 标记真实执行环境（UI 展示口径）。
+ *   kind 标记真实执行环境（UI 展示口径）；
+ * - T5.2 enforcement 自报：各执行域对「已放行操作」的边界强度自报（shared SandboxEnforcement），
+ *   随 bash 结果 data 持续携带（非一次性告警）——绝对边界方为 full，约束/环境隔离一律 partial
+ *   （02 §5.1 + dsh 纪律「绝对边界不得当作 full」；WSL 自报 partial 属对 07 §11.2 初稿的偏差申报）。
  */
 import { execFile } from "node:child_process";
 import { relative, resolve } from "node:path";
-import type { SandboxConfig } from "@raincode/shared";
+import type { SandboxConfig, SandboxEnforcement } from "@raincode/shared";
 import { execLocal, spawnLocal, type ExecRequest, type ExecResult, type SpawnHandle } from "./local-executor.js";
 
 export type ExecutorKind = "local" | "docker" | "wsl" | "ssh";
@@ -20,6 +23,8 @@ export type ExecutorKind = "local" | "docker" | "wsl" | "ssh";
 /** 执行域抽象（02 §5.3 Executor 的命令投递面；run=前台，spawn=后台/流式）。 */
 export interface Executor {
   readonly kind: ExecutorKind;
+  /** 边界强度自报（T5.2）：full=绝对边界（fs 隔离+缺省断网）；partial=应用层约束或环境隔离。 */
+  readonly enforcement: SandboxEnforcement;
   /** 模型/UI 可见的实际执行命令形态（诊断口径：本地命令串或容器 argv 拼接）。 */
   display(req: ExecRequest): string;
   run(req: ExecRequest): Promise<ExecResult>;
@@ -40,6 +45,8 @@ const localTransport: ExecutorTransport = {
 /** 本地执行域（缺省；P0「约束非隔离」语义不变）。 */
 export class LocalExecutor implements Executor {
   readonly kind = "local" as const;
+  /** 应用层约束（路径守卫/审批前置/超时预算），无 OS 级隔离——同构 dsh Windows ACL 档 partial 先例。 */
+  readonly enforcement = "partial" as const;
   constructor(private readonly transport: ExecutorTransport = localTransport) {}
   display(req: ExecRequest): string {
     return req.command;
@@ -99,6 +106,9 @@ function dockerEnvArgs(env: Record<string, string> | undefined): string[] {
 
 export class DockerExecutor implements Executor {
   readonly kind = "docker" as const;
+  /** 绝对边界：仅挂载 workspace（容器内其余主机路径不可见）+ 缺省 --network none；
+   *  bridge 属显式配置的网络面放宽，fs 边界不受影响（ES-3）。 */
+  readonly enforcement = "full" as const;
   private readonly image: string;
   private readonly network: "none" | "bridge";
   private readonly transport: ExecutorTransport;
@@ -180,6 +190,10 @@ export class DockerExecutor implements Executor {
  */
 export class WslExecutor implements Executor {
   readonly kind = "wsl" as const;
+  /** 环境隔离非安全边界（02 §5.1）：发行版 fs 完整可见、/mnt/* 主机盘可达、网络开放——
+   *  按 dsh 纪律「绝对边界不得当作 full」如实自报 partial（07 §11.2 初稿 wsl=full 的偏差申报，
+   *  见 PROGRESS §3 T5.2 条目）。 */
+  readonly enforcement = "partial" as const;
   private readonly distro: string | undefined;
   private readonly transport: ExecutorTransport;
 
@@ -237,12 +251,20 @@ export function toRemotePath(target: SshTarget, workspaceRoot: string, cwd: stri
 
 export class SshExecutor implements Executor {
   readonly kind = "ssh" as const;
+  /** 远端执行域无内建沙箱机制；远端 enforcement 探针结果由工厂注入（07 §11.2「按远端探测」），
+   *  探针不可得报 partial（v1 缺省——远端命令可达面为整台主机，约束仅应用层路径映射）。 */
+  readonly enforcement: SandboxEnforcement;
   private readonly target: SshTarget;
   private readonly transport: ExecutorTransport;
 
-  constructor(target: SshTarget, transport: ExecutorTransport = localTransport) {
+  constructor(
+    target: SshTarget,
+    transport: ExecutorTransport = localTransport,
+    enforcement: SandboxEnforcement = "partial",
+  ) {
     this.target = target;
     this.transport = transport;
+    this.enforcement = enforcement;
   }
 
   /** ssh argv 前缀（连接参数；BatchMode 禁交互提示——密钥不通即失败收敛，不挂审批链）。 */
@@ -305,6 +327,12 @@ export interface SandboxProbes {
   docker(): Promise<boolean>;
   wsl(): Promise<boolean>;
   ssh(config: SandboxConfig | undefined): Promise<boolean>;
+  /**
+   * 远端 enforcement 探针（T5.2「按远端探测」）：返回 full 仅当远端具备绝对边界机制
+   * （如远端 helper 自身运行于容器内，v1 无此形态）；undefined/抛错 = 探针不可得 → partial。
+   * 缺省探针不实现（v1 无远端沙箱机制可探测），可注入替身供矩阵单测。
+   */
+  sshEnforcement?(config: SandboxConfig | undefined): Promise<SandboxEnforcement | undefined>;
 }
 
 const defaultProbes: SandboxProbes = {
@@ -380,8 +408,10 @@ export async function resolveSandboxExecutor(
   }
   if (requested === "ssh") {
     if (config?.ssh !== undefined && (await probes.ssh(config))) {
+      // 远端 enforcement 探针：不可得（未实现/抛错/undefined）一律 partial（07 §11.2 口径）
+      const remote = await probes.sshEnforcement?.(config).catch(() => undefined);
       return {
-        executor: new SshExecutor(config.ssh),
+        executor: new SshExecutor(config.ssh, localTransport, remote ?? "partial"),
         requested,
         warnings: [],
       };
