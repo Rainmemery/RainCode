@@ -1,6 +1,6 @@
 # RainCode UI 设计规范
 
-> 版本 v1.1 · 2026-10-04（v1.0 · 2026-09-24 初稿；v1.1 变更见文末「11. v1.1 变更记录」）
+> 版本 v1.2 · 2026-10-04（v1.0 · 2026-09-24 初稿；v1.1 双端统一；v1.2 变更见文末「12. v1.2 变更记录」）
 > 适用范围：RainCode 个人代码智能助手——Windows 桌面端（Electron + React 18 + Zustand + Tailwind CSS，shadcn/ui 风格组件）、Web 工作台（React 18 + Zustand + Tailwind CSS）与 CLI 端（readline REPL + ANSI）。
 > 配套高保真设计稿见文末「设计稿索引」，四张稿件与本文档 tokens 严格一致。
 
@@ -260,11 +260,12 @@ flowchart TD
 **中部会话流**（核心，带四角取景框角标）：从上到下依次为——
 
 1. **消息气泡**：用户消息右对齐浅橙底（`--accent-bg`）气泡；助手消息左对齐卡片，含 `✦ RainCode` 署名行与模型标签；支持行内代码、代码块、Markdown。
-2. **工具调用卡片**：结构为「状态灯 + 等宽工具名 + 参数摘要 + 耗时 + 展开箭头」。折叠态一行；展开态含参数区与结果预览（文本 / diff / 表格三种渲染），底部操作行：复制、重跑、在编辑器打开。五种状态：`pending`（琥珀脉冲灯）、`running`（青色旋转灯）、`success`（绿灯）、`error`（红灯 + 错误摘要）、`needs-approval`（琥珀边框 + 内嵌审批条）。沙箱执行的调用带 `mint` 色「沙箱」徽标；MCP 调用带 `info` 蓝色「MCP·服务器名」徽标。
-3. **子代理进度卡**（紫色标识）：主代理派发的并行子任务列表，每行子代理名 + 当前动作 + 迷你进度条；可展开查看子代理各自的消息流缩略；全部完成后折叠为一行汇总。
-4. **流式输出**：生成中的助手消息尾部为 1×16px 橙色光标块（闪烁）；未完成段落底部呈现一行 shimmer 扫过的占位文本「正在生成…」。
-5. **权限审批弹窗态**（模态叠加）：遮罩 `rgba(6,9,14,.62)` + `--shadow-3` 对话框（`--r-xl`，带取景框角标）。内容：风险徽章（低/中/高）、工具名与完整命令（等宽、可复制）、影响文件列表、四级决策按钮「仅本次允许（主按钮）/ 本会话允许 / 始终允许 / 拒绝（danger 幽灵按钮）」、「记住此选择并写入权限规则」复选框。键盘 `1–4` 直选，`Esc`=拒绝。
-6. **输入区**：底部输入框（`--bg-raised`，聚焦边框转 `--accent-dim`），支持 `/` 命令面板、`@` 文件引用、模型快切；右侧发送主按钮，生成中变为「停止」方块按钮；下方一行弱化提示（当前模型 · context 用量）。
+2. **思考块（v1.2）**：助手消息内、正文之前——`✻ 思考过程 · N 字` 单行开关（violet 标识 + 2px violet 左边线），流式期间自动展开实时呈现（文本 italic 弱化 + 尾部 48px 渐隐 mask），`message.completed` 后自动折叠（用户可再展开）；reasoning 与正文在 reducer 层独立累积（`delta.type=reasoning`），CLI 侧对应 `RAINCODE_CLI_SHOW_REASONING` stderr 通道。
+3. **工具调用卡片**：结构为「状态灯 + glyph + 等宽工具名 + 参数摘要 + 耗时 + 展开箭头」。折叠态一行；展开态含参数区与结果预览（文本 / diff / 表格三种渲染），底部操作行：复制、重跑、在编辑器打开。五种状态：`pending`（琥珀脉冲灯）、`running`（青色旋转灯）、`success`（绿灯）、`error`（红灯 + 错误摘要）、`needs-approval`（琥珀边框 + 内嵌审批条）。沙箱执行的调用带 `mint` 色「沙箱」徽标；MCP 调用带 `info` 蓝色「MCP·服务器名」徽标。
+4. **子代理进度卡**（紫色标识）：主代理派发的并行子任务列表，每行子代理名 + 当前动作 + 迷你进度条；可展开查看子代理各自的消息流缩略；全部完成后折叠为一行汇总。
+5. **流式输出**：生成中的助手消息尾部为 1×16px 橙色光标块（闪烁）；未完成段落底部呈现一行 shimmer 扫过的占位文本「正在生成…」。
+6. **权限审批弹窗态**（模态叠加）：遮罩 `rgba(6,9,14,.62)` + `--shadow-3` 对话框（`--r-xl`，带取景框角标）。内容：风险徽章（低/中/高）、工具名与完整命令（等宽、可复制）、影响文件列表、四级决策按钮「仅本次允许（主按钮）/ 本会话允许 / 始终允许 / 拒绝（danger 幽灵按钮）」、「记住此选择并写入权限规则」复选框。键盘 `1–4` 直选，`Esc`=拒绝。
+7. **输入区**：底部输入框（`--bg-raised`，聚焦边框转 `--accent-dim`），支持 `/` 命令面板、`@` 文件引用、模型快切；右侧发送主按钮，生成中变为「停止」方块按钮；下方一行弱化提示（当前模型 · context 用量）。
 
 **右侧上下文面板**（Tab：记忆 | MCP | 子代理 | 沙箱，激活 Tab 底部 2px 模块色指示条）：
 
@@ -320,6 +321,14 @@ flowchart TD
 
 **徽标系统**：`〔沙箱〕`（mint）表示沙箱内执行；`〔MCP·服务器名〕`（info 蓝）表示远程 MCP 调用；`〔子代理〕`（violet）表示由子代理发起。徽标位于工具名右侧，等宽小字，颜色即第 3.1 节模块标识色。
 
+**v1.2 细则（实现层落地，双端 + CLI 同一语言）**：
+
+- **glyph 表**（与 CLI `theme.glyphFor` 同源，状态灯右侧、cyan 色）：`◇` MCP 工具（`mcp__*`）· `◈` 子代理派发（agent）· `✓` todo 读写 · `✱` 检索类（read/grep/glob）· `←` 写入类（write/edit）· `$` bash · `⚙` 兜底。
+- **参数摘要 v2**（折叠头 mono 列，`summarizeInput` 按工具域提炼主参数，拒绝原始 JSON 墙）：bash → `$ 命令`（多行折叠单行）；grep/glob → `"模式" · 范围`；read/write/edit → 路径；web_fetch → URL；agent → `profile · task`；skill → `/name`；未知形状回退紧凑 JSON；统一 120 字符省略号截断。
+- **状态底色 tint**：折叠头底色随状态微调——pending `warn/5%`、running `cyan/5%`、error `danger/5%`，ok/denied 保持 `--bg-card`；配合 2px 左边框构成双通道状态编码。
+- **结果预览 diff 着色**：结果含结构化 diff 标记（`diff `/`@@ `/`--- `/`+++ `）或 +/- 行成对出现时逐行着色（`--diff-add-tx`/`--diff-del-tx`，`@@` 行 info 蓝）；markdown 列表等普通文本不误判。
+- **输出截断提示**：`truncated` 时结果标题行追加琥珀「输出已截断（完整内容落会话事件流）」。
+
 ### 6.5 通用组件规范
 
 - **按钮层级**：主按钮（`--accent` 底，每个视图最多 1 个）→ 次按钮（`--border-strong` 描边）→ 幽灵按钮（hover 才显底）→ 危险按钮（`--danger` 文字/描边，仅 deny、删除类）。高度 32px，内边距 16px。
@@ -328,6 +337,8 @@ flowchart TD
 - **Tab**：文字 Tab + 底部 2px 模块色指示条；激活态不加底色填充，靠指示条 + 字重 500 表达。
 - **开关**：30×16px，开态使用所属模块标识色（沙箱 mint / MCP info / 通用 accent），不用统一绿色。
 - **空态**：面板级空态 = 一行说明 + 一个动作链接；页面级空态（首启动）= ASCII 纹样 + 主按钮引导，二者不用插画位图。
+- **kbd 快捷键芯片（v1.2）**：快捷键提示行中的按键用 `.kbd` 芯片呈现（等宽 10px、1px 描边 + 下边加重 2px、`--bg-raised` 底），如审批弹窗「快捷键 `1`–`4` 直选 · `Esc` 拒绝」、斜杠面板「`↑``↓` 选择 · `Tab` 补全 · `Enter` 执行 · `Esc` 关闭」。
+- **代码围栏复制（v1.2）**：围栏代码块右上角常驻「复制」按钮（`--bg-panel` 底 + 1px 描边），点击后 1.5s 内显示「已复制」；clipboard API 优先，非安全上下文（file://）回退 `execCommand`。
 
 ---
 
@@ -414,3 +425,14 @@ flowchart TD
 5. **三参照仓借鉴来源**：ZCode（中性色纪律、token 优先、CJK 字体防落宋体）、MiMo-Code（reduced-motion 降级、空态 ASCII、审批卡信息分层）、deepseek-harness（审批卡「色带+等宽命令+决策按钮」范式、两层 token 思路、shimmer/mask 细节）；见 [docs/research/2026-10-04-m5-reference-repos.md](research/2026-10-04-m5-reference-repos.md) 与三仓 UI 调研（ZCode `packages/ui/src/styles.css` / MiMo `tui/context/theme/*.json` / dsh `ui-theme/styles/`）。
 6. **浅色主题**：§3.2 维持映射规范预留，双端均未实现，登记 M6+ 候选。
 7. **验收留存**：门禁 typecheck 14 项目 / lint 12 warning 基线 / architecture 0 违规 / 单测 250 / walkthrough-web 19 断言 / walkthrough-desktop 14 断言全绿；CDP 截图 7 张（Web 会话流/审批/记忆/扩展 + 桌面会话流/审批/扩展）人工核对通过。
+
+---
+
+## 12. v1.2 变更记录（2026-10-04 · UI 重设计二轮：思考块与工具卡生产级深化）
+
+本轮在 v1.1 双端统一基础上深化「状态即界面」，对标三参照仓组件细节（MiMo Thought 折叠头 / dsh ReasoningRow 渐隐与 DiffBlock / CLI glyph 语言），token 色值仍零变更：
+
+1. **思考块（ReasoningBlock，双端）**：`delta.type=reasoning` 此前被端层 reducer 丢弃（协议 v1.x `message.delta` text/reasoning 双类型自 T2.x 即有，CLI 经 stderr 已消费）——双端 reducer 补 reasoning 独立累积（reasoning 先行到达时新建流式项 text 空串起步；同一流式消息内与 text 交替各自累积；completed 收束保留 reasoning），+10 单测/端锁定。UI：`✻ 思考过程 · N 字` 单行开关（violet + 2px 左边线），流式自动展开（italic 弱化 + 48px 渐隐 mask），完成后自动折叠可再展开（MiMo/ZCode 的 running→completed 自动收束语义）。
+2. **工具卡 v2（双端同构）**：glyph 表与 CLI `theme.glyphFor` 同源（◇ MCP / ◈ 子代理 / ✓ todo / ✱ 检索 / ← 写入 / $ bash / ⚙ 兜底——三端同一视觉语言）；参数摘要 v2（`summarizeInput` 按工具域提炼主参数：bash `$ 命令` / grep·glob `"模式" · 范围` / 路径族 / URL / `profile · task` / `/name`，120 字符截断，拒绝 JSON 墙）；状态底色 tint（pending warn / running cyan / error danger 各 5%）与 2px 左边框构成双通道状态编码；结果预览 diff 行着色（结构化标记或 +/- 成对才启用，markdown 列表不误判）+ `truncated` 截断提示。
+3. **组件搭配补全（双端）**：代码围栏右上角复制按钮（clipboard 优先 + execCommand 回退，1.5s「已复制」反馈）；快捷键提示行 kbd 芯片（`.kbd`：等宽 10px + 下边加重），审批弹窗与斜杠面板两处先行。
+4. **验收留存**：门禁 typecheck / lint 12 warning 基线 / architecture 244 文件 0 违规 / 单测 270（+20：desktop session-view 10 + web session-view 10 新测试文件）；walkthrough-web 19/19、walkthrough-desktop 14/14；CDP 截图 8 张（思考块+围栏复制 / read 工具卡 ok 态展开 / MCP 审批弹窗 / MCP 徽标 ok 态，双端各四）人工核对通过——首跑修出截图脚本自身两缺陷（read mock 用 `file_path` 不符工具 schema、目标文件未种入致 ENOENT 假红，均非产品缺陷）。

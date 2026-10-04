@@ -1,9 +1,10 @@
 /**
- * 消息气泡（03 §6.1 第 1 条）：用户右对齐浅橙底气泡（最大宽 76%）；助手左对齐卡片
- * （✦ RainCode 署名 + model 标签）。轻量 markdown：`行内code`、**粗体**、*斜体*、```围栏代码块```；
- * 块级（B6 可视化测试缺陷修复）：#/##/### 标题、| 表格、- / * 无序列表。
+ * 消息气泡（03 §6.1 第 1 条；UI 重设计二轮增思考块与围栏复制）：用户右对齐浅橙底气泡
+ * （最大宽 76%）；助手左对齐卡片（✦ RainCode 署名 + model 标签 + ReasoningBlock 思考块）。
+ * 轻量 markdown：`行内code`、**粗体**、*斜体*、```围栏代码块```；块级（B6）：#/##/### 标题、
+ * | 表格、- / * 无序列表。
  */
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { ChatItem } from "../session-view.js";
 
 const INLINE_PATTERN = /`([^`]+)`|\*\*([^*]+)\*\*|\*([^*]+)\*/g;
@@ -58,6 +59,74 @@ const HEADING_CLASS: Record<number, string> = {
   6: "mt-1 text-2xs font-medium text-mid",
 };
 
+/**
+ * 思考块（03 §6.1 v1.2；MiMo Thought / dsh ReasoningRow 范式）：流式中展开实时呈现
+ * （尾部 48px 渐隐），完成后自动折叠为单行开关，可再展开；violet 标识 + 2px 左边线。
+ */
+function ReasoningBlock({ text, streaming }: { text: string; streaming: boolean }) {
+  const [open, setOpen] = useState(streaming);
+  useEffect(() => {
+    if (!streaming) setOpen(false);
+  }, [streaming]);
+  const live = streaming && open;
+  return (
+    <div className="mb-2 border-l-2 border-violet/40 pl-2.5">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 text-left text-2xs text-violet transition-colors duration-fast hover:text-hi"
+      >
+        <span>✻</span>
+        <span>{live ? "思考中" : `思考过程 · ${text.length} 字`}</span>
+        {live && text.length === 0 ? <span className="shimmer-text">…</span> : null}
+        <span className={`text-faint transition-transform duration-med ${open ? "rotate-90" : ""}`}>▸</span>
+      </button>
+      {open && text.length > 0 && (
+        <pre
+          className={`mt-1 whitespace-pre-wrap break-words font-sans text-2xs italic leading-4 text-low ${
+            streaming ? "stream-fade" : ""
+          }`}
+        >
+          {text}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+/** 代码围栏（dsh CodeBlock 范式）：右上角复制按钮（clipboard 优先，file:// 等非安全上下文回退 execCommand）。 */
+function CodeFence({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+  async function copy(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(code);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = code;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+  return (
+    <div className="relative my-1">
+      <pre className="mono overflow-x-auto whitespace-pre rounded-md border border-border-faint bg-raised px-3 py-2 pr-12 text-left text-2xs leading-relaxed text-hi">
+        {code}
+      </pre>
+      <button
+        type="button"
+        onClick={() => void copy()}
+        className="absolute right-1.5 top-1.5 rounded-sm border border-border-strong bg-panel px-1.5 text-2xs text-low transition-colors duration-fast hover:text-hi"
+      >
+        {copied ? "已复制" : "复制"}
+      </button>
+    </div>
+  );
+}
+
 const LINE_IS_TABLE_ROW = /^\s*\|.*\|\s*$/;
 const LINE_IS_TABLE_SEP = /^\s*\|[\s:|-]+\|\s*$/;
 const LINE_IS_LIST_ITEM = /^\s*[-*]\s+/;
@@ -72,14 +141,7 @@ function renderBlocks(text: string): ReactNode[] {
       let code = segment;
       const nl = code.indexOf("\n");
       if (nl >= 0 && /^[\w.+-]{1,24}$/.test(code.slice(0, nl))) code = code.slice(nl + 1);
-      nodes.push(
-        <pre
-          key={`fence-${segIndex}`}
-          className="mono my-1 overflow-x-auto whitespace-pre rounded-md border border-border-faint bg-raised px-3 py-2 text-left text-2xs leading-relaxed text-hi"
-        >
-          {code.replace(/\n$/, "")}
-        </pre>,
-      );
+      nodes.push(<CodeFence key={`fence-${segIndex}`} code={code.replace(/\n$/, "")} />);
       return;
     }
     const lines = segment.split("\n");
@@ -192,6 +254,9 @@ export default function MessageBubble({ item }: MessageBubbleProps) {
         <span className="text-2xs text-accent">✦ RainCode</span>
         {item.model !== undefined && <span className="text-2xs text-low">{item.model}</span>}
       </div>
+      {item.reasoning !== undefined && item.reasoning.length > 0 && (
+        <ReasoningBlock text={item.reasoning} streaming={item.streaming} />
+      )}
       <div>
         {renderBlocks(item.text)}
         {item.streaming && <span className="stream-cursor" />}

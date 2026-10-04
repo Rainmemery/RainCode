@@ -225,6 +225,20 @@ pre,
     100% 100%;
 }
 
+/* kbd 快捷键芯片（03 §6.5 v1.2）：等宽小字 + 下边加重，用于快捷键提示行 */
+.kbd {
+  display: inline-block;
+  padding: 0 4px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--bg-raised);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--text-mid);
+}
+
 /* 滚动条 */
 ::-webkit-scrollbar {
   width: 8px;

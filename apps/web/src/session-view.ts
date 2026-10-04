@@ -150,6 +150,16 @@ function appendAssistantDelta(items: StreamItem[], itemId: string, text: string)
   return next;
 }
 
+/** reasoning delta 累积（思考块，03 §6.1 v1.2；delta.type=reasoning 此前被丢弃）。 */
+function appendAssistantReasoning(items: StreamItem[], itemId: string, text: string): StreamItem[] {
+  const idx = items.findIndex((item) => item.kind === "message" && item.id === itemId);
+  if (idx < 0) return items;
+  const next = [...items];
+  const existing = next[idx] as ChatItem;
+  next[idx] = { ...existing, reasoning: (existing.reasoning ?? "") + text };
+  return next;
+}
+
 /**
  * 事件应用（06 §3.2 会话域事件子集；未知事件整体忽略，06 §7.4）。
  * 返回新 state（浅拷贝 + 受影响分支重建）。
@@ -162,17 +172,24 @@ export function applySessionEvent(state: WebState, name: string, payload: Record
   switch (name) {
     case "message.delta": {
       const delta = payload["delta"] as { type: string; text?: string } | undefined;
-      if (delta === undefined || delta.type !== "text" || typeof delta.text !== "string") return state;
+      if (delta === undefined || typeof delta.text !== "string") return state;
+      if (delta.type !== "text" && delta.type !== "reasoning") return state;
       const last = view.items[view.items.length - 1];
       if (last !== undefined && last.kind === "message" && last.role === "assistant" && last.streaming) {
-        return patchView(state, sessionId, { items: appendAssistantDelta(view.items, last.id, delta.text) });
+        const items =
+          delta.type === "reasoning"
+            ? appendAssistantReasoning(view.items, last.id, delta.text)
+            : appendAssistantDelta(view.items, last.id, delta.text);
+        return patchView(state, sessionId, { items });
       }
+      // 新建流式助手消息：reasoning 先于 text 到达时 text 以空串起步（思考块先行展开）
       const item: ChatItem = {
         kind: "message",
         id: nextItemId(),
         role: "assistant",
-        text: delta.text,
+        text: delta.type === "text" ? delta.text : "",
         streaming: true,
+        ...(delta.type === "reasoning" && { reasoning: delta.text }),
         model: typeof payload["model"] === "string" ? payload["model"] : undefined,
       };
       return patchView(state, sessionId, { items: [...view.items, item] });
@@ -335,14 +352,48 @@ export function parseSlashInvocation(text: string): { name: string; args?: strin
   return { name: match[1]!, ...(args !== undefined && { args }) };
 }
 
-/** 工具入参摘要（折叠头参数摘要，03 §6.4）。 */
+/** 单行截断（多行命令折叠为单行；超长省略号收尾）。 */
+function clipOneLine(text: string, max: number): string {
+  const oneLine = text.replace(/\s+/g, " ").trim();
+  return oneLine.length > max ? `${oneLine.slice(0, max)}…` : oneLine;
+}
+
+/**
+ * 工具入参摘要 v2（折叠头参数摘要，03 §6.4；UI 重设计二轮）：按工具域提炼主参数——
+ * bash 命令行 / grep·glob 模式+范围 / read·write·edit 路径 / web_fetch URL /
+ * agent profile·task / skill /name；未知形状回退紧凑 JSON。纯展示，权限判定在服务端。
+ */
 export function summarizeInput(input: unknown): string | undefined {
   if (input === null || input === undefined) return undefined;
-  if (typeof input === "string") return input.slice(0, 120);
+  if (typeof input === "string") return clipOneLine(input, 120);
+  if (typeof input !== "object") return clipOneLine(String(input), 120);
+  const record = input as Record<string, unknown>;
+  const str = (key: string): string | undefined => {
+    const value = record[key];
+    return typeof value === "string" && value.length > 0 ? value : undefined;
+  };
+  const command = str("command");
+  if (command !== undefined) return clipOneLine(`$ ${command}`, 120);
+  const pattern = str("pattern") ?? str("query");
+  if (pattern !== undefined) {
+    const scope = str("path") ?? str("file_path");
+    return clipOneLine(`"${pattern}"${scope !== undefined ? ` · ${scope}` : ""}`, 120);
+  }
+  const path = str("file_path") ?? str("path");
+  if (path !== undefined) return clipOneLine(path, 120);
+  const url = str("url");
+  if (url !== undefined) return clipOneLine(url, 120);
+  const profile = str("profile");
+  if (profile !== undefined) {
+    const task = str("task");
+    return clipOneLine(task !== undefined ? `${profile} · ${task}` : profile, 120);
+  }
+  const skill = str("name");
+  if (skill !== undefined) return clipOneLine(`/${skill}`, 120);
   try {
     const text = JSON.stringify(input);
-    return text === undefined ? undefined : text.slice(0, 120);
+    return text === undefined ? undefined : clipOneLine(text, 120);
   } catch {
-    return String(input).slice(0, 120);
+    return clipOneLine(String(input), 120);
   }
 }

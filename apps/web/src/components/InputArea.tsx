@@ -99,8 +99,16 @@ export function InputArea(): JSX.Element {
                 <span className="min-w-0 flex-1 truncate text-2xs text-mid">{skill.description}</span>
               </button>
             ))}
-            <div className="border-t border-border-faint px-3 py-1 text-2xs text-faint">
-              ↑↓ 选择 · Tab 补全 · Enter 执行 · Esc 关闭
+            <div className="flex items-center gap-1 border-t border-border-faint px-3 py-1 text-2xs text-faint">
+              <span className="kbd">↑</span>
+              <span className="kbd">↓</span>
+              <span>选择 ·</span>
+              <span className="kbd">Tab</span>
+              <span>补全 ·</span>
+              <span className="kbd">Enter</span>
+              <span>执行 ·</span>
+              <span className="kbd">Esc</span>
+              <span>关闭</span>
             </div>
           </div>
         )}

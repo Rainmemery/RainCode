@@ -33,6 +33,8 @@ module.exports = {
         violet: "var(--violet)",
         cyan: "var(--cyan)",
         mint: "var(--mint)",
+        "diff-add": "var(--diff-add-tx)",
+        "diff-del": "var(--diff-del-tx)",
       },
       fontFamily: {
         sans: "var(--font-ui)",

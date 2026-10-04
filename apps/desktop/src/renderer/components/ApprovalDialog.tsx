@@ -113,7 +113,15 @@ export default function ApprovalDialog() {
               拒绝
             </button>
           </div>
-          <div className="mt-2 text-center text-2xs text-faint">快捷键 1-4 直选 · Esc 拒绝</div>
+          <div className="mt-2 flex items-center justify-center gap-1 text-2xs text-faint">
+            <span>快捷键</span>
+            <span className="kbd">1</span>
+            <span>–</span>
+            <span className="kbd">4</span>
+            <span>直选 ·</span>
+            <span className="kbd">Esc</span>
+            <span>拒绝</span>
+          </div>
         </div>
       </div>
     </div>
