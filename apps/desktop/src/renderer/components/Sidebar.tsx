@@ -1,9 +1,10 @@
-/**
+﻿/**
  * 左侧栏（03 §6.1，宽 264px；UI 重设计轮精修）：品牌头（✦ RainCode）+ 工作区切换器 + 新建会话
  * 主按钮 + 会话列表（当前项 accent 指示条）+ 底部 Provider 状态与面板入口
  * （模块标识色：记忆=ok / 扩展=info / 设置=accent，03 §3.1）。
  */
 import { useDesktop } from "../store.js";
+import { nextTheme, THEME_LABEL } from "../theme.js";
 
 function shortName(path: string): string {
   const segments = path.split(/[\\/]+/).filter((part) => part !== "");
@@ -36,6 +37,8 @@ export default function Sidebar() {
   const createSession = useDesktop((s) => s.createSession);
   const selectSession = useDesktop((s) => s.selectSession);
   const setView = useDesktop((s) => s.setView);
+  const theme = useDesktop((s) => s.theme);
+  const setTheme = useDesktop((s) => s.setTheme);
 
   const activeProvider = providers.find((provider) => provider.id === activeProviderId) ?? null;
 
@@ -45,6 +48,15 @@ export default function Sidebar() {
         <div className="flex items-baseline gap-1.5">
           <span className="text-sm text-accent">✦</span>
           <span className="text-sm font-semibold text-hi">RainCode</span>
+          {/* 主题切换（03 §3.2：深色 → 浅色 → 跟随系统循环） */}
+          <button
+            type="button"
+            className="ml-auto rounded-sm px-1.5 py-0.5 text-2xs text-low transition-colors duration-fast hover:bg-hover hover:text-hi"
+            onClick={() => setTheme(nextTheme(theme))}
+            title="切换主题（深色 → 浅色 → 跟随系统）"
+          >
+            ◐ {THEME_LABEL[theme]}
+          </button>
         </div>
       </div>
       <button
@@ -60,7 +72,7 @@ export default function Sidebar() {
         <button
           type="button"
           onClick={() => void createSession()}
-          className="h-8 w-full rounded-md bg-accent text-2xs text-void transition-colors duration-fast hover:bg-accent-hover"
+          className="h-8 w-full rounded-md bg-accent text-2xs text-on-accent transition-colors duration-fast hover:bg-accent-hover"
         >
           + 新建会话
         </button>

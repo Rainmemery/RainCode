@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 记忆管理器（03-ui-design §6.3 稿件 03 / MR-4）：三栏——
  * 左：记忆源（MEMORY.md 卡片 + kind 分桶计数，点击即过滤）；
  * 中：MEMORY.md 预览（只读；文件真源 `.raincode/MEMORY.md`，编辑经 Agent 专用章节走会话）；
@@ -231,7 +231,7 @@ export default function MemoryManager() {
                         type="button"
                         disabled={busyId === row.id}
                         onClick={() => void handleResolve(row.id, "confirm", promoteSection[row.id])}
-                        className="h-6 rounded bg-accent px-2 text-2xs text-void hover:bg-accent-hover disabled:opacity-50"
+                        className="h-6 rounded bg-accent px-2 text-2xs text-on-accent hover:bg-accent-hover disabled:opacity-50"
                       >
                         确认合入
                       </button>

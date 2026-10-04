@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 记忆管理器（03-ui-design §6.3 / MR-4；T4.5 Web 端对齐桌面端，按端最小实现）：
  * 左：记忆源（MEMORY.md 卡片 + kind 分桶计数，点击即过滤）；
  * 中：MEMORY.md 预览（只读；文件真源 `.raincode/MEMORY.md`，Agent 专用章节经会话增量更新）；
@@ -228,7 +228,7 @@ export function MemoryManager(): JSX.Element {
                         type="button"
                         disabled={busyId === row.id}
                         onClick={() => void handleResolve(row.id, "confirm", promoteSection[row.id])}
-                        className="h-6 rounded-md bg-accent px-2 text-2xs text-void transition-colors duration-fast hover:bg-accent-hover disabled:opacity-50"
+                        className="h-6 rounded-md bg-accent px-2 text-2xs text-on-accent transition-colors duration-fast hover:bg-accent-hover disabled:opacity-50"
                       >
                         确认合入
                       </button>

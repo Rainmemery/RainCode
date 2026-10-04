@@ -1,10 +1,11 @@
-/**
+﻿/**
  * 侧栏（03 §6.2 Web 适配；UI 重设计轮对齐赤陶磷光 v2）：品牌头（✦ RainCode）+ 连接状态徽章
  * + 工作区输入 + 新建会话主按钮 + 会话列表（当前项 accent 指示条）+ 用量统计行 + 管理面板入口
  * （模块标识色：记忆=ok / 扩展=info / 设置=accent）。T4.5 对齐桌面端 UI-4。
  */
 import { useState } from "react";
 import { useWeb } from "../state.js";
+import { nextTheme, THEME_LABEL } from "../theme.js";
 
 const CONNECTION_LABEL: Record<string, { text: string; className: string; dot: string }> = {
   connecting: { text: "连接中…", className: "bg-warn/10 text-warn border border-warn/40", dot: "dot dot-warn" },
@@ -35,8 +36,10 @@ export function Sidebar(): JSX.Element {
   const workspace = useWeb((s) => s.workspace);
   const view = useWeb((s) => s.view);
   const usage = useWeb((s) => s.usage);
+  const theme = useWeb((s) => s.theme);
   const setWorkspace = useWeb((s) => s.setWorkspace);
   const setView = useWeb((s) => s.setView);
+  const setTheme = useWeb((s) => s.setTheme);
   const selectSession = useWeb((s) => s.selectSession);
   const createSession = useWeb((s) => s.createSession);
   const [workspaceDraft, setWorkspaceDraft] = useState(workspace ?? "");
@@ -45,12 +48,19 @@ export function Sidebar(): JSX.Element {
 
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r border-border-base bg-panel">
-      {/* 品牌头 + 连接状态 */}
+      {/* 品牌头 + 连接状态 + 主题切换（03 §3.2：深色 → 浅色 → 跟随系统循环） */}
       <div className="border-b border-border-faint px-4 py-3">
         <div className="flex items-baseline gap-1.5">
           <span className="text-sm text-accent">✦</span>
           <span className="text-sm font-semibold text-hi">RainCode</span>
           <span className="text-2xs text-faint">Web 工作台</span>
+          <button
+            className="ml-auto rounded-sm px-1.5 py-0.5 text-2xs text-low transition-colors duration-fast hover:bg-hover hover:text-hi"
+            onClick={() => setTheme(nextTheme(theme))}
+            title="切换主题（深色 → 浅色 → 跟随系统）"
+          >
+            ◐ {THEME_LABEL[theme]}
+          </button>
         </div>
         <span className={`mt-2 inline-flex items-center gap-1.5 rounded-sm px-2 py-0.5 text-2xs ${badge.className}`}>
           <span className={badge.dot} />
@@ -68,7 +78,7 @@ export function Sidebar(): JSX.Element {
             onChange={(e) => setWorkspaceDraft(e.target.value)}
           />
           <button
-            className="h-7 rounded-md bg-accent px-2.5 text-2xs text-void transition-colors duration-fast hover:bg-accent-hover"
+            className="h-7 rounded-md bg-accent px-2.5 text-2xs text-on-accent transition-colors duration-fast hover:bg-accent-hover"
             onClick={() => setWorkspace(workspaceDraft)}
           >
             设定
@@ -78,7 +88,7 @@ export function Sidebar(): JSX.Element {
       </div>
       <div className="px-3 py-2.5">
         <button
-          className="h-8 w-full rounded-md bg-accent text-2xs text-void transition-colors duration-fast hover:bg-accent-hover"
+          className="h-8 w-full rounded-md bg-accent text-2xs text-on-accent transition-colors duration-fast hover:bg-accent-hover"
           onClick={() => void createSession()}
         >
           + 新会话

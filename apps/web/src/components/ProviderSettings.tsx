@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Provider 设置（AC-10/AC-11；UI 重设计轮对齐赤陶磷光 v2）：Provider 卡片列表（活跃项
  * accent 边框 + 活跃徽章、模型 info 徽标）+ 添加表单。apiKey 经 RPC 内存传递，不落盘不落日志。
  */
@@ -89,7 +89,7 @@ export function ProviderSettings(): JSX.Element {
             onChange={(e) => setApiKey(e.target.value)}
           />
           <button
-            className="col-span-2 h-8 rounded-md bg-accent px-3 text-2xs text-void transition-colors duration-fast hover:bg-accent-hover"
+            className="col-span-2 h-8 rounded-md bg-accent px-3 text-2xs text-on-accent transition-colors duration-fast hover:bg-accent-hover"
             onClick={() => {
               if (name.length === 0 || baseURL.length === 0 || model.length === 0) return;
               void addProvider({

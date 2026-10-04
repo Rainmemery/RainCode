@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 设置页 · Provider 与模型（03 §6.2）：Provider 卡片列表（活跃项 accent 边框 + 徽章、
  * 非活跃项「切换」）+ 添加 Provider 表单（成功后清空，错误就地呈现）。
  */
@@ -166,7 +166,7 @@ export default function ProviderSettings() {
             <button
               type="submit"
               disabled={submitting}
-              className="mt-3 h-8 rounded-md bg-accent px-4 text-2xs text-void hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+              className="mt-3 h-8 rounded-md bg-accent px-4 text-2xs text-on-accent hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
             >
               添加 Provider
             </button>

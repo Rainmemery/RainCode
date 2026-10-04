@@ -11,6 +11,8 @@ import { createReconnectingRpcClient, RpcCallError } from "@raincode/rpc/web";
 import type { ReconnectingRpcClient } from "@raincode/rpc/web";
 import { applySessionEvent, initialWebState, rebuildItemsFromHistory } from "./session-view.js";
 import type { SessionView, WebState } from "./session-view.js";
+import { applyTheme, loadThemePref, saveThemePref } from "./theme.js";
+import type { ThemePref } from "./theme.js";
 
 interface SnapshotPayload {
   lastSeq: number;
@@ -44,6 +46,8 @@ interface WebStore extends WebState {
   refreshUsage(): Promise<void>;
   /** 斜杠命令调用（skills.invoke，展开在 server 侧；与 CLI/桌面端同语义）。 */
   invokeSkill(name: string, args?: string): Promise<void>;
+  /** 主题偏好切换（03 §3.2）：持久化 + 立即落 <html data-theme>。 */
+  setTheme(pref: ThemePref): void;
   dismissError(): void;
 }
 
@@ -77,6 +81,12 @@ function rpc(): ReconnectingRpcClient {
 export const useWeb = create<WebStore>((set, get) => {
   function setState(patch: Partial<WebState>): void {
     set(patch);
+  }
+
+  function setTheme(pref: ThemePref): void {
+    saveThemePref(localStorage, pref);
+    applyTheme(pref);
+    setState({ theme: pref });
   }
 
   async function call<T>(method: string, params?: unknown): Promise<T> {
@@ -133,7 +143,7 @@ export const useWeb = create<WebStore>((set, get) => {
   }
 
   return {
-    ...initialWebState(),
+    ...initialWebState(loadThemePref(localStorage)),
 
     async bootstrap(): Promise<void> {
       for (const name of [
@@ -339,5 +349,7 @@ export const useWeb = create<WebStore>((set, get) => {
     dismissError(): void {
       setState({ error: null });
     },
+
+    setTheme,
   };
 });

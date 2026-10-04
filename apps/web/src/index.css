@@ -12,6 +12,7 @@
  * ============================================================ */
 
 :root {
+  color-scheme: dark;
   /* 表面与结构 */
   --bg-void: #0a0e13;
   --bg-base: #0d1219;
@@ -47,6 +48,13 @@
   --diff-add-tx: #6fd79a;
   --diff-del-bg: rgba(228, 101, 94, 0.12);
   --diff-del-tx: #f08a84;
+  /* 语义别名（浅色主题落地轮 token 化：此前散落组件/CSS 的硬编码值收敛到此处） */
+  --on-accent: #0a0e13; /* accent 表面上的文字（主按钮文字，深色主题即 --bg-void 同值） */
+  --overlay: rgba(6, 9, 14, 0.62); /* 审批弹窗遮罩（03 §6.0） */
+  --selection-bg: rgba(224, 120, 79, 0.35);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 4px 16px rgba(0, 0, 0, 0.45);
+  --shadow-3: 0 12px 40px rgba(0, 0, 0, 0.55);
   /* 动效（03 §3.5） */
   --t-fast: 120ms;
   --t-med: 200ms;
@@ -55,6 +63,58 @@
   /* 字体 */
   --font-ui: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
   --font-mono: "Cascadia Code", "Cascadia Mono", Consolas, "Microsoft YaHei UI", monospace;
+}
+
+/* ============================================================
+ * 浅色主题（03 §3.2 落地）：同一套语义 token 重映射，组件零色值改动。
+ * 规范给出关键映射（bg/border/text/accent/状态色），其余按同纪律派生：
+ * 冷灰白阶梯 + 状态色整体加深 + 阴影/遮罩大幅收敛（ZCode 双主题纪律）。
+ * ============================================================ */
+[data-theme="light"] {
+  color-scheme: light;
+  /* 表面与结构：冷灰白阶梯（panel/card 提亮为白，raised 承载输入与代码块） */
+  --bg-void: #e4e7ec;
+  --bg-base: #f4f5f7;
+  --bg-panel: #ffffff;
+  --bg-card: #ffffff;
+  --bg-raised: #f0f2f5;
+  --bg-hover: #eceef2;
+  --bg-selected: #e0e6ee;
+  --bg-popover: #ffffff;
+  /* 边框 */
+  --border-faint: #eaedf1;
+  --border: #dce0e6;
+  --border-strong: #c3cad5;
+  /* 文本反转 */
+  --text-hi: #1a2129;
+  --text-mid: #4a5768;
+  --text-low: #8291a3;
+  --text-faint: #a9b4c2;
+  /* 强调与状态：赤陶橙加深（≥4.5:1），状态色整体加深 */
+  --accent: #c05b33;
+  --accent-hover: #cf6c43;
+  --accent-dim: #a94f2c;
+  --accent-bg: rgba(192, 91, 51, 0.1);
+  --ok: #2e9e63;
+  --warn: #b07f24;
+  --danger: #c74840;
+  --info: #2f7cd6;
+  --violet: #7c5cd6;
+  --cyan: #1795a0;
+  --mint: #239970;
+  /* Diff 语义色：浅底上加深保证可读 */
+  --diff-add-bg: rgba(46, 158, 99, 0.12);
+  --diff-add-tx: #1e7a4b;
+  --diff-del-bg: rgba(199, 72, 64, 0.1);
+  --diff-del-tx: #a83b34;
+  /* 语义别名 */
+  --on-accent: #ffffff;
+  --overlay: rgba(15, 23, 42, 0.45);
+  --selection-bg: rgba(192, 91, 51, 0.22);
+  /* 阴影收敛：浅色下用更低的浓度做层级 */
+  --shadow-1: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-2: 0 4px 16px rgba(15, 23, 42, 0.1);
+  --shadow-3: 0 12px 40px rgba(15, 23, 42, 0.16);
 }
 
 html,
@@ -75,7 +135,7 @@ body {
 }
 
 ::selection {
-  background: rgba(224, 120, 79, 0.35);
+  background: var(--selection-bg);
   color: var(--text-hi);
 }
 
@@ -223,6 +283,11 @@ pre,
     0 100%,
     100% 100%,
     100% 100%;
+}
+
+/* 审批弹窗遮罩（03 §6.0）：token 化以随主题重映射 */
+.overlay-mask {
+  background: var(--overlay);
 }
 
 /* kbd 快捷键芯片（03 §6.5 v1.2）：等宽小字 + 下边加重，用于快捷键提示行 */

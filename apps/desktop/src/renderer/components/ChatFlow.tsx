@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 中部会话流（03 §6.1）：ChatItem → 消息气泡、ToolItem → 工具卡；流式尾部光标、
  * 空态引导（03 §6.5 页面级空态）、审批中琥珀横条、自动滚动，底部输入区。
  */
@@ -37,7 +37,7 @@ function EmptyState() {
       <button
         type="button"
         onClick={() => void createSession()}
-        className="h-8 rounded-md bg-accent px-4 text-2xs text-void transition-colors duration-fast hover:bg-accent-hover"
+        className="h-8 rounded-md bg-accent px-4 text-2xs text-on-accent transition-colors duration-fast hover:bg-accent-hover"
       >
         新建第一个会话
       </button>

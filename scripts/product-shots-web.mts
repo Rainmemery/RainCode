@@ -261,6 +261,12 @@ async function main(): Promise<number> {
     await cdp.eval<boolean>(scrollTop());
     await sleep(300);
     await shot(cdp, "web-chat");
+    // 浅色主题对照（03 §3.2 落地：token 重映射，组件零改动；截后还原深色继续）
+    await cdp.eval(`document.documentElement.dataset.theme = "light"`);
+    await sleep(250);
+    await shot(cdp, "web-chat-light");
+    await cdp.eval(`document.documentElement.dataset.theme = "dark"`);
+    await sleep(250);
     // 工具卡：展开 read 卡并居中
     await cdp.eval<boolean>(`(() => { const b = [...document.querySelectorAll("button")].find(x => x.textContent.includes("src/store.ts")); if (!b) return false; b.click(); b.closest(".rounded-lg")?.scrollIntoView({ block: "center" }); return true; })()`);
     await sleep(400);

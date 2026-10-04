@@ -9,6 +9,8 @@ import { getBridge } from "./bridge.js";
 import { applySessionEvent, initialDesktopState } from "./session-view.js";
 import { rebuildItemsFromHistory } from "./history-rebuild.js";
 import type { DesktopState, SessionView } from "./session-view.js";
+import { applyTheme, loadThemePref, saveThemePref } from "./theme.js";
+import type { ThemePref } from "./theme.js";
 
 interface SessionListRow {
   id: string;
@@ -41,6 +43,8 @@ interface DesktopStore extends DesktopState {
   invokeSkill(name: string, args?: string): Promise<void>;
   /** 活跃会话用量刷新（session.usage；切会话与 done 后调用，UI-4 用量统计）。 */
   refreshUsage(): Promise<void>;
+  /** 主题偏好切换（03 §3.2）：持久化 + 立即落 <html data-theme>。 */
+  setTheme(pref: ThemePref): void;
   dismissError(): void;
 }
 
@@ -64,6 +68,12 @@ export function rpcCall<T>(method: string, params?: unknown): Promise<T> {
 export const useDesktop = create<DesktopStore>((set, get) => {
   function setState(patch: Partial<DesktopState>): void {
     set(patch);
+  }
+
+  function setTheme(pref: ThemePref): void {
+    saveThemePref(localStorage, pref);
+    applyTheme(pref);
+    setState({ theme: pref });
   }
 
   function onEvent(name: string): void {
@@ -106,7 +116,7 @@ export const useDesktop = create<DesktopStore>((set, get) => {
   }
 
   return {
-    ...initialDesktopState(),
+    ...initialDesktopState(loadThemePref(localStorage)),
 
     async bootstrap(): Promise<void> {
       try {
@@ -289,5 +299,7 @@ export const useDesktop = create<DesktopStore>((set, get) => {
     dismissError(): void {
       setState({ error: null });
     },
+
+    setTheme,
   };
 });

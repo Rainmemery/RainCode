@@ -37,7 +37,7 @@ export function ApprovalDialog(): JSX.Element {
   const risk = pending.metadata.riskLevel ?? "medium";
 
   return (
-    <div className="anim-fade absolute inset-0 z-10 flex items-center justify-center bg-black/60">
+    <div className="overlay-mask anim-fade absolute inset-0 z-10 flex items-center justify-center">
       <div className="corner-ticks anim-rise w-[500px] overflow-hidden rounded-xl border border-border-strong bg-popover shadow-3">
         {/* 顶部色带：等待审批语义（warn） */}
         <div className="flex items-center gap-2 bg-warn/10 px-5 py-2.5">
@@ -61,7 +61,7 @@ export function ApprovalDialog(): JSX.Element {
           </pre>
           <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
             <button
-              className="h-8 rounded-md bg-accent text-2xs text-void transition-colors duration-fast hover:bg-accent-hover"
+              className="h-8 rounded-md bg-accent text-2xs text-on-accent transition-colors duration-fast hover:bg-accent-hover"
               onClick={() => void respondApproval(pending.grantId, "allow", false)}
             >
               1 仅本次允许

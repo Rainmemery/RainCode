@@ -183,6 +183,12 @@ async function main(): Promise<number> {
     await cdp.eval<boolean>(scrollTop());
     await sleep(300);
     await shot(cdp, "desktop-chat");
+    // 浅色主题对照（03 §3.2 落地：token 重映射，组件零改动；截后还原深色继续）
+    await cdp.eval(`document.documentElement.dataset.theme = "light"`);
+    await sleep(250);
+    await shot(cdp, "desktop-chat-light");
+    await cdp.eval(`document.documentElement.dataset.theme = "dark"`);
+    await sleep(250);
 
     // 回合 2：并行只读工具（todo_write 需审批：弹窗出现即「仅本次允许」，非截图素材）
     mock.setScript([toolsRound(), textScript(ANSWER_2)]);

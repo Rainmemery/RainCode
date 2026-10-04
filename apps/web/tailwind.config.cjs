@@ -26,6 +26,7 @@ module.exports = {
         "accent-hover": "var(--accent-hover)",
         "accent-dim": "var(--accent-dim)",
         "accent-bg": "var(--accent-bg)",
+        "on-accent": "var(--on-accent)",
         ok: "var(--ok)",
         warn: "var(--warn)",
         danger: "var(--danger)",
@@ -50,9 +51,9 @@ module.exports = {
         xl: "14px",
       },
       boxShadow: {
-        1: "0 1px 2px rgba(0,0,0,.40)",
-        2: "0 4px 16px rgba(0,0,0,.45)",
-        3: "0 12px 40px rgba(0,0,0,.55)",
+        1: "var(--shadow-1)",
+        2: "var(--shadow-2)",
+        3: "var(--shadow-3)",
       },
       transitionDuration: {
         fast: "120ms",

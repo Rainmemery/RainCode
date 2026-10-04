@@ -14,10 +14,10 @@
 | 项目 | 值 |
 | --- | --- |
 | 当前里程碑 | **M3 全量完成 ✅**（T3.1~T3.9 全绿 + NFR-1~7 全量重测 + 4.2 对比矩阵核对，见 docs/benchmarks/m3-2026-10-02.md）· **M4 全量完成 ✅**（工程加固与遗留收口：07-dev-plan §10，T4.1 CI ✅ · T4.2 竞态修复 ✅ · T4.3 协议目录 ✅ · T4.4 技能模型侧可发现性 ✅ · T4.5 Web 管理面板对齐 ✅ · T4.6 防御式模式文档 ✅ · T4.7 遗留收口批次 A ✅ · T4.8 遗留收口批次 B ✅（环境门控批次：L-02/03/15 执行收口 + L-14 矩阵自动化，L-01/三 Provider 密钥保留口径申报）· T4.9 可视化测试缺陷修复批次 ✅（B1~B13）；验收清单核对见 docs/benchmarks/m4-2026-10-04.md §7）· **M5 进行中 🚧**（扩展机制与上下文治理：07-dev-plan §11，T5.1 hooks v1 ✅ / T5.2 enforcement 上报 / T5.3 记忆与历史检索增强 / T5.4 compact 预剪枝 / T5.5 config dump+事件矩阵 / T5.6 MCP 工具目录化 / T5.7 工程收尾+遗留批次 C；门槛 T5.1~T5.5，23~35 人日；参照 [docs/research/2026-10-04-m5-reference-repos.md]，01-PRD v1.1 已登记） |
-| 已完成任务 | M1 全量 ✅ · M2 全量（T2.1~T2.10）✅ · M3 全量（T3.1~T3.9）✅ · M4 全量 ✅（T4.1~T4.9）· M5 规划轮 ✅ · M5 T5.1 hooks 生命周期 v1 ✅ · UI 重设计轮（双端统一赤陶磷光 v1.1）✅ · UI 重设计二轮（思考块 + 工具卡 v2 生产级深化，03 v1.2）✅ · UI 重构轮（组件化 + 冷重建补全 + 产品截图管线，03 v1.3 / 协议 v1.13）✅ |
+| 已完成任务 | M1 全量 ✅ · M2 全量（T2.1~T2.10）✅ · M3 全量（T3.1~T3.9）✅ · M4 全量 ✅（T4.1~T4.9）· M5 规划轮 ✅ · M5 T5.1 hooks 生命周期 v1 ✅ · UI 重设计轮（双端统一赤陶磷光 v1.1）✅ · UI 重设计二轮（思考块 + 工具卡 v2 生产级深化，03 v1.2）✅ · UI 重构轮（组件化 + 冷重建补全 + 产品截图管线，03 v1.3 / 协议 v1.13）✅ · UI 浅色主题落地轮（§3.2 预留 → 双端实现 + 三态切换，03 v1.4）✅ |
 | 最新提交 | 见 `git log -1` |
 | 工作区状态 | clean |
-| 门禁状态 | typecheck ✅（14 项目）/ oxlint ✅（12 warning 基线）/ architecture:check ✅（13 模块，251 文件 0 违规）/ protocol:check ✅（58 方法 21 事件一致，v1.13 MessageRecord.reasoning 已 gen 同步）/ 单测 278 ✅（UI 重构轮 +8：双端 rebuildItemsFromHistory 3+3 + agent-core round-helpers 2）/ smoke:p0 全回归 ✅（16 子冒烟，新增 smoke:hooks 五验收用例，smoke:web 5/5 含 B3 回归用例 E，smoke:plugin 4 用例含 case D 重扫描）/ smoke:kernel ✅ / 桌面走查 walkthrough-desktop.mts ✅（14 断言，UI 重构轮后复归）/ **dist 安装包冒烟 ✅（T4.7：nsis 产物 + 静默安装 + 同套 14 断言含 mock 会话全链路）** / **Web 真浏览器走查 walkthrough-web.mts ✅（T4.7：19 断言，UI 重构轮后复归；鉴权/会话/审批落盘/宿主重启恢复/多标签扇出与标签冻结补偿）** / **SSH 执行域端到端 smoke:ssh ✅（T4.8：5 断言，真 SSH2 协议 + 真 OpenSSH 客户端）** / **真实 Provider 连通矩阵 smoke:remote ✅（T4.8：矩阵化，2/5 实测 aliyun-qwen + Ollama 本地端点）** / CLI 管道真实 Provider 复测 ✅（B5：预置审批应答即时通过 + 干净退出 exit 0，零 ERR_USE_AFTER_CLOSE） · CI ✅（GitHub Actions windows-latest 六门禁与本地同集） |
+| 门禁状态 | typecheck ✅（14 项目）/ oxlint ✅（12 warning 基线）/ architecture:check ✅（13 模块，255 文件 0 违规）/ protocol:check ✅（58 方法 21 事件一致，v1.13 MessageRecord.reasoning 已 gen 同步）/ 单测 290 ✅（UI 重构轮 +8：双端 rebuildItemsFromHistory 3+3 + agent-core round-helpers 2；浅色主题轮 +12：双端 theme.test.ts 各 6）/ smoke:p0 全回归 ✅（16 子冒烟，新增 smoke:hooks 五验收用例，smoke:web 5/5 含 B3 回归用例 E，smoke:plugin 4 用例含 case D 重扫描）/ smoke:kernel ✅ / 桌面走查 walkthrough-desktop.mts ✅（14 断言，UI 重构轮后复归）/ **dist 安装包冒烟 ✅（T4.7：nsis 产物 + 静默安装 + 同套 14 断言含 mock 会话全链路）** / **Web 真浏览器走查 walkthrough-web.mts ✅（T4.7：19 断言，UI 重构轮后复归；鉴权/会话/审批落盘/宿主重启恢复/多标签扇出与标签冻结补偿）** / **SSH 执行域端到端 smoke:ssh ✅（T4.8：5 断言，真 SSH2 协议 + 真 OpenSSH 客户端）** / **真实 Provider 连通矩阵 smoke:remote ✅（T4.8：矩阵化，2/5 实测 aliyun-qwen + Ollama 本地端点）** / CLI 管道真实 Provider 复测 ✅（B5：预置审批应答即时通过 + 干净退出 exit 0，零 ERR_USE_AFTER_CLOSE） · CI ✅（GitHub Actions windows-latest 六门禁与本地同集） |
 | 快照日期 | 2026-10-04 |
 
 ---
@@ -38,6 +38,10 @@
 ## 3. 已完成任务日志（倒序追加）
 
 > 格式：`[日期] 任务 — 结果`（含关键产出物与提交号）。**新条目插在本节最上方。**
+
+### UI 浅色主题落地轮（用户指定，03-ui-design v1.3 → v1.4）
+
+- [2026-10-04] UI 浅色主题落地轮（「根据其余项目的前端展示与前端设计文档补全 UI 设计」；03-ui-design v1.4 §14）——a) **缺口调研**：03 v1.3 全文核对，§3.2 浅色主题为唯一登记「已设计未实现（v1.1 起 M6+ 候选）」条目；参照 ZCode `packages/ui/src/styles.css` 双主题 token 纪律（语义 token 重映射、组件零色值改动）。b) **浅色主题双端实现**：v1.1 打下的「Tailwind 语义色全映射 CSS 变量」地基使组件零改动——`[data-theme="light"]` 块重映射 token（§3.2 规范关键映射 + 同纪律派生：冷灰白阶梯 / 边框加深 / text-faint / accent 三态 / diff 色浅底加深 / 阴影遮罩收敛；`:root` 补 `color-scheme` 原生控件随主题）。c) **硬编码值 token 化（双端，深色视觉零变更）**：主按钮文字 `text-void`→`text-on-accent`（14 处，`--on-accent` 语义别名——`--bg-void` 浅色下转浅灰不再兼任）、审批遮罩 `bg-black/60`→`.overlay-mask`（`--overlay`，规范 §6.0 原值入 token）、`::selection`→`--selection-bg`、Tailwind `boxShadow`→`--shadow-1/2/3`。d) **三态切换（双端同语义）**：侧栏品牌头「◐」循环 深/浅/跟随系统；`theme.ts` 纯函数面（resolveTheme/nextTheme/存取校验）+ `applyTheme` 落 `<html data-theme>`；localStorage `raincode.theme` 双端同名；跟随系统经 `prefers-color-scheme` 监听实时重映射，main.tsx 渲染前应用防闪色；theme 状态入双端 state（initialState(themePref)）。e) **截图 +2**：shots 脚本各补浅色对照（web-chat-light / desktop-chat-light，导航态切 data-theme 截后还原），README 嵌入（双端 14 张）。f) **测试 +12 共 290**：双端 theme.test.ts 各 6（解析/循环/持久化纯函数面）。g) **门禁**：typecheck 14 项目 / lint 12 warning 基线 / architecture 255 文件 0 违规 / 单测 290 全绿 / 双端构建 + walkthrough-web 19/19 + walkthrough-desktop 14/14（首跑「插件再激活」偶发超时复跑即绿，DOM 契约零破坏）。h) **文档**：03 v1.4（§3.2 实现状态改写 + §9 稿件注记 + §14 变更记录五条 + 头部版本史）、README（产品一览 + 双端 Alpha 功能范围 + 浅色截图 + shots 8/6 张口径）、testing.md（290 + theme 覆盖行）、PROGRESS §1/§3。CLI 端零改动申报：浅色主题不提供 CLI（§3.2 口径，CLI 遵循终端自身配色）。
 
 ### UI 重设计轮（用户指定，03-ui-design v1.0 → v1.1）
 

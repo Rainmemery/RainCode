@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 输入区（03 §6.5 Web 适配；T4.5 斜杠命令面板对齐桌面端 UI-4）：Enter 发送 / Shift+Enter 换行 /
  * IME 组合中不发送 / 流式中发送钮变「停止」；输入以「/」开头时浮出技能面板（skills.list，
  * workspace+global 双层），↑↓ 选择 / Tab 补全 / Enter 执行 / Esc 关闭；发送路径解析
@@ -158,7 +158,7 @@ export function InputArea(): JSX.Element {
           />
           {streaming ? (
             <button
-              className="h-8 shrink-0 rounded-md bg-danger px-3 text-2xs text-void transition-colors duration-fast hover:opacity-90"
+              className="h-8 shrink-0 rounded-md bg-danger px-3 text-2xs text-on-accent transition-colors duration-fast hover:opacity-90"
               onClick={() => void cancel()}
               title="停止生成"
             >
@@ -167,7 +167,7 @@ export function InputArea(): JSX.Element {
             </button>
           ) : (
             <button
-              className="h-8 shrink-0 rounded-md bg-accent px-3 text-2xs text-void transition-colors duration-fast hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+              className="h-8 shrink-0 rounded-md bg-accent px-3 text-2xs text-on-accent transition-colors duration-fast hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
               onClick={submit}
               disabled={activeId === null || draft.trim() === "" || streaming}
             >

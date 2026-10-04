@@ -3,6 +3,7 @@
  * （06 §3.2 事件语义），双端共享同一份事实（03 §7 一致性约束）；纯函数实现。
  * Web 特有：connection 四态由 ReconnectingRpcClient 驱动（connecting/ready/reconnecting/closed）。
  */
+import type { ThemePref } from "./theme.js";
 
 export interface ChatItem {
   kind: "message";
@@ -87,9 +88,11 @@ export interface WebState {
   /** 扩展域全局事件通道：mcp.server_status_changed / plugin.status_changed 到达即自增，
    * 面板监听 tick 重拉全量投影（桌面端 extensionsTick 同口径）。 */
   extTick: number;
+  /** 主题偏好（03 §3.2）：dark / light / system，localStorage 持久化（theme.ts）。 */
+  theme: ThemePref;
 }
 
-export function initialWebState(): WebState {
+export function initialWebState(themePref: ThemePref = "dark"): WebState {
   return {
     connection: "connecting",
     fatal: null,
@@ -106,6 +109,7 @@ export function initialWebState(): WebState {
     error: null,
     usage: null,
     extTick: 0,
+    theme: themePref,
   };
 }
 

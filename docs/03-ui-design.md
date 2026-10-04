@@ -1,6 +1,6 @@
 # RainCode UI 设计规范
 
-> 版本 v1.2 · 2026-10-04（v1.0 · 2026-09-24 初稿；v1.1 双端统一；v1.2 变更见文末「12. v1.2 变更记录」）
+> 版本 v1.4 · 2026-10-04（v1.0 · 2026-09-24 初稿；v1.1 双端统一；v1.2 思考块与工具卡深化；v1.3 组件化重构与冷重建；v1.4 变更见文末「14. v1.4 变更记录」）
 > 适用范围：RainCode 个人代码智能助手——Windows 桌面端（Electron + React 18 + Zustand + Tailwind CSS，shadcn/ui 风格组件）、Web 工作台（React 18 + Zustand + Tailwind CSS）与 CLI 端（readline REPL + ANSI）。
 > 配套高保真设计稿见文末「设计稿索引」，四张稿件与本文档 tokens 严格一致。
 
@@ -106,7 +106,7 @@ RainCode 是运行在开发者本机上的个人 AI 编程工作台，功能对�
 | `--ok` / `--warn` / `--danger` / `--info` | `#2E9E63` / `#B07F24` / `#C74840` / `#2F7CD6` | 状态色整体加深 |
 | `--violet` / `--cyan` / `--mint` | `#7C5CD6` / `#1795A0` / `#239970` | 模块色加深 |
 
-浅色主题不提供 CLI（CLI 遵循终端自身配色）；桌面端「跟随系统」选项映射到上述两套。**实现状态（v1.1）**：浅色主题双端均未实现，本节仅为映射规范预留，登记为 M6+ 候选（见 07-dev-plan §11.5）。
+浅色主题不提供 CLI（CLI 遵循终端自身配色）；桌面端与 Web 端均提供「深色 / 浅色 / 跟随系统」三态切换（侧栏品牌头「◐」按钮循环），localStorage 持久化（键 `raincode.theme`），「跟随系统」经 `prefers-color-scheme` 实时重映射。**实现状态（v1.4）**：双端已落地——组件代码零色值改动，仅 `[data-theme="light"]` 块重映射语义 token；规范给出关键映射，其余 token（bg-void/hover/selected/popover、border-faint/strong、text-faint、accent-hover/dim/bg、diff 色、阴影、遮罩、选区色）按同纪律派生（冷灰白阶梯 + 状态色加深 + 阴影/遮罩收敛）；散落组件的硬编码值（`text-void` 主按钮文字 → `--on-accent`、审批遮罩 `bg-black/60` → `--overlay`、选区色 → `--selection-bg`、阴影 → `--shadow-1/2/3`）本轮全部 token 化。产品截图：`picture/web-chat-light.png` / `picture/desktop-chat-light.png`。
 
 ### 3.3 字体
 
@@ -397,7 +397,7 @@ flowchart TD
 | `ui-mockups/03-desktop-memory.html` | 记忆管理器 | MEMORY.md 预览、记忆源列表、条目列表（来源/引用/置顶）、检索高亮 |
 | `ui-mockups/04-cli-tui.html` | CLI TUI 视觉示意 | 模拟终端窗口、消息流与工具行、审批块数字选项交互、子代理进度、状态栏与 context 条 |
 
-稿件为单文件自包含（内联 CSS + 少量原生 JS 的 Tab/折叠/检索演示），浏览器直接打开即可预览，无构建依赖。浅色主题未单独出稿，映射关系见 3.2。
+稿件为单文件自包含（内联 CSS + 少量原生 JS 的 Tab/折叠/检索演示），浏览器直接打开即可预览，无构建依赖。浅色主题未单独出稿（双端已实现，见 3.2 实现状态与 `picture/*-chat-light.png` 产品截图）。
 
 阅读建议：先看 `01` 建立三栏骨架与状态语言的印象，再用 `04` 对照 CLI 的同构语义；`02`/`03` 分别对应配置态与知识态界面。评审时以第 3 节 tokens 为基准核对色值与字号。
 
@@ -448,3 +448,15 @@ flowchart TD
 3. **冷重建补全（截图验收反哺，双端真缺陷）**：产品截图脚本以「回合先跑、页面后开」路径驱动，暴露 `session.resume` 冷重建两处退化——①工具卡参数摘要裸 `JSON.stringify`（活路径已用摘要 v2，恢复后退化 JSON 墙）；②思考块丢失（reasoning 为瞬态 delta 不落盘）。修复：重建逻辑抽纯函数 `rebuildItemsFromHistory`（双端各自实现，单测锁定）统一消费摘要 v2；协议 v1.13 additive `MessageRecord.reasoning`（turn-loop 累积随 assistant 行落盘，中断残留半行同口径）——思考块自此跨宿主重启 / 换端接续保留（06 §7.5 v1.13）。
 4. **产品截图管线（README picture/ 素材）**：新增 `scripts/product-shots-web.mts` / `scripts/product-shots-desktop.mts`（`pnpm shots:web` / `shots:desktop`）——真实入口（`raincode web` 宿主 + 构建产物 electron）+ mock LLM 脚本回放（推理流 / markdown / 并行只读工具 / MCP 审批 / write 审批）+ CDP 语义导航与 `Page.captureScreenshot`，产出 12 张真实渲染截图入库 `picture/` 并嵌入 README（产品一览 / 双端节 / 折叠详情）。截图即验收：web-chat（思考块 + 摘要 v2 + 语言芯片三重确认）/ web-approval（kbd 芯片）/ desktop-tools（read 卡展开 + 耗时）等人工核对通过。
 5. **验收留存**：门禁 typecheck 14 项目 / lint 12 warning 基线 / architecture 251 文件 0 违规 / protocol:check 58 方法 21 事件（v1.13 gen 同步）/ 单测 278（+8：双端 rebuildItemsFromHistory 3+3 + agent-core round-helpers 2）；walkthrough-web 19/19、walkthrough-desktop 14/14。
+
+---
+
+## 14. v1.4 变更记录（2026-10-04 · 浅色主题落地轮：§3.2 预留 → 双端实现）
+
+本轮将自 v1.1 起登记 M6+ 候选的**浅色主题**落地双端（ZCode 双主题 token 纪律参照），深色主题 token 色值零变更：
+
+1. **浅色主题双端实现（§3.2）**：组件代码零色值改动——Tailwind 语义色全部映射 CSS 变量（v1.1 打下的地基），浅色仅经 `[data-theme="light"]` 块重映射 token。规范给出关键映射（bg-base/panel/card/raised、border、text 三档、accent、ok/warn/danger/info、violet/cyan/mint），其余按同纪律派生：冷灰白阶梯（`--bg-hover #ECEEF2` / `--bg-selected #E0E6EE`）、边框两档加深、`--text-faint #A9B4C2`、accent 三态（hover `#CF6C43` / dim `#A94F2C` / bg 10%）、diff 色浅底加深（add-tx `#1E7A4B` / del-tx `#A83B34`）、阴影/遮罩大幅收敛（`--shadow-3` 由 `rgba(0,0,0,.55)` → `rgba(15,23,42,.16)`）。`:root` 补 `color-scheme: dark`（浅色块 `light`）——原生滚动条 / 表单控件随主题。
+2. **硬编码值 token 化（双端，深色视觉零变更）**：主按钮文字 `text-void`（14 处）→ 语义别名 `text-on-accent`（`--on-accent`：深色 `#0A0E13` / 浅色 `#FFFFFF`——`--bg-void` 在浅色下转浅灰，不能再兼任「accent 表面文字」语义）；审批弹窗遮罩 `bg-black/60` → `.overlay-mask`（`--overlay`：深色 `rgba(6,9,14,.62)` 规范原值 / 浅色 `.45`）；`::selection` → `--selection-bg`；Tailwind `boxShadow 1/2/3` 硬编码 → `--shadow-1/2/3` token。
+3. **三态主题切换（双端同语义，各端独立实现不抽公共包）**：侧栏品牌头「◐」按钮循环 深色 → 浅色 → 跟随系统；`theme.ts` 纯函数面（`resolveTheme` / `nextTheme` / 校验与存取）+ DOM 薄封装（`applyTheme` 落 `<html data-theme>`），localStorage 键 `raincode.theme` 双端同名同值；「跟随系统」经 `prefers-color-scheme` 监听实时重映射（main.tsx 渲染前应用防闪色）；偏好持久化、损坏值回退深色（§2.2 深色优先）。Web 端 theme 状态入 `WebState.theme`（`initialWebState(themePref)`），桌面端同构入 `DesktopState.theme`。
+4. **产品截图 +2**：`shots:web` / `shots:desktop` 各补一张浅色主题对照（`web-chat-light.png` / `desktop-chat-light.png`，导航态直接切 `data-theme` 截后还原），README 嵌入；双端 14 张（web 8 + desktop 6）。
+5. **验收留存**：门禁 typecheck 14 项目 / lint 12 warning 基线 0 error / architecture 255 文件 0 违规 / 单测 290（+12：双端 theme.test.ts 各 6——解析 / 循环 / 持久化纯函数面）；walkthrough-web 19/19、walkthrough-desktop 14/14（DOM 契约零破坏，桌面走查首跑「插件再激活」偶发超时复跑即绿）；双端构建通过；浅色截图人工核对（侧栏白底反转 / accent 橙加深对比 / 思考块 violet / 围栏头行 / 表格与工具卡 tint 全组件重映射正常）。

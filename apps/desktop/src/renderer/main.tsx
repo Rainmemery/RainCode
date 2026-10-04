@@ -4,7 +4,14 @@
 import { createRoot } from "react-dom/client";
 import App from "./App.js";
 import { useDesktop } from "./store.js";
+import { applyTheme } from "./theme.js";
 import "./global.css";
+
+// 主题初始化（03 §3.2）：渲染前落 <html data-theme> 防闪色；「跟随系统」下监听系统切换实时重映射
+applyTheme(useDesktop.getState().theme);
+window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
+  applyTheme(useDesktop.getState().theme);
+});
 
 const container = document.getElementById("root");
 if (container === null) throw new Error("#root 容器不存在");

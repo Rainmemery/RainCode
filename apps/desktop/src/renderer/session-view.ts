@@ -3,6 +3,7 @@
  * stream.ts 同源（06 §3.2 事件语义），双端共享同一份事实（03 §7）；纯函数便于单测驱动。
  */
 import type { McpServerStatusEntry, McpServerStatus, PluginStatus, PluginSummary } from "@raincode/shared";
+import type { ThemePref } from "./theme.js";
 
 export interface ChatItem {
   kind: "message";
@@ -89,9 +90,11 @@ export interface DesktopState {
   extensionsTick: number;
   /** 活跃会话用量（session.usage；done 事件后与切会话时刷新，UI-4 用量统计）。 */
   usage: { inputTokens: number; outputTokens: number; turnsCount: number; costEstimateUsd?: number } | null;
+  /** 主题偏好（03 §3.2）：dark / light / system，localStorage 持久化（theme.ts）。 */
+  theme: ThemePref;
 }
 
-export function initialDesktopState(): DesktopState {
+export function initialDesktopState(themePref: ThemePref = "dark"): DesktopState {
   return {
     connection: "connecting",
     runMode: "dev",
@@ -110,6 +113,7 @@ export function initialDesktopState(): DesktopState {
     plugins: [],
     extensionsTick: 0,
     usage: null,
+    theme: themePref,
   };
 }
 

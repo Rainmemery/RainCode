@@ -63,7 +63,7 @@ export default function ApprovalDialog() {
       : JSON.stringify(approval.normalizedInput, null, 2);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+    <div className="overlay-mask anim-fade fixed inset-0 z-50 flex items-center justify-center">
       <div
         ref={dialogRef}
         tabIndex={-1}
@@ -87,7 +87,7 @@ export default function ApprovalDialog() {
             <button
               type="button"
               onClick={() => void respondApproval(approval.grantId, "allow", false)}
-              className="h-8 flex-1 rounded-md bg-accent text-2xs text-void transition-colors duration-fast hover:bg-accent-hover"
+              className="h-8 flex-1 rounded-md bg-accent text-2xs text-on-accent transition-colors duration-fast hover:bg-accent-hover"
             >
               仅本次允许
             </button>

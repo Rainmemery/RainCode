@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 底部输入区（03 §6.1 第 6 条）：bg-raised 圆角框聚焦转 accent-dim 边框；textarea 自适应
  * 3~8 行，Enter 发送（Shift+Enter 换行，IME 组合中不发送）；流式中发送钮变「停止」；
  * 下方弱化提示行显示当前模型或 Provider 引导。
@@ -168,7 +168,7 @@ export default function InputArea() {
             <button
               type="button"
               onClick={() => void cancel()}
-              className="h-8 shrink-0 rounded-md bg-accent px-3 text-2xs text-void hover:bg-accent-hover"
+              className="h-8 shrink-0 rounded-md bg-accent px-3 text-2xs text-on-accent hover:bg-accent-hover"
               title="停止生成"
             >
               <span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-sm bg-current align-middle" />
@@ -179,7 +179,7 @@ export default function InputArea() {
               type="button"
               onClick={handleSend}
               disabled={!canSend}
-              className="h-8 shrink-0 rounded-md bg-accent px-3 text-2xs text-void hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+              className="h-8 shrink-0 rounded-md bg-accent px-3 text-2xs text-on-accent hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
             >
               发送
             </button>
