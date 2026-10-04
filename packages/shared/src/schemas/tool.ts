@@ -74,6 +74,8 @@ export const TOOL_ERROR_CODES = {
   NO_MATCH: "TOOL_NO_MATCH",
   /** 权限判定 deny（审批拒绝/兜底 deny）。 */
   PERMISSION_DENIED: "TOOL_PERMISSION_DENIED",
+  /** PreToolUse hook 判定 block（T5.1：hook 拦截先于权限判定；reason 随 message 携带）。 */
+  HOOK_DENIED: "TOOL_HOOK_DENIED",
   /** web_fetch 目标命中私网/环回/保留段等 SSRF 黑名单（02 §2.4：直接拒绝并注明原因）。 */
   SSRF_BLOCKED: "TOOL_SSRF_BLOCKED",
   /** IO / 进程等执行层失败（含目标文件不存在）。 */

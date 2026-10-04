@@ -27,7 +27,7 @@
 | [testing.md](testing.md) | 测试说明：单元测试、冒烟脚本、基准测试、门禁体系、运行方法 |
 | [defensive-patterns.md](defensive-patterns.md) | **防御式模式清单**：dsh 六条适配（P-1~P-6）+ RainCode M1~M4 原生沉淀（N-1~N-5）+ 问题记录格式（§0）与提交前自评审速查表 |
 | [legacy-items.md](legacy-items.md) | **遗留项唯一台账**：处置口径（M4 收口 / 环境门控 / 保留申报）、21 项登记、收口路径 |
-| [generated/protocol-catalog.md](generated/protocol-catalog.md) | 生成式协议目录（勿手改）：55 方法 / 19 事件 / 错误码族的 schema 机械投影，`pnpm protocol:gen` 再生成、`pnpm protocol:check` 防漂移（CI 门禁 6） |
+| [generated/protocol-catalog.md](generated/protocol-catalog.md) | 生成式协议目录（勿手改）：58 方法 / 21 事件 / 错误码族的 schema 机械投影（v1.12 hooks 域），`pnpm protocol:gen` 再生成、`pnpm protocol:check` 防漂移（CI 门禁 6） |
 | [research/2026-10-03-deepseek-harness.md](research/2026-10-03-deepseek-harness.md) | deepseek-harness 调研报告：项目定位/架构、与 RainCode 能力矩阵对照、设计思想与工程实践借鉴决策（M4 规划输入） |
 | [research/2026-10-04-m5-reference-repos.md](research/2026-10-04-m5-reference-repos.md) | M5 参照系三仓调研（MiMo-Code / deepseek-harness 二轮 / ZCode）：三仓概览对照、七条共性定论（embeddings 三仓均无 / hooks 主菜 / 预剪枝互证等）、逐仓机制精华带证据路径、M5 采纳决策与明确不做、M6+ 候选沉淀、避坑清单（M5 规划输入） |
 | [benchmarks/](benchmarks/) | 各里程碑 NFR 基准留存报告：[m1-2026-09-28](benchmarks/m1-2026-09-28.md)（M1：NFR-1/2/3/5/7 首测）· [m2-2026-09-29](benchmarks/m2-2026-09-29.md)（M2：+NFR-4 桌面内存 / NFR-6 压缩非阻塞 / M1 指标复跑对比）· [m3-2026-10-02](benchmarks/m3-2026-10-02.md)（M3：NFR-1~7 全量重测 + 4.2 矩阵逐项核对 + 桌面 GUI 走查自动化）· [m4-2026-10-04](benchmarks/m4-2026-10-04.md)（M4：T4.8 环境门控批次执行留存——Provider 矩阵 / 真实仓库 CVE 修复样例 / 真实 MCP 任务 / SSH 真协议端到端 + NFR 抽查 + M4 验收清单核对） |

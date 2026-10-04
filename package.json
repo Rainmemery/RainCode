@@ -34,6 +34,7 @@
     "smoke:kernel": "tsx scripts/smoke-kernel.mts",
     "smoke:skills": "tsx scripts/smoke-skills.mts",
     "smoke:stdio": "tsx scripts/smoke-stdio.mts",
+    "smoke:hooks": "tsx scripts/smoke-hooks.mts",
     "smoke:remote": "tsx scripts/smoke-remote.mts",
     "smoke:ssh": "tsx scripts/smoke-ssh.mts",
     "smoke:web": "tsx scripts/smoke-web.mts",

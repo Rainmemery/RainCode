@@ -8,6 +8,7 @@
 export * from "./schemas/common.js";
 export * from "./schemas/config.js";
 export * from "./schemas/events-turn.js";
+export * from "./schemas/hook.js";
 export * from "./schemas/mcp.js";
 export * from "./schemas/memory.js";
 export * from "./schemas/plugin.js";
@@ -179,6 +180,18 @@ import {
   skillsListParamsSchema,
   skillsListResultSchema,
 } from "./schemas/skill.js";
+import {
+  buildHookCompletedEvent,
+  buildHookStartedEvent,
+  hookCompletedEventPayloadSchema,
+  hookStartedEventPayloadSchema,
+  hooksListParamsSchema,
+  hooksListResultSchema,
+  hooksTrustGrantParamsSchema,
+  hooksTrustGrantResultSchema,
+  hooksTrustRevokeParamsSchema,
+  hooksTrustRevokeResultSchema,
+} from "./schemas/hook.js";
 
 /** 方法表条目：入参 / 出参 schema 对（server 方法表的数据源，04 §4.1）。 */
 export interface MethodSchemas {
@@ -312,6 +325,10 @@ export const METHOD_SCHEMAS: Readonly<Record<string, MethodSchemas>> = {
   // T3.4 skills 域（06 §2.9）：清单 + 斜杠命令展开受理（未装配不暴露 handler，调用期 method not found）
   "skills.list": { request: skillsListParamsSchema, response: skillsListResultSchema },
   "skills.invoke": { request: skillsInvokeParamsSchema, response: skillsInvokeResultSchema },
+  // T5.1 hooks 域（06 §2.12 v1.12）：清单（双源投影+授信状态）+ project 源 workspace trust 授信/撤销
+  "hooks.list": { request: hooksListParamsSchema, response: hooksListResultSchema },
+  "hooks.trust.grant": { request: hooksTrustGrantParamsSchema, response: hooksTrustGrantResultSchema },
+  "hooks.trust.revoke": { request: hooksTrustRevokeParamsSchema, response: hooksTrustRevokeResultSchema },
 };
 
 /**
@@ -338,6 +355,9 @@ export const EVENT_SCHEMAS: Readonly<Record<string, ZodTypeAny>> = {
   "subagent.spawned": subagentSpawnedEventPayloadSchema,
   "subagent.progress": subagentProgressEventPayloadSchema,
   "subagent.completed": subagentCompletedEventPayloadSchema,
+  // T5.1 hooks 执行投影（06 §3 v1.12）；hook.invoked / hook.result 为 log-only 审计对，不进本表
+  "hook.started": hookStartedEventPayloadSchema,
+  "hook.completed": hookCompletedEventPayloadSchema,
 };
 
 export { buildPermissionRequestedEvent, buildPermissionResolvedEvent };
@@ -345,3 +365,4 @@ export { buildCompactStartedEvent, buildCompactCompletedEvent };
 export { buildMcpServerStatusChangedEvent };
 export { buildPluginStatusChangedEvent };
 export { buildSubagentSpawnedEvent, buildSubagentProgressEvent, buildSubagentCompletedEvent };
+export { buildHookStartedEvent, buildHookCompletedEvent };

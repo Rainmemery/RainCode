@@ -8,18 +8,20 @@
 import { LlmAbortedError, LlmError, type LlmStreamEvent } from "@raincode/llm";
 import { ulid, type CheckpointState } from "@raincode/storage";
 import type { CollaborationMode, MessageRecord, TokenUsage } from "@raincode/shared";
-import type { BackgroundTaskRegistry } from "@raincode/tools";
-import { estimateContextTokens, createCompactionService, type CompactionOptions, type CompactionService, type CompactionTicket } from "../compact/service.js";
+import { estimateContextTokens, createCompactionService, type CompactionService, type CompactionTicket } from "../compact/service.js";
+import { HookDispatcher } from "../hooks/dispatcher.js";
 import { CommandInbox } from "../inbox/command-inbox.js";
-import type { LlmPort, SessionEventPublisher, StoragePort, ToolPhaseDeps, TurnAdmission, TurnInput, TurnOutcome } from "../ports.js";
+import type { TurnAdmission, TurnInput, TurnOutcome } from "../ports.js";
 import { assembleChatMessages } from "./context.js";
 import { DeltaBatcher } from "./delta-batcher.js";
 import { LoopEvents } from "./loop-events.js";
+import type { SessionTurnLoopOptions } from "./loop-options.js";
 import { transitionPhase, type TurnPhase, type TurnTrigger } from "./phase.js";
 import { buildAssistantRecord, errorMessage, invalidInputStats, mergeUsage, toLlmFunctionTools } from "./round-helpers.js";
 import { TurnSettler } from "./settle.js";
 import { ToolPhaseRunner, type PlannedToolCall } from "./tool-phase.js";
 export type { TurnAdmission, TurnInput, TurnOutcome } from "../ports.js";
+export type { SessionTurnLoopOptions } from "./loop-options.js";
 
 const DEFAULT_DELTA_FLUSH_MS = 50; // message.delta 批量节流窗口（06 §3.4：≤50ms）
 const DEFAULT_MAX_ROUNDS = 32; // turn 内模型↔工具往返轮次上限（02 §1.2.1）
@@ -30,38 +32,6 @@ interface InboxEntry {
   turnId: string;
   input: TurnInput;
   resolve: (outcome: TurnOutcome) => void;
-}
-export interface SessionTurnLoopOptions {
-  sessionId: string;
-  /** 协作模式（checkpoint state 透传；权限判定链属后续波次）。 */
-  mode: "normal" | "plan" | "auto-accept";
-  /** null = 未配置 Provider（turn 以 LLM_NOT_CONFIGURED 失败收束）。 */
-  llm: LlmPort | null;
-  storage: StoragePort;
-  publish: SessionEventPublisher;
-  systemPrompt?: string;
-  /** 逐 turn 系统提示提供者（T4.4：技能目录 digest 热变更重发布；优先于静态 systemPrompt）。 */
-  systemPromptProvider?: () => Promise<string | undefined>;
-  /** resume 场景的既有历史（内存态重建，server 从 JSONL 重放取得）。 */
-  initialHistory?: MessageRecord[];
-  /** resume 场景的 rpc 事件 seq 续起点（best-effort，见 server 侧注释）。 */
-  initialEventSeq?: number;
-  /** resume 场景的压缩代次起点（文件内最大 epoch；auto-compact epoch 单调合并基准）。 */
-  initialEpoch?: number;
-  deltaFlushMs?: number;
-  /** 诊断出口（server 注入 stderr；默认 console.error）。 */
-  onDiagnostic?: (message: string, err?: unknown) => void;
-  /** 工具系统（本波注入；缺省保持 walking-skeleton 行为：模型发工具调用即失败收束）。 */
-  tools?: ToolPhaseDeps & { background: BackgroundTaskRegistry };
-  /** 工具执行 ctx 基准（workspace 越界校验 + bash cwd；缺省 process.cwd()）。 */
-  workspaceRoot?: string;
-  /** workspaceHash（权限判定链第 4 级 project 规则的判定域；缺省空串=无 project 规则域）。 */
-  workspaceId?: string;
-  /** turn 内模型轮次上限（02 §1.2.1：默认 32）。 */
-  maxRoundsPerTurn?: number;
-  /** auto-compact 选项（02 §1.2.5；缺省 = 不启用压缩）。 */
-  compaction?: CompactionOptions;
-  compactionOnBeforeReplace?: (prefix: MessageRecord[]) => Promise<void>; // 02 §7.2 compact 记忆抽取钩子（透传 CompactionDeps.onBeforeReplace）
 }
 
 /** 模型 tool_call 完成形态（@raincode/llm tool_calls.completed 事件的 calls 元素）。 */
@@ -92,6 +62,8 @@ export class SessionTurnLoop {
   private compactionEpoch: number;
   /** 最近一轮真实 promptTokens（usage 事件回传；压缩估算优先数据源）。 */
   private lastPromptTokens = 0;
+  /** hooks 生命周期 dispatch 单点（T5.1：事件投影 + 审计对 + provenance 上下文缓冲）。 */
+  private readonly hooks: HookDispatcher;
 
   constructor(private readonly options: SessionTurnLoopOptions) {
     this.mode = options.mode;
@@ -102,6 +74,13 @@ export class SessionTurnLoop {
         ...(options.onDiagnostic !== undefined && { onDiagnostic: options.onDiagnostic }) },
       options.initialEventSeq ?? 0,
     );
+    this.hooks = new HookDispatcher({
+      port: options.hooks ?? null,
+      sessionId: options.sessionId,
+      emitPersisted: (name, build) => this.events.emitPersisted(name, build),
+      emitAudit: (name, build) => this.events.emitAudit(name, build),
+      ...(options.onDiagnostic !== undefined && { onDiagnostic: options.onDiagnostic }),
+    });
     this.settler = new TurnSettler(
       { phase: () => this._phase,
         toPhase: (from, trigger, turnId) => this.toPhase(from, trigger, turnId),
@@ -245,6 +224,22 @@ export class SessionTurnLoop {
       return this.settler.abnormal(entry.turnId, "LLM_NOT_CONFIGURED", "no LLM client configured for this session");
     }
 
+    // UserPromptSubmit hook（T5.1）：输入落库后、发模型请求前；block → turn failed（HOOK_BLOCKED）
+    const promptHook = await this.hooks.run({
+      event: "UserPromptSubmit",
+      sessionId: this.options.sessionId,
+      turnId: entry.turnId,
+      prompt: entry.input.text,
+      signal: controller.signal,
+    });
+    if (promptHook.blocked) {
+      return this.settler.failed(
+        entry.turnId,
+        "HOOK_BLOCKED",
+        promptHook.reason ?? "prompt blocked by UserPromptSubmit hook",
+      );
+    }
+
     let usageTotal: TokenUsage | undefined;
     let invalidInputCount = 0; // AC-12：非法入参失败跨轮累计（turn 生命周期内；上限 INVALID_INPUT_RETRY_LIMIT）
     const maxRounds = this.options.maxRoundsPerTurn ?? DEFAULT_MAX_ROUNDS;
@@ -292,6 +287,7 @@ export class SessionTurnLoop {
       systemPrompt,
       history: this.history,
       steering: this.steeringBuffer,
+      hookContext: this.hooks.drainContext(), // T5.1：hook additionalContext 注入下一轮（provenance 条目）
     });
     this.steeringBuffer.length = 0;
     if (round === 1) {
@@ -358,6 +354,14 @@ export class SessionTurnLoop {
     this.history.push(record);
 
     if (calls === null || calls.length === 0) {
+      // Stop hook（T5.1）：纯文本收束前触发；v1 无续跑语义（blocked 不改收束），additionalContext 缓冲至下一 turn
+      await this.hooks.run({
+        event: "Stop",
+        sessionId: this.options.sessionId,
+        turnId: entry.turnId,
+        stopHookActive: false,
+        signal: controller.signal,
+      });
       // T7：纯文本 stop 收束（usage 为 turn 级累计）
       const totalUsage = mergeUsage(usageSoFar, roundUsage);
       this.events.emitMessageCompleted(entry.turnId, round, this.assistantText, undefined, roundUsage);
@@ -405,6 +409,7 @@ export class SessionTurnLoop {
         mode: this.mode,
         workspaceId: this.options.workspaceId ?? "",
         background: tools.background,
+        hooks: this.hooks, // T5.1：PreToolUse/PostToolUse 生命周期接线（additionalContext 走 dispatcher 缓冲）
         persistRecord: async (toolRecord) => {
           await this.serialWrite(() =>
             this.options.storage.appendMessage(this.options.sessionId, toolRecord),

@@ -11,8 +11,10 @@
  */
 import { ulid } from "@raincode/storage";
 import { TOOL_ERROR_CODES, buildToolCallCompletedEvent, buildToolCallProgressEvent, buildToolCallStartedEvent, type CollaborationMode, type ToolErrorCode, type ToolMetadata, type ToolResult } from "@raincode/shared";
-import { guardPath, normalizeForGuard, type AskUserRequest, type BackgroundTaskRegistry, type ToolCallRequest, type ToolProgressEvent } from "@raincode/tools";
+import { normalizeForGuard, type AskUserRequest, type BackgroundTaskRegistry, type ToolCallRequest, type ToolProgressEvent } from "@raincode/tools";
+import type { HookDispatcher } from "../hooks/dispatcher.js";
 import type { PermissionEventSink, PermissionPort, PermissionVerdict, ToolPhaseDeps } from "../ports.js";
+import { detectPathEscape, parseLoose, previewOf, unknownToolMetadata } from "./tool-phase-util.js";
 
 export interface PlannedToolCall {
   toolCallId: string;
@@ -31,6 +33,8 @@ export interface ToolPhaseContext {
   workspaceId: string;
   /** bash runInBackground 等后台能力（与 server tool.background.* 方法共享同一单例）。 */
   background: BackgroundTaskRegistry;
+  /** hooks 生命周期 dispatch 单点（T5.1；缺省 = 未装配，PreToolUse/PostToolUse 均跳过）。 */
+  hooks?: HookDispatcher;
   /**
    * 聚合记录持久化钩子（appendMessage + history 推入；turn-loop 单写者链）。
    * 缺省不持久化（测试场景）。
@@ -80,8 +84,6 @@ export interface ToolPhaseOptions {
   progressThrottleMs?: number;
 }
 
-const CONTENT_PREVIEW_MAX_CHARS = 120;
-
 interface ScheduleEntry {
   call: PlannedToolCall;
   toolName: string;
@@ -91,33 +93,6 @@ interface ScheduleEntry {
   blocked?: ToolResult;
   /** 越界预检命中（02 §5.4）：非空时进权限判定携带 pathEscape，获批后精确放行该绝对路径。 */
   pathEscape?: { absolutePath: string };
-}
-
-/** 显式路径工具集合（02 §5.4 预检对象；bash 不做命令内路径解析，cwd 已有校验）。 */
-const PATH_FIELD_TOOLS = new Set(["read", "grep", "glob", "write", "edit"]);
-
-/**
- * 越界路径预检（02 §5.4「命令读写 workspace 外路径 → 权限层 ask」）：
- * 对显式路径工具提取 input.path（grep/glob 缺省 "."，缺省不会越界故仅校验显式提供值），
- * 复用 tools 的 guardPath 判定；越界时返回绝对路径供权限强制 ask 与获批后精确放行。
- */
-function detectPathEscape(
-  toolName: string,
-  input: unknown,
-  workspaceRoot: string,
-): { absolutePath: string } | undefined {
-  if (!PATH_FIELD_TOOLS.has(toolName)) {
-    return undefined;
-  }
-  if (typeof input !== "object" || input === null) {
-    return undefined;
-  }
-  const raw = (input as { path?: unknown }).path;
-  if (typeof raw !== "string" || raw.length === 0) {
-    return undefined;
-  }
-  const verdict = guardPath(workspaceRoot, raw);
-  return verdict.ok ? undefined : { absolutePath: verdict.absolutePath };
 }
 
 export class ToolPhaseRunner {
@@ -181,7 +156,7 @@ export class ToolPhaseRunner {
       );
     });
 
-    // 3) 权限判定（仅 zod 合法的调用；02 §2.4：入参非法不进权限）
+    // 3) PreToolUse hook（T5.1，先于权限判定：hook deny 拦截不进审批闭环）→ 权限判定（仅 zod 合法且未被 hook 拦截的调用）
     //    三态收敛：allow/deny 直接落定；ask → awaitApproval 挂起等待审批闭环（02 §6.2）。
     //    越界预检（02 §5.4）：命中 pathEscape 的调用由 permission 强制 ask，
     //    获批后在执行批次按审批通过的绝对路径精确注入放行钩子。
@@ -190,6 +165,24 @@ export class ToolPhaseRunner {
     for (const entry of entries) {
       if (entry.blocked !== undefined) {
         continue;
+      }
+      if (ctx.hooks !== undefined) {
+        const hookResult = await ctx.hooks.run({
+          event: "PreToolUse",
+          sessionId: this.options.sessionId,
+          turnId: this.options.turnId,
+          toolCallId: entry.call.toolCallId,
+          toolName: entry.toolName,
+          toolInput: entry.input,
+          signal: ctx.signal,
+        });
+        if (hookResult.blocked) {
+          entry.blocked = this.makeBlocked(entry, {
+            code: TOOL_ERROR_CODES.HOOK_DENIED,
+            message: `blocked by PreToolUse hook: ${hookResult.reason ?? "no reason given"}`,
+          });
+          continue;
+        }
       }
       entry.pathEscape = detectPathEscape(entry.toolName, entry.input, ctx.workspaceRoot);
       let verdict: PermissionVerdict;
@@ -335,6 +328,25 @@ export class ToolPhaseRunner {
     for (const record of aggregated.records) {
       await ctx.persistRecord?.(record);
     }
+
+    // 5) PostToolUse hook（T5.1）：结果落库后逐实际执行调用触发；v1 非阻塞（block 不回滚已执行事实），
+    //    additionalContext 经 dispatcher 缓冲注入下一轮。被拒/非法/取消的调用不触发。
+    if (ctx.hooks !== undefined && !cancelled) {
+      for (const entry of entries) {
+        if (entry.blocked !== undefined) continue;
+        const result = settledResults.get(entry.call.toolCallId);
+        if (result === undefined) continue;
+        await ctx.hooks.run({
+          event: "PostToolUse",
+          sessionId: this.options.sessionId,
+          turnId: this.options.turnId,
+          toolCallId: entry.call.toolCallId,
+          toolName: entry.toolName,
+          toolResponse: { content: result.content, isError: result.isError },
+          signal: ctx.signal,
+        });
+      }
+    }
     return aggregated;
   }
 
@@ -469,29 +481,4 @@ export class ToolPhaseRunner {
   private diag(message: string, err?: unknown): void {
     this.options.onDiagnostic?.(message, err);
   }
-}
-
-function parseLoose(argsJSON: string): unknown {
-  try {
-    return JSON.parse(argsJSON);
-  } catch {
-    return argsJSON;
-  }
-}
-
-function unknownToolMetadata(): ToolMetadata {
-  return {
-    readOnly: false,
-    destructive: false,
-    sideEffectScope: "none",
-    riskLevel: "low",
-    needsApproval: false,
-  };
-}
-
-function previewOf(content: string): string {
-  const firstLine = content.split("\n", 1)[0] ?? "";
-  return firstLine.length > CONTENT_PREVIEW_MAX_CHARS
-    ? `${firstLine.slice(0, CONTENT_PREVIEW_MAX_CHARS)}…`
-    : firstLine;
 }

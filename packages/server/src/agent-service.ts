@@ -22,7 +22,7 @@ import type {
 } from "@raincode/shared";
 import { RpcCallError, createServiceBinding, type IMessageTransport, type RpcMethodHandler, type RpcServiceBinding } from "@raincode/rpc";
 import { Storage } from "@raincode/storage";
-import { createBuiltinTools, ToolExecutor, type BackgroundTaskRegistry, type Executor, type ToolRegistry } from "@raincode/tools";
+import { createBuiltinTools, ToolExecutor, type BackgroundTaskRegistry } from "@raincode/tools";
 import { alwaysAllowApprover, alwaysDenyApprover, createMetadataPermissionPort, type AskUserChannelRequest, type CompactionOptions, type LlmPort, type PermissionPort, type SessionEventPublisher, type ToolPhaseDeps, type TurnOutcome } from "@raincode/agent-core";
 import { ConfigDomain } from "./config-domain.js";
 import { ConfigStore } from "./config-store.js";
@@ -43,38 +43,18 @@ import {
   shutdownService,
   type SessionEntry,
 } from "./session-support.js";
-import { PermissionRuntime, type PermissionPolicy, type PermissionRuntimeOptions } from "./permission-runtime.js";
+import { PermissionRuntime } from "./permission-runtime.js";
 import type { McpRuntime } from "./mcp-runtime.js";
 import type { PluginRuntime } from "./plugin-runtime.js";
 import type { SubagentRuntime } from "./subagent-runtime.js";
 import type { SkillRuntime } from "./skill-runtime.js";
+import { HooksRuntime } from "./hooks-runtime.js";
 import { memoryLoopEnhancements, type MemoryRuntime } from "./memory-runtime.js";
 import { buildRuntimeDomains } from "./runtime-domains.js";
 import type { SectionEditHooks } from "@raincode/memory";
 
-/** Provider 运行时配置（apiKey 已由调用方解析为明文注入；绝不落日志）。 */
-export interface ProviderRuntimeConfig {
-  id?: string;
-  name: string;
-  baseURL: string;
-  model: string;
-  apiKey?: string | null;
-  maxContextTokens?: number;
-}
-
-/** 工具系统装配：approval 为 default-allow 策略的测试审批实现（normal 走 PermissionRuntime）。 */
-export interface ToolRuntimeConfig {
-  /** 仅 default-allow 策略生效（normal 策略下忽略，走真实权限链）。 */
-  approval?: "always-allow" | "always-deny";
-  registry?: ToolRegistry;
-  /** 沙箱执行域（M3 T3.1：node.ts 按 config.json sandbox.executor 解析注入；缺省 local）。 */
-  executor?: Executor;
-}
-
-/** 权限域装配（06 §2.2；策略模式：default-allow[仅开发] / normal[默认]）。 */
-export interface PermissionConfig extends PermissionRuntimeOptions {
-  policy: PermissionPolicy;
-}
+export type { PermissionConfig, ProviderRuntimeConfig, ToolRuntimeConfig } from "./service-config.js";
+import type { PermissionConfig, ProviderRuntimeConfig, ToolRuntimeConfig } from "./service-config.js";
 
 export interface AgentServiceOptions {
   storage: Storage;
@@ -98,6 +78,8 @@ export interface AgentServiceOptions {
   memory?: { workspaceRoot?: string; sectionEditHooks?: SectionEditHooks };
   /** skills 域装配（T3.4；缺省 = 不启用。workspace 层技能目录按会话 workspaceRoot 逐会话解析，无装配期参数）。 */
   skills?: Record<string, never>;
+  /** hooks 域装配（T5.1；缺省 = 不启用。user 层 <dataRoot>/hooks.json + project 层 <workspace>/.raincode/hooks.json 双源）。 */
+  hooks?: Record<string, never>;
   /** system.shutdown 的存储关闭回调（node 注入；缺省跳过——传输关闭由持有方承担）。 */
   onShutdown?: () => Promise<void>;
 }
@@ -123,6 +105,8 @@ export class AgentService {
   private readonly memory: MemoryRuntime | null;
   /** skills 域（06 §2.9；缺省未装配）。 */
   private readonly skills: SkillRuntime | null;
+  /** hooks 域（06 §2.12；缺省未装配）。 */
+  private readonly hooks: HooksRuntime | null;
   /** 活跃绑定集（T3.8：Web 多连接宿主逐连接 attach，事件扇出到全部绑定；stdio/in-memory 单连接）。 */
   private readonly bindings = new Set<RpcServiceBinding>();
   private shuttingDown = false;
@@ -193,6 +177,14 @@ export class AgentService {
     this.subagent = domains.subagent;
     this.memory = domains.memory;
     this.skills = domains.skills;
+    // T5.1 hooks 域装配：user/project 双源 hooks.json + trust 授信（settings 表）；port 注入 turn-loop
+    this.hooks = options.hooks !== undefined
+      ? new HooksRuntime({
+          dataRoot: options.storage.dataRoot,
+          storage: options.storage,
+          workspaceRootOf: (sessionId) => this.options.storage.workspaceRootOf(sessionId),
+        })
+      : null;
     // T4.4 skill 工具通道：展开单点 SkillRuntime（skills.invoke 同链路）；skills 域未装配 → 工具 TOOL_UNAVAILABLE
     if (this.skills !== null) {
       this.toolDeps.expandSkill = (request) => this.skills!.expandForModel(request.sessionId, request.name, request.arguments);
@@ -282,6 +274,7 @@ export class AgentService {
       ...(this.memory !== null ? this.memory.methods(register) : {}), // memory 域未装配不暴露（同上）
       ...(this.skills !== null ? this.skills.methods(register) : {}), // skills 域未装配不暴露（同上）
       ...(this.plugins !== null ? this.plugins.methods(register) : {}), // plugins 域未装配不暴露（同上）
+      ...(this.hooks !== null ? this.hooks.methods(register) : {}), // hooks 域未装配不暴露（同上；06 §2.12 hooks 域 3 方法）
       // default-allow 策略未装配 permission 域（requirePermission 在调用期报 PC_GRANT_NOT_FOUND）
       ...(this.permission !== null ? this.permission.methods(register) : {}),
     };
@@ -315,6 +308,7 @@ export class AgentService {
       // T4.4：skills 域装配时注入技能目录逐 turn 重发布的系统提示提供者（热变更 digest 检测）
       ...(this.skills !== null && { systemPromptProvider: this.skills.systemPromptProvider(meta.id, params.workspaceRoot, memoryExtras.systemPrompt) }),
       tools: this.toolDeps, workspaceRoot: params.workspaceRoot, workspaceId: workspace.hash,
+      ...(this.hooks !== null && { hooks: this.hooks.port }), // T5.1：hooks 生命周期接线（四事件 dispatch 单点）
       initialEventSeq: 1,
       ...(this.compaction !== undefined && { compaction: this.compaction }),
     });
@@ -428,6 +422,7 @@ export class AgentService {
       toolDeps: this.toolDeps,
       memory: this.memory,
       skills: this.skills,
+      ...(this.hooks !== null && { hooks: this.hooks.port }), // T5.1：resume 路径 hooks 生命周期接线
       ...(this.options.systemPrompt !== undefined && { systemPrompt: this.options.systemPrompt }),
       ...(this.compaction !== undefined && { compaction: this.compaction }),
       providerId: this.providerId,

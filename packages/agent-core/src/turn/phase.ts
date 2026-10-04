@@ -69,6 +69,8 @@ const TRANSITIONS: Readonly<Record<TurnPhase, Partial<Record<TurnTrigger, TurnPh
   ProcessingInput: {
     "context.assembled": "ModelRequest",
     "turn.cancelled": "TurnComplete",
+    // T5.1：UserPromptSubmit hook block 在模型请求发出前失败收束（settler.failed 经此迁移）
+    "request.failed": "TurnComplete",
   },
   ModelRequest: {
     "stream.opened": "Streaming",

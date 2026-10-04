@@ -5,7 +5,7 @@
 | 文档版本 | v1.2 |
 | 发布日期 | 2026-09-28（v1.1 修订 2026-10-03 · v1.2 增补 2026-10-04） |
 | 文档状态 | 正式定稿（Phase 1 规划阶段收尾交付物）；v1.1 增补 §10 M4 排期（M3 收官后，见 §10.1 背景说明）；v1.2 增补 §11 M5 排期（M4 收官后三仓调研，见 §11.1 背景说明） |
-| 关联文档 | 01-PRD（范围/里程碑/NFR 权威）· 02-module-design（模块详设）· 03-ui-design（双端 UI 规范）· 04-architecture（包划分/进程/RPC/治理）· 05-database（存储设计）· 06-api-spec（协议全集，本计划基线 43 方法 / 17 事件，M3 收官演进至 54 方法 / 19 事件，M4 缺陷修复批次增至 55 方法（v1.11），见 06 §7.5）· [legacy-items](legacy-items.md)（遗留项台账）· [调研：deepseek-harness](research/2026-10-03-deepseek-harness.md) / [调研：M5 三仓参照系](research/2026-10-04-m5-reference-repos.md) |
+| 关联文档 | 01-PRD（范围/里程碑/NFR 权威）· 02-module-design（模块详设）· 03-ui-design（双端 UI 规范）· 04-architecture（包划分/进程/RPC/治理）· 05-database（存储设计）· 06-api-spec（协议全集，本计划基线 43 方法 / 17 事件，M3 收官演进至 54 方法 / 19 事件，M4 缺陷修复批次增至 55 方法（v1.11），M5 T5.1 hooks 域增至 58 方法 / 21 事件（v1.12），见 06 §7.5）· [legacy-items](legacy-items.md)（遗留项台账）· [调研：deepseek-harness](research/2026-10-03-deepseek-harness.md) / [调研：M5 三仓参照系](research/2026-10-04-m5-reference-repos.md) |
 
 > 本文档是 Phase 1（规划）的收尾交付物：将六份设计文档的交付范围收敛为单人可执行的三里程碑开发计划，并给出 Phase 2（开发实施）的启动清单。**里程碑划分、P0/P1/P2 范围、NFR 验收口径均以 01-PRD 为唯一基线**；任务分解的包归属、依赖方向以 02 §0.1 / 04 §2 为准；协议接线范围以 06-api-spec 的 8 域 43 方法 / 17 事件为准（该口径为规划时点基线；M3 全量落地后演进为 54 方法 / 19 事件）。排期以「人日」计，不承诺绝对日期。
 

@@ -4,7 +4,7 @@
 | --- | --- |
 | 文档版本 | v1.0 |
 | 发布日期 | 2026-09-28 |
-| 文档状态 | 正式定稿 |
+| 文档状态 | 正式定稿；v1.12 增补 hooks 域（M5 T5.1，§2.12 / §3.2 D 组 / §7.5） |
 | 协议版本 | protocolVersion `1.0` |
 | 关联文档 | 02-module-design（模块接口语义权威）· 04-architecture（§4 传输无关 RPC 设计权威）· 03-ui-design（事件消费方）· 01-PRD（NFR 性能基线） |
 
@@ -282,7 +282,19 @@ system 域承载握手、版本发现与优雅停机，是唯一与业务无关�
 
 鉴权时序（06 §6.3）：`ws.auth` → `system.ping` → 业务方法；鉴权前一切请求（含 `system.ping`）回 `UNAUTHORIZED`，不泄露版本信息。capability `ws.auth` 经 `system.ping` 探测（§7.2）。
 
-### 2.12 与 02 模块接口的映射与不暴露决策
+### 2.12 hooks 域（hooks 生命周期 v1，M5 T5.1，v1.12）
+
+hooks 配置双源：user = `RAINCODE_HOME/hooks.json`、project = `<workspace>/.raincode/hooks.json`（CC 兼容形态 `{ hooks: { <Event>: [{ matcher?, hooks: [{ type:"command", command, args?, timeoutMs?, async? }] }] } }`，schema 见 shared `hooksFileSchema`）。v1 四事件 `PreToolUse / PostToolUse / UserPromptSubmit / Stop`；command 类型 argv 执行（不经 shell），timeoutMs 缺省 60s，`async: true` 后台运行（结果不回灌仅审计）。输出契约（stdout 单 JSON，strict）：`continue` / `reason` / `decision(approve|block)` / `systemMessage` / `suppressOutput` / `additionalContext` / `hookSpecificOutput.permissionDecision(allow|ask|deny)`；exit code 2 = 显式 block；空 stdout = no-op；非 JSON / schema 不符 / 超时 / 其余非零退出 = failed（告警不阻塞主流程）。
+
+| 方法 | 参数 | 结果 | 错误码 | 说明 |
+| --- | --- | --- | --- | --- |
+| `hooks.list` | `{ sessionId? }` | `{ items: [{ source, path, loaded, error?, events, hookCount, trusted?, trustedDigest? }] }` | `SESSION_NOT_FOUND` | 双源配置清单投影；project 项携带授信状态（user 源为用户自有配置不设门） |
+| `hooks.trust.grant` | `{ sessionId }` | `{ workspaceId, digest, hookCount }` | `SESSION_NOT_FOUND` / `HOOKS_CONFIG_INVALID` | workspace trust 授信：绑定当前 project 配置 digest 写入 settings 表（键 `hooks.trust.<workspaceHash>`）；**授权决定绝不缓存**——每 dispatch 前重读授信记录并比对 digest，文件改动后须重新授信 |
+| `hooks.trust.revoke` | `{ sessionId }` | `{ workspaceId, trusted: false }` | `SESSION_NOT_FOUND` | 删授信键——下一 dispatch 立即未授信（撤销即时生效） |
+
+生命周期接线（agent-core）：UserPromptSubmit 于输入落库后、模型请求前（block → turn failed `HOOK_BLOCKED`）；PreToolUse 于 zod 校验后、权限判定前（block → 工具结果 `TOOL_HOOK_DENIED`，不进审批闭环）；PostToolUse 于结果落库后（v1 非阻塞）；Stop 于纯文本收束前。`additionalContext` 经 provenance 条目（`[hook:<phase> via <hookIds>]`）注入下一轮上下文。PermissionRequest hook / permissionUpdates 动态权限规则留 M6+（07 §11.5）。
+
+### 2.13 与 02 模块接口的映射与不暴露决策
 
 控制面对 02 七大模块对外接口的覆盖逐条核对如下：
 
@@ -305,7 +317,7 @@ system 域承载握手、版本发现与优雅停机，是唯一与业务无关�
 | `ProjectMemoryService.extractFromSession` | （compact 内部自动触发，无独立方法） | 结果经 `memory.entries.list` 查询 |
 | `BashRuleEvaluator`、`ProcessTreeTerminator`、`Executor`（P2 容器扩展点） | **不暴露** | 内核/沙箱内部接口，无端层语义 |
 
-### 2.13 典型交互时序
+### 2.14 典型交互时序
 
 一次「发送 → 审批 → 完成」的完整协议时序（数字为帧到达顺序）：
 
@@ -440,6 +452,15 @@ payload 惯例：所有事件 payload 继承 §3.1 的 `EventBase`；下表只�
 | `mcp.server_status_changed` | `{ serverKey, status: "Disconnected"\|"Connecting"\|"Connected"\|"Reconnecting"\|"Failed", toolCount?, error? }` | 02 §3.2 M1–M8 任一迁移（sessionId 缺省的全局事件） | MCP 面板状态灯；不可用工具标记 |
 | `plugin.status_changed` | `{ name, status: "active"\|"disabled"\|"failed", toolCount?, error? }` | 插件激活/停用/加载失败（v1.8，sessionId 缺省的全局事件） | 插件管理状态灯；不可用工具标记 |
 
+**D. hooks（T5.1，v1.12）**
+
+| 事件名 | payload（EventBase 之外） | 触发时机 | 消费方 |
+| --- | --- | --- | --- |
+| `hook.started` | `{ turnId, invocationId, phase, hookIds, async }` | 一次 hook dispatch 开跑（phase ∈ PreToolUse/PostToolUse/UserPromptSubmit/Stop） | 双端 hook 执行行（running 态） |
+| `hook.completed` | `{ turnId, invocationId, phase, hookIds, outcome: "success"\|"blocked"\|"failed"\|"timed_out"\|"skipped_untrusted", reason?, decision?, contextInjected?, durationMs }` | dispatch 终态（blocked=拦截生效；failed/timed_out=告警不阻塞；skipped_untrusted=project hook 未授信跳过） | 双端 hook 执行行收束 |
+
+> **hook 审计事件对（log-only，不在 EVENT_SCHEMAS）**：`hook.invoked` + `hook.result`（dsh 语义）仅落会话 events.jsonl、不进 rpc 通道——`hook.invoked` 记 dispatch 计划（hooks 明细 + untrustedSkipped + 授信态），`hook.result` 记 per hook 进程事实（exitCode / durationMs / stderr 截断 ≤500 字符 / stdout 头部 ≤2048）。seq 与 rpc 事件同链分配（05 §4.2 单写者链）。
+
 ### 3.3 事件投递语义
 
 | 语义 | 约定 |
@@ -548,6 +569,8 @@ flush 边界保证：`message.completed`、`tool_call.*`、`permission.*`、`tur
 | 7 tool | `TOOL_INPUT_RETRY_EXCEEDED` | 单 turn 内工具参数校验失败次数超限（受限重试上限 3），强制收束 |
 | 9 skills | `SKILL_NOT_FOUND` | 技能名无法解析（未命中 / 名字非法含路径逃逸形态 / 文件读取失败） |
 | 9 skills | `SKILL_INVALID` | 技能文件校验失败（缺 frontmatter / 缺 description / name 非法）；清单路径跳过、调用路径报错 |
+| 7 tool | `TOOL_HOOK_DENIED` | PreToolUse hook 判定 block 的工具结果收敛码（T5.1 数据级；hook 拦截先于权限判定，reason 随 message） |
+| 11 hooks | `HOOKS_CONFIG_INVALID` | hooks.trust.grant 时 project hooks.json 缺失或 schema 校验失败（v1.12） |
 | 10 plugins | `PLUGIN_NOT_FOUND` | plugins.setEnabled 未知插件名（v1.8） |
 | 10 plugins | `PLUGIN_INVALID` | 插件清单/入口/工具描述符非法（正常情况下加载期即拦截为 failed 状态，不达方法面） |
 | 8 system | — | system 域无专属业务码；停机中再收请求返回 `CANCELLED` |
@@ -576,7 +599,7 @@ schema 真源在 `packages/shared`（zod 单一事实源，04 §4.3 / PRD §6.2�
 | `system.ts` | system 域方法 + capabilities 列表 | `systemSchemas` | ~60 行 |
 | `index.ts` | `METHOD_SCHEMAS`（method → {request, response}）与 `EVENT_SCHEMAS`（name → payload）注册表；事件构造函数 re-export | `METHOD_SCHEMAS` `EVENT_SCHEMAS` | ~120 行 |
 
-> **生成式协议目录（T4.3）**：[docs/generated/protocol-catalog.md](generated/protocol-catalog.md) 由 `scripts/gen-protocol-catalog.mts` 从上述注册表与 `*_ERROR_CODES` 常量机械投影生成（55 方法 / 19 事件 / 5 错误码族），`pnpm protocol:gen` 再生成、`pnpm protocol:check` 逐字节防漂移（CI 门禁 6）。职责边界：生成物只承载字段/类型/必填/约束；本文件手写章节承载语义、行为、时序与业务码含义，仍为唯一权威——协议演进时先改 schema 注册表，再 `protocol:gen` 同步生成物，最后核对本文件手写表。
+> **生成式协议目录（T4.3）**：[docs/generated/protocol-catalog.md](generated/protocol-catalog.md) 由 `scripts/gen-protocol-catalog.mts` 从上述注册表与 `*_ERROR_CODES` 常量机械投影生成（58 方法 / 21 事件 / 6 错误码族），`pnpm protocol:gen` 再生成、`pnpm protocol:check` 逐字节防漂移（CI 门禁 6）。职责边界：生成物只承载字段/类型/必填/约束；本文件手写章节承载语义、行为、时序与业务码含义，仍为唯一权威——协议演进时先改 schema 注册表，再 `protocol:gen` 同步生成物，最后核对本文件手写表。
 
 命名与形态规范：
 
@@ -758,12 +781,13 @@ capability 命名约定：`<domain>.<feature>`（小写点分），登记于 `sy
 | 1.9 | 2026-10-02 | T3.8 Web 界面（minor+1，additive）：新增 ws 域 1 方法 `ws.auth`（§2.11）与系统码 `UNAUTHORIZED`（段 0）——websocket 绑定连接级鉴权门（时序 `ws.auth` → `system.ping` → 业务方法，鉴权前一切请求拒绝），capability `ws.auth` 登记；§6.3 由预留差异说明重写为落地定义（心跳/退避重连/seq 缺口→resume 补偿路径/多连接扇出）；帧协议与方法表零改动（传输无关设计最终验证）。stdio / in-memory 绑定不暴露 `ws.auth`（同生共死不设门）。协议规模 54 方法 / 19 事件 |
 | 1.10 | 2026-10-03 | T4.4 技能模型侧可发现性（minor+1，additive）：`SkillSummary` 增 `modelInvocable`（boolean，缺省 true——仅约束模型经 `skill` 工具的调用，斜杠命令不受限）；内置工具清单新增 `skill`（`{ name, arguments? }`，readOnly）——展开复用 skills.invoke 链路（单点不变），模型经系统提示技能目录（逐 turn digest 重发布）自主发现并调用。方法/事件规模不变（54 方法 / 19 事件；生成式协议目录经 `protocol:gen` 同步） |
 | 1.11 | 2026-10-03 | 可视化测试缺陷修复批次（minor+1，additive）：plugins 域新增 `plugins.rescan`（§2.10，运行时重扫描插件目录，免重启装载新拷入插件——双端扩展面板「刷新」语义核销）。协议规模 55 方法 / 19 事件 |
+| 1.12 | 2026-10-04 | M5 T5.1 hooks 生命周期 v1（minor+1，additive）：新增 hooks 域 3 方法 `hooks.list` / `hooks.trust.grant` / `hooks.trust.revoke`（§2.12）与新事件 `hook.started` / `hook.completed`（§3.2 D 组）——hooks.json 双源（user/project，CC 兼容 command 子集）+ project 源 workspace trust 授信（**每 dispatch 前重验**，绑定配置 digest，撤销/改文件立即生效）+ 四生命周期接线（PreToolUse deny 拦截先于权限判定 / additionalContext provenance 注入下一轮 / failed·timed_out 告警不阻塞）+ log-only 审计事件对 `hook.invoked`/`hook.result`（stderr 截断落盘，不进 EVENT_SCHEMAS）；错误码新增段 11 `HOOKS_CONFIG_INVALID` 与数据级 `TOOL_HOOK_DENIED`。PermissionRequest hook / permissionUpdates 动态权限规则留 M6+。协议规模 58 方法 / 21 事件 |
 
 ---
 
 ## 8. 自检清单
 
-- [x] **控制面覆盖 02 模块接口全集**：§2.12 映射表逐条核对七大模块对外接口；`BashRuleEvaluator`/`ProcessTreeTerminator`/`Executor` 等内核内部接口的不暴露决策已注明。
+- [x] **控制面覆盖 02 模块接口全集**：§2.13 映射表逐条核对七大模块对外接口；`BashRuleEvaluator`/`ProcessTreeTerminator`/`Executor` 等内核内部接口的不暴露决策已注明。
 - [x] **数据面覆盖状态机与审批闭环关键节点**：TurnPhase 每次迁移（`turn.phase_changed`）、turn 终态（`done`/`error`）、审批闭环（`permission.requested` → `permission.respond` 单消费 → `permission.resolved`，含超时/离线兜底）、子代理镜像（02 §4.2 映射表同构）。
 - [x] **帧结构与 04 §4.1 一致**：RpcFrame 三种 kind 逐字段一致；唯一细化是 error 增加可选 `details`（兼容扩展，已在 §1.2 声明）。
 - [x] **绑定映射完整**：in-memory / stdio 逐维度对照（§6.2），方法/schema/错误码绑定无关；websocket 绑定差异已落地定义（§6.3，v1.9）；renderer↔main 虚拟 stdio 已说明。

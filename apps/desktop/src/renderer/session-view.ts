@@ -29,7 +29,18 @@ export interface ToolItem {
   truncated?: boolean;
 }
 
-export type StreamItem = ChatItem | ToolItem;
+/** hook 执行行（T5.1：hook.started/hook.completed 投影；invocationId 配对）。 */
+export interface HookItem {
+  kind: "hook";
+  id: string;
+  phase: string;
+  outcome: "running" | "success" | "blocked" | "failed" | "timed_out" | "skipped_untrusted";
+  hookCount: number;
+  durationMs?: number;
+  reason?: string;
+}
+
+export type StreamItem = ChatItem | ToolItem | HookItem;
 
 export interface SessionView {
   sessionId: string;
@@ -271,6 +282,44 @@ export function applySessionEvent(state: DesktopState, name: string, payload: Re
     case "turn.phase_changed": {
       const to = typeof payload["to"] === "string" ? payload["to"] : null;
       return { ...state, turnPhase: to };
+    }
+    case "hook.started": {
+      const invocationId = typeof payload["invocationId"] === "string" ? payload["invocationId"] : null;
+      const phase = typeof payload["phase"] === "string" ? payload["phase"] : "";
+      if (invocationId === null) return state;
+      const item: HookItem = {
+        kind: "hook",
+        id: invocationId,
+        phase,
+        outcome: "running",
+        hookCount: Array.isArray(payload["hookIds"]) ? payload["hookIds"].length : 0,
+      };
+      return patchView(state, sessionId, { items: [...view.items, item] });
+    }
+    case "hook.completed": {
+      const invocationId = typeof payload["invocationId"] === "string" ? payload["invocationId"] : null;
+      const phase = typeof payload["phase"] === "string" ? payload["phase"] : "";
+      if (invocationId === null) return state;
+      const outcomeRaw = typeof payload["outcome"] === "string" ? payload["outcome"] : "success";
+      const settledOutcome = ["success", "blocked", "failed", "timed_out", "skipped_untrusted"] as const;
+      const outcome = (settledOutcome as readonly string[]).includes(outcomeRaw) ? (outcomeRaw as HookItem["outcome"]) : "success";
+      const durationMs = typeof payload["durationMs"] === "number" ? payload["durationMs"] : undefined;
+      const reason = typeof payload["reason"] === "string" ? payload["reason"] : undefined;
+      const fields = {
+        phase,
+        outcome,
+        hookCount: Array.isArray(payload["hookIds"]) ? payload["hookIds"].length : 0,
+        ...(durationMs !== undefined && { durationMs }),
+        ...(reason !== undefined && { reason }),
+      };
+      const idx = view.items.findIndex((item) => item.kind === "hook" && item.id === invocationId);
+      if (idx >= 0) {
+        const items = [...view.items];
+        items[idx] = { ...(items[idx] as HookItem), ...fields };
+        return patchView(state, sessionId, { items });
+      }
+      const item: HookItem = { kind: "hook", id: invocationId, ...fields };
+      return patchView(state, sessionId, { items: [...view.items, item] });
     }
     case "done": {
       const items = view.items.map((item) =>

@@ -10,8 +10,8 @@
 
 ## 概览
 
-- 协议方法 **55**（域 11 个：config / mcp / memory / permission / plugins / session / skills / subagent / system / tool / ws）
-- 数据面事件 **19**
+- 协议方法 **58**（域 12 个：config / hooks / mcp / memory / permission / plugins / session / skills / subagent / system / tool / ws）
+- 数据面事件 **21**
 - 代码侧错误码族 **5**（session / config / mcp / subagent / skills 域为调用点字面量，见 §3 注）
 
 ## 1. 方法表
@@ -93,6 +93,47 @@
 | --- | --- | --- | --- |
 | `config` | `unknown` | 否 |  |
 | `configVersion` | `int` | 是 |  |
+
+### 域 hooks（3 方法）
+
+#### hooks.list
+
+入参：
+| 字段 | 类型 | 必填 | 约束/说明 |
+| --- | --- | --- | --- |
+| `sessionId` | `string` | 否 |  |
+
+出参：
+| 字段 | 类型 | 必填 | 约束/说明 |
+| --- | --- | --- | --- |
+| `items` | `{ source: "user" \| "project", path: string, loaded: boolean, error: string?, events: string[], hookCount: int, trusted: boolean?, trustedDigest: string? }[]` | 是 |  |
+
+#### hooks.trust.grant
+
+入参：
+| 字段 | 类型 | 必填 | 约束/说明 |
+| --- | --- | --- | --- |
+| `sessionId` | `string` | 是 | len≥1 |
+
+出参：
+| 字段 | 类型 | 必填 | 约束/说明 |
+| --- | --- | --- | --- |
+| `workspaceId` | `string` | 是 |  |
+| `digest` | `string` | 是 |  |
+| `hookCount` | `int` | 是 | ≥0 |
+
+#### hooks.trust.revoke
+
+入参：
+| 字段 | 类型 | 必填 | 约束/说明 |
+| --- | --- | --- | --- |
+| `sessionId` | `string` | 是 | len≥1 |
+
+出参：
+| 字段 | 类型 | 必填 | 约束/说明 |
+| --- | --- | --- | --- |
+| `workspaceId` | `string` | 是 |  |
+| `trusted` | `boolean` | 是 |  |
 
 ### 域 mcp（8 方法）
 
@@ -781,7 +822,7 @@
 | --- | --- | --- | --- |
 | `ok` | `true` | 是 |  |
 
-## 2. 事件表（19 事件）
+## 2. 事件表（21 事件）
 
 所有事件 payload 均含信封基字段（06 §3.1 EventBase）：`seq`（会话内单调递增，从 1 起）·
 `sessionId`（全局事件缺省）· `ts`（epoch ms）——下表只列各事件特有字段。
@@ -824,6 +865,30 @@
 | `message` | `string` | 是 |  |
 | `recoverable` | `boolean` | 是 |  |
 | `turnId` | `string` | 否 |  |
+
+#### hook.completed
+
+| 字段 | 类型 | 必填 | 约束/说明 |
+| --- | --- | --- | --- |
+| `turnId` | `string` | 否 |  |
+| `invocationId` | `string` | 是 |  |
+| `phase` | `"PreToolUse" \| "PostToolUse" \| "UserPromptSubmit" \| "Stop"` | 是 |  |
+| `hookIds` | `string[]` | 是 |  |
+| `outcome` | `"success" \| "blocked" \| "failed" \| "timed_out" \| "skipped_untrusted"` | 是 |  |
+| `reason` | `string` | 否 |  |
+| `decision` | `"approve" \| "block"` | 否 |  |
+| `contextInjected` | `boolean` | 否 |  |
+| `durationMs` | `int` | 是 | ≥0 |
+
+#### hook.started
+
+| 字段 | 类型 | 必填 | 约束/说明 |
+| --- | --- | --- | --- |
+| `turnId` | `string` | 否 |  |
+| `invocationId` | `string` | 是 |  |
+| `phase` | `"PreToolUse" \| "PostToolUse" \| "UserPromptSubmit" \| "Stop"` | 是 |  |
+| `hookIds` | `string[]` | 是 |  |
+| `async` | `boolean` | 是 |  |
 
 #### mcp.server_status_changed
 
@@ -992,7 +1057,7 @@
 | `PC_ERROR_CODES` | 段 2 permission | `PC_GRANT_CONSUMED`、`PC_GRANT_NOT_FOUND`、`PC_RULE_INVALID`、`PC_RULE_NOT_FOUND` |
 | `PLUGIN_ERROR_CODES` | 段 10 plugins | `PLUGIN_INVALID`、`PLUGIN_NOT_FOUND` |
 | `SYSTEM_ERROR_CODES` | 段 0 系统 | `CANCELLED`、`INTERNAL`、`INVALID_PARAMS`、`METHOD_NOT_FOUND`、`PARSE_ERROR`、`TIMEOUT`、`TRANSPORT_CLOSED`、`UNAUTHORIZED`、`VERSION_MISMATCH` |
-| `TOOL_ERROR_CODES` | 段 7 tool | `TOOL_AMBIGUOUS_MATCH`、`TOOL_CANCELLED`、`TOOL_EXEC_FAILED`、`TOOL_INPUT_RETRY_EXCEEDED`、`TOOL_INTERNAL`、`TOOL_INVALID_INPUT`、`TOOL_NO_MATCH`、`TOOL_PATH_ESCAPED`、`TOOL_PERMISSION_DENIED`、`TOOL_SSRF_BLOCKED`、`TOOL_TIMEOUT`、`TOOL_UNAVAILABLE`、`TOOL_UNKNOWN` |
+| `TOOL_ERROR_CODES` | 段 7 tool | `TOOL_AMBIGUOUS_MATCH`、`TOOL_CANCELLED`、`TOOL_EXEC_FAILED`、`TOOL_HOOK_DENIED`、`TOOL_INPUT_RETRY_EXCEEDED`、`TOOL_INTERNAL`、`TOOL_INVALID_INPUT`、`TOOL_NO_MATCH`、`TOOL_PATH_ESCAPED`、`TOOL_PERMISSION_DENIED`、`TOOL_SSRF_BLOCKED`、`TOOL_TIMEOUT`、`TOOL_UNAVAILABLE`、`TOOL_UNKNOWN` |
 
 > session / config / mcp / subagent / skills 域业务码为调用点字面量（无代码侧常量单源），
 > 完整业务表以 06 §4.3 手写章节为权威；错误对象结构 `RpcError{code,message,details?}` 见 06 §1.2/§4.1。

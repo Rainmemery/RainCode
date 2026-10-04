@@ -17,7 +17,7 @@ import { stat } from "node:fs/promises";
 import { StorageError, type SessionResume, type Storage } from "@raincode/storage";
 import { computeWorkspaceHash } from "@raincode/storage";
 import { SessionTurnLoop } from "@raincode/agent-core";
-import type { CompactionOptions, LlmPort, SessionEventPublisher, ToolPhaseDeps, TurnOutcome } from "@raincode/agent-core";
+import type { CompactionOptions, HooksPort, LlmPort, SessionEventPublisher, ToolPhaseDeps, TurnOutcome } from "@raincode/agent-core";
 import { memoryLoopEnhancements, type MemoryRuntime } from "./memory-runtime.js";
 import type { SkillRuntime } from "./skill-runtime.js";
 
@@ -57,6 +57,8 @@ export interface SessionLoopDeps {
   compaction?: CompactionOptions;
   /** compact 提交前记忆抽取钩子（02 §7.2；透传 CompactionDeps.onBeforeReplace，失败不阻塞替换）。 */
   compactionOnBeforeReplace?: (prefix: MessageRecord[]) => Promise<void>;
+  /** hooks 生命周期端口（T5.1；缺省 = hooks 域未装配，全部 no-op）。 */
+  hooks?: HooksPort;
 }
 
 export function createSessionLoop(deps: SessionLoopDeps): SessionTurnLoop {
@@ -77,6 +79,7 @@ export function createSessionLoop(deps: SessionLoopDeps): SessionTurnLoop {
     ...(deps.maxRoundsPerTurn !== undefined && { maxRoundsPerTurn: deps.maxRoundsPerTurn }),
     ...(deps.compaction !== undefined && { compaction: deps.compaction }),
     ...(deps.compactionOnBeforeReplace !== undefined && { compactionOnBeforeReplace: deps.compactionOnBeforeReplace }),
+    ...(deps.hooks !== undefined && { hooks: deps.hooks }),
     onDiagnostic: (message, err) => console.error(`[raincode/server] ${message}`, err ?? ""),
   });
 }
@@ -145,6 +148,8 @@ export async function resumeSessionFlow(input: {
   memory: MemoryRuntime | null;
   /** skills 域（T4.4：非 null 时装配技能目录逐 turn 重发布的 systemPromptProvider）。 */
   skills: SkillRuntime | null;
+  /** hooks 域端口（T5.1：非 null 时注入 hooks 生命周期 dispatch）。 */
+  hooks?: HooksPort | null;
   systemPrompt?: string;
   compaction?: CompactionOptions;
   providerId: string;
@@ -189,6 +194,7 @@ export async function resumeSessionFlow(input: {
     ...memoryExtras,
     ...(input.skills !== null && { systemPromptProvider: input.skills.systemPromptProvider(meta.id, workspaceRoot, memoryExtras.systemPrompt) }),
     tools: input.toolDeps, workspaceRoot, workspaceId: meta.workspaceId,
+    ...(input.hooks != null && { hooks: input.hooks }), // T5.1：resume 路径同 hooks 接线
     initialHistory: replay.history,
     initialEventSeq: seedEventSeq(replay),
     initialEpoch: replay.epoch,

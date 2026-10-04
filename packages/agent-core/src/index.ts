@@ -32,7 +32,18 @@ export type {
 } from "./turn/tool-phase.js";
 
 export { LoopEvents } from "./turn/loop-events.js";
-export type { PersistedEventName, TransientEventName } from "./turn/loop-events.js";
+export type { AuditEventName, PersistedEventName, TransientEventName } from "./turn/loop-events.js";
+
+export { HookDispatcher, emptyHookDispatchResult } from "./hooks/dispatcher.js";
+export { DEFAULT_HOOK_TIMEOUT_MS, runHook } from "./hooks/runner.js";
+export type {
+  HookContextEntry,
+  HookDispatchRequest,
+  HookDispatchResult,
+  HookPlanEntry,
+  HookRunResult,
+  HooksPort,
+} from "./hooks/types.js";
 
 export { CompactionService, estimateContextTokens, createCompactionService } from "./compact/service.js";
 export type {

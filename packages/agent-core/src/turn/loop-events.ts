@@ -27,11 +27,16 @@ export type PersistedEventName =
   | "permission.resolved"
   | "compact.started"
   | "compact.completed"
+  | "hook.started"
+  | "hook.completed"
   | "done"
   | "error";
 
 /** 瞬态事件名（不落盘）。 */
 export type TransientEventName = "message.delta" | "tool_call.progress";
+
+/** log-only 审计事件名（T5.1：落 JSONL 不发布——dsh hook/invoked + hook/result 语义）。 */
+export type AuditEventName = "hook.invoked" | "hook.result";
 
 export interface LoopEventsOptions {
   sessionId: string;
@@ -95,6 +100,20 @@ export class LoopEvents {
   /** 瞬态事件：只发布不落盘。 */
   publishTransient(name: TransientEventName, build: (seq: number, ts: number) => unknown): void {
     this.options.publish({ name, payload: build(this.nextSeq(), Date.now()) });
+  }
+
+  /**
+   * log-only 审计事件（T5.1 hook/invoked + hook/result）：seq 与 rpc 事件同链分配、落 JSONL，
+   * 但不发布到端层——审计事实只有日志形态，防执行细节（命令/stderr）广播到 UI。
+   */
+  emitAudit(name: AuditEventName, build: (seq: number, ts: number) => unknown): void {
+    const seq = this.nextSeq();
+    const ts = Date.now();
+    const payload = build(seq, ts);
+    void this.serialWrite(async () => {
+      const result = await this.options.storage.appendEvent(this.options.sessionId, name, payload);
+      if (!result.accepted) this.diag(`audit event "${name}" rejected (stale epoch)`);
+    }).catch((err: unknown) => this.diag(`failed to persist audit event "${name}"`, err));
   }
 
   publishDelta(turnId: string, round: number, kind: "text" | "reasoning", text: string): void {

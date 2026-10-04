@@ -5,6 +5,7 @@
  */
 import type { ChatRequestMessage } from "@raincode/llm";
 import type { ContentBlock, MessageRecord } from "@raincode/shared";
+import type { HookContextEntry } from "../hooks/types.js";
 
 export interface AssembleContextInput {
   systemPrompt?: string;
@@ -12,6 +13,8 @@ export interface AssembleContextInput {
   history: readonly MessageRecord[];
   /** steeringBuffer 注入内容（02 §1.2.1 正交通道；合并后由调用方清空）。 */
   steering: readonly string[];
+  /** hook additionalContext（T5.1：provenance 条目，hookPhase + hookIds 溯源；合并后由调用方清空）。 */
+  hookContext?: readonly HookContextEntry[];
 }
 
 export function assembleChatMessages(input: AssembleContextInput): ChatRequestMessage[] {
@@ -22,6 +25,13 @@ export function assembleChatMessages(input: AssembleContextInput): ChatRequestMe
   }
   for (const record of input.history) {
     messages.push(toChatMessage(record));
+  }
+  // hook 注入先于 steering：steering 是用户最新插话，hook 上下文属系统侧补充（02 §1.2.3 语义序）
+  for (const entry of input.hookContext ?? []) {
+    messages.push({
+      role: "user",
+      content: `[hook:${entry.phase} via ${entry.hookIds.join("|")}]\n${entry.text}`,
+    });
   }
   for (const note of input.steering) {
     messages.push({ role: "user", content: `[steering] ${note}` });

@@ -41,6 +41,8 @@ export interface AgentServiceNodeOptions {
   memory?: AgentServiceOptions["memory"];
   /** skills 域装配（T3.4；缺省 = 不启用。workspace 层技能目录按会话 workspaceRoot 逐会话解析）。 */
   skills?: AgentServiceOptions["skills"];
+  /** hooks 域装配（T5.1；缺省 = 不启用。user/project 双源 hooks.json + trust 授信）。 */
+  hooks?: AgentServiceOptions["hooks"];
   /** plugins 域装配（T3.5 v1.8；缺省 = 不启用。数据根取 storage.dataRoot）。 */
   plugins?: AgentServiceOptions["plugins"];
   /** 沙箱执行域配置（M3 T3.1；缺省读 `<dataRoot>/config.json` 的 sandbox 节，不可读按 local）。 */
@@ -106,6 +108,7 @@ export async function createAgentServiceNode(
     ...(options.subagent !== undefined && { subagent: options.subagent }),
     ...(options.memory !== undefined && { memory: options.memory }),
     ...(options.skills !== undefined && { skills: options.skills }),
+    ...(options.hooks !== undefined && { hooks: options.hooks }),
     ...(options.plugins !== undefined && { plugins: options.plugins }),
     onShutdown: closeStorage,
   });

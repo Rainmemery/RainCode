@@ -25,4 +25,9 @@ export class SettingsRepo {
       )
       .run(key, value, Date.now());
   }
+
+  /** 删除键值（T5.1 hooks trust 撤销：删键后下一 dispatch 即未授信，立即生效）。 */
+  async del(key: string): Promise<void> {
+    this.db.prepare("DELETE FROM settings WHERE key = ?").run(key);
+  }
 }

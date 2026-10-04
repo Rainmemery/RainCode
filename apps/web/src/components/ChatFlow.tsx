@@ -212,6 +212,20 @@ export function ChatFlow(): JSX.Element {
                   {item.streaming ? <span className="ml-1 animate-pulse">▊</span> : null}
                 </div>
               </div>
+            ) : item.kind === "hook" ? (
+              <div
+                key={item.id}
+                className={`mb-2 rounded border px-3 py-1.5 text-xs ${
+                  item.outcome === "blocked" || item.outcome === "failed" || item.outcome === "timed_out"
+                    ? "border-warn text-warn"
+                    : "border-ink-700 text-gray-400"
+                }`}
+              >
+                <span className="font-mono">hooks</span> {item.phase} · {item.outcome} ×
+                {String(item.hookCount)}
+                {item.durationMs !== undefined ? ` · ${String(item.durationMs)}ms` : null}
+                {item.reason !== undefined ? ` — ${item.reason}` : null}
+              </div>
             ) : (
               <div key={item.toolCallId} className="mb-3">
                 <div className="rounded border border-ink-700 bg-ink-900 px-3 py-2 text-xs">

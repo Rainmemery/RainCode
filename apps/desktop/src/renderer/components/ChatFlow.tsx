@@ -7,6 +7,16 @@ import { useDesktop } from "../store.js";
 import MessageBubble from "./MessageBubble.js";
 import ToolCard from "./ToolCard.js";
 import InputArea from "./InputArea.js";
+import type { HookItem } from "../session-view.js";
+
+const HOOK_OUTCOME_LABEL: Record<HookItem["outcome"], string> = {
+  running: "执行中",
+  success: "完成",
+  blocked: "已拦截",
+  failed: "失败（不阻塞）",
+  timed_out: "超时（不阻塞）",
+  skipped_untrusted: "未授信跳过",
+};
 
 const ASCII_BOX_WIDTH = 29;
 const EMPTY_ASCII = [
@@ -44,6 +54,26 @@ function PendingBanner() {
   );
 }
 
+/** hook 执行行（T5.1）：单行紧凑投影，拦截/失败态用警示色强调。 */
+function HookRow({ item }: { item: HookItem }) {
+  const emphasized = item.outcome === "blocked" || item.outcome === "failed" || item.outcome === "timed_out";
+  return (
+    <div
+      className={`flex items-center gap-2 rounded-md border px-3 py-1.5 text-2xs ${
+        emphasized ? "border-warn text-warn" : "border-line text-mid"
+      }`}
+    >
+      <span className={item.outcome === "running" ? "dot dot-run" : emphasized ? "dot dot-warn" : "dot dot-ok"} />
+      <span className="mono">hooks</span>
+      <span>{item.phase}</span>
+      <span>{HOOK_OUTCOME_LABEL[item.outcome]}</span>
+      <span className="text-faint">×{String(item.hookCount)}</span>
+      {item.durationMs !== undefined && <span className="text-faint">{String(item.durationMs)}ms</span>}
+      {item.reason !== undefined && <span className="truncate text-faint">— {item.reason}</span>}
+    </div>
+  );
+}
+
 export default function ChatFlow() {
   const view = useDesktop((s) => (s.activeId === null ? undefined : s.views[s.activeId]));
   const hasApprovals = useDesktop((s) => s.approvals.length > 0);
@@ -67,6 +97,8 @@ export default function ChatFlow() {
             {items.map((item) =>
               item.kind === "message" ? (
                 <MessageBubble key={item.id} item={item} />
+              ) : item.kind === "hook" ? (
+                <HookRow key={item.id} item={item} />
               ) : (
                 <ToolCard key={item.toolCallId} item={item} />
               ),
