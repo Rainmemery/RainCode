@@ -54,6 +54,33 @@ export type {
   CompactionTicket,
 } from "./compact/service.js";
 
+export {
+  MICROCOMPACT_COMPACTABLE_TOOLS,
+  MICROCOMPACT_HEAD_CHARS,
+  MICROCOMPACT_KEEP_RECENT,
+  MICROCOMPACT_MIN_SAVINGS_TOKENS,
+  MICROCOMPACT_PRUNE_MARKER,
+  MICROCOMPACT_TAIL_CHARS,
+  MICROCOMPACT_THRESHOLD_CHARS,
+  MICROCOMPACT_THRESHOLD_RATIO,
+  MicrocompactService,
+  codePointLength,
+  createMicrocompactService,
+  planMicrocompact,
+  pruneToolResultText,
+  resolveMicrocompactConfig,
+} from "./compact/microcompact.js";
+export type {
+  MicrocompactDeps,
+  MicrocompactHost,
+  MicrocompactOptions,
+  MicrocompactOutcome,
+  MicrocompactPlan,
+  MicrocompactReplacementPlan,
+  MicrocompactSkipReason,
+  ResolvedMicrocompactConfig,
+} from "./compact/microcompact.js";
+
 export { TurnSettler } from "./turn/settle.js";
 export type { SettleHost } from "./turn/settle.js";
 

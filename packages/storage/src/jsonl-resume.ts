@@ -11,6 +11,7 @@ import type { FileHandle } from "node:fs/promises";
 import type { MessageRecord } from "@raincode/shared";
 import {
   COMPACTION_EVENT_NAME,
+  COMPACTION_PRUNED_EVENT_NAME,
   HEADER_EVENT_NAME,
   compactionSummaryRecord,
   parseLine,
@@ -190,6 +191,43 @@ function applyCompactionMarker(history: MessageRecord[], payload: unknown): Mess
 }
 
 /**
+ * microcompact 预剪枝应用（T5.4 重放语义）：按 sourceMessageId 回指定位原文，
+ * 以事件内联的 prunedContent 替换（同 id 新对象，index 稳定不增删——后续
+ * compaction.applied 按 summarizedCount 位置截断的计数语义不受影响）。
+ * payload 宽松校验：缺字段/非法值/原文不可定位（如已被 full compact 摘要吸收）逐项忽略，
+ * 不中断重放（§4.5 宽松读原则）。
+ */
+function applyCompactionPruned(history: MessageRecord[], payload: unknown): void {
+  if (typeof payload !== "object" || payload === null) {
+    return;
+  }
+  const record = payload as Record<string, unknown>;
+  const replacements = record["replacements"];
+  if (!Array.isArray(replacements)) {
+    return;
+  }
+  for (const item of replacements) {
+    if (typeof item !== "object" || item === null) {
+      continue;
+    }
+    const entry = item as Record<string, unknown>;
+    const sourceMessageId = entry["sourceMessageId"];
+    const prunedContent = entry["prunedContent"];
+    if (typeof sourceMessageId !== "string" || sourceMessageId.length === 0) {
+      continue;
+    }
+    if (typeof prunedContent !== "string") {
+      continue;
+    }
+    const index = history.findIndex((message) => message.id === sourceMessageId);
+    if (index < 0) {
+      continue;
+    }
+    history[index] = { ...history[index]!, content: prunedContent };
+  }
+}
+
+/**
  * 恢复重放主流程（05 §4.4 第 1~5 步的文件侧；对账回写由 Storage 完成）。
  * 文件不存在（新会话/空目录）返回空重放，不视为错误。
  */
@@ -218,6 +256,8 @@ export async function replaySessionFile(eventsFile: string, options: ResumeReadO
           history.push(parsed.line.message);
         } else if (parsed.ok && parsed.line.type === "event" && parsed.line.name === COMPACTION_EVENT_NAME) {
           history = applyCompactionMarker(history, parsed.line.payload);
+        } else if (parsed.ok && parsed.line.type === "event" && parsed.line.name === COMPACTION_PRUNED_EVENT_NAME) {
+          applyCompactionPruned(history, parsed.line.payload);
         }
       }
     }

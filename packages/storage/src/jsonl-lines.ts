@@ -75,6 +75,44 @@ export interface CompactionMarkerPayload {
   tokensBefore?: number;
 }
 
+/**
+ * microcompact 预剪枝事件（T5.4；05 §4.2 event 行「工具结果预剪枝」的持久形态）。
+ * storage 级事件（同 compaction.applied 先例）：不经 RPC 发布、协议零变更、不携带 epoch
+ * （预剪枝不推进压缩代次，与压缩去重锁/epoch 守卫正交——压缩锁括弧协议兼容的前提）。
+ * replacements[].sourceMessageId 回指原文 message 行（重放按 id 定位替换；RainCode 会话内
+ * message 行 seq 不入内存历史、resume 后不可得，id 为全局唯一稳定回指键，语义对齐 dsh
+ * sourceEventSeqs）；prunedContent 内联剪后内容（重放零重导出，剪枝算法版本无关）。
+ */
+export const COMPACTION_PRUNED_EVENT_NAME = "compaction.pruned";
+
+export interface CompactionPrunedReplacement {
+  /** 回指原文 message 行（dsh sourceEventSeqs 语义；重放按 id 定位）。 */
+  sourceMessageId: string;
+  /** 关联 tool call（原文缺 toolCallId 时为 null）。 */
+  toolCallId: string | null;
+  /** 白名单审计（剪枝时点解析出的工具名）。 */
+  toolName: string;
+  /** 原文 Unicode code point 数。 */
+  charsBefore: number;
+  /** 剪后 code point 数（head + marker + tail，恒 ≤ 单条阈值）。 */
+  charsAfter: number;
+  /** 剪后内容（重放直接采用）。 */
+  prunedContent: string;
+}
+
+export interface CompactionPrunedPayload {
+  prunerId: string;
+  /** 触发时会话代次快照（informational；预剪枝不 bump epoch）。 */
+  epoch: number;
+  replacements: CompactionPrunedReplacement[];
+  /** 剪除的 code point 总数。 */
+  charsRemoved: number;
+  /** 估算节省 tokens（charsRemoved / 字符估算系数）。 */
+  tokensSaved: number;
+  /** 触发时上下文估算（tokens）。 */
+  tokensBefore: number;
+}
+
 /** 压缩摘要消息（内存提交与重放共用同一构造，保证两侧 id/内容一致）。 */
 export function compactionSummaryRecord(marker: CompactionMarkerPayload): MessageRecord {
   return {

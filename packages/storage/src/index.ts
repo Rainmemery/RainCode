@@ -59,6 +59,7 @@ export type { AppendResult, CheckpointResult, SessionStreamOptions } from "./jso
 
 export {
   COMPACTION_EVENT_NAME,
+  COMPACTION_PRUNED_EVENT_NAME,
   HEADER_EVENT_NAME,
   JSONL_SCHEMA_VERSION,
   RAINCODE_VERSION,
@@ -70,6 +71,8 @@ export type {
   CheckpointLine,
   CheckpointState,
   CompactionMarkerPayload,
+  CompactionPrunedPayload,
+  CompactionPrunedReplacement,
   EventLine,
   JsonlLine,
   MessageLine,

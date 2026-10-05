@@ -21,6 +21,7 @@ import {
   buildCompactCompletedEvent,
   buildCompactStartedEvent,
 } from "@raincode/shared";
+import type { MicrocompactOptions } from "./microcompact.js";
 
 /** 压缩选项（02 §1.3 CompactionOptions；contextWindowTokens 由 server 按 Provider 注入）。 */
 export interface CompactionOptions {
@@ -30,6 +31,8 @@ export interface CompactionOptions {
   keepRecentCount?: number;
   /** 上下文窗口 token 上限（触发估算基准）。 */
   contextWindowTokens: number;
+  /** T5.4 microcompact 预剪枝选项（缺省启用；enabled:false 关闭）。 */
+  microcompact?: MicrocompactOptions;
 }
 
 /** 压缩宿主（SessionTurnLoop 实现）：历史与 epoch 的窄接口。 */
@@ -82,7 +85,8 @@ export interface CompactionReport {
 const DEFAULT_THRESHOLD = 0.8;
 const FAILURE_THRESHOLD = 0.9; // 摘要失败后临时阈值（02 §1.4）
 const MAX_CONSECUTIVE_FAILURES = 3; // 连续失败后停止自动重试（仅告警）
-const FALLBACK_CHARS_PER_TOKEN = 3; // 无 usage 时的字符估算（CJK 偏保守）
+/** 无 usage 时的字符估算（CJK 偏保守）；microcompact 节省估算共用同一系数。 */
+export const FALLBACK_CHARS_PER_TOKEN = 3;
 
 /**
  * 上下文 token 估算：优先用最近一轮真实 promptTokens（usage 事件回传）；
@@ -162,6 +166,11 @@ export class CompactionService {
   onDone(listener: (report: CompactionReport) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  /** 当前生效的 full compact 触发线（tokens）＝阈值比例（失败临时上调后）× 窗口；microcompact 预剪枝触发基准（T5.4）。 */
+  get fullCompactThresholdTokens(): number {
+    return (this.consecutiveFailures > 0 ? FAILURE_THRESHOLD : DEFAULT_THRESHOLD) * this.window;
   }
 
   /**

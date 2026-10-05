@@ -23,7 +23,7 @@ import type {
 import { RpcCallError, createServiceBinding, type IMessageTransport, type RpcMethodHandler, type RpcServiceBinding } from "@raincode/rpc";
 import { Storage } from "@raincode/storage";
 import { createBuiltinTools, ToolExecutor, type BackgroundTaskRegistry } from "@raincode/tools";
-import { alwaysAllowApprover, alwaysDenyApprover, createMetadataPermissionPort, type AskUserChannelRequest, type CompactionOptions, type LlmPort, type PermissionPort, type SessionEventPublisher, type ToolPhaseDeps, type TurnOutcome } from "@raincode/agent-core";
+import { alwaysAllowApprover, alwaysDenyApprover, createMetadataPermissionPort, type AskUserChannelRequest, type CompactionOptions, type LlmPort, type MicrocompactOptions, type PermissionPort, type SessionEventPublisher, type ToolPhaseDeps, type TurnOutcome } from "@raincode/agent-core";
 import { ConfigDomain } from "./config-domain.js";
 import { ConfigStore } from "./config-store.js";
 import { ToolDomain } from "./tool-domain.js";
@@ -66,8 +66,8 @@ export interface AgentServiceOptions {
   tools?: ToolRuntimeConfig;
   /** 权限策略；缺省 normal（五级判定链 + 审批闭环）。 */
   permission?: PermissionConfig;
-  /** auto-compact 装配（02 §1.2.5；缺省 = 不启用；contextWindowTokens 取 Provider maxContextTokens）。 */
-  compaction?: { thresholdRatio?: number; keepRecentCount?: number };
+  /** auto-compact 装配（02 §1.2.5；缺省 = 不启用；contextWindowTokens 取 Provider maxContextTokens；microcompact 预剪枝选项随 compaction 传入，T5.4）。 */
+  compaction?: { thresholdRatio?: number; keepRecentCount?: number; microcompact?: MicrocompactOptions };
   /** MCP 域装配（02 §3；缺省 = 不启用 mcp 域；workspaceRoot 为 project 层 mcp.json 判定域）。 */
   mcp?: { workspaceRoot?: string };
   /** plugins 域装配（06 §2.10 v1.8；缺省 = 不启用；数据根取 storage.dataRoot）。 */

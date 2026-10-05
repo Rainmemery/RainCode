@@ -17,7 +17,7 @@ import { stat } from "node:fs/promises";
 import { StorageError, type SessionResume, type Storage } from "@raincode/storage";
 import { computeWorkspaceHash } from "@raincode/storage";
 import { SessionTurnLoop } from "@raincode/agent-core";
-import type { CompactionOptions, HooksPort, LlmPort, SessionEventPublisher, ToolPhaseDeps, TurnOutcome } from "@raincode/agent-core";
+import type { CompactionOptions, HooksPort, LlmPort, MicrocompactOptions, SessionEventPublisher, ToolPhaseDeps, TurnOutcome } from "@raincode/agent-core";
 import { memoryLoopEnhancements, type MemoryRuntime } from "./memory-runtime.js";
 import type { SkillRuntime } from "./skill-runtime.js";
 
@@ -320,9 +320,9 @@ export function parseCursor(cursor: string | undefined): number {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 0;
 }
 
-/** auto-compact 选项组装（02 §1.2.5）：contextWindowTokens 由 Provider maxContextTokens 补齐。 */
+/** auto-compact 选项组装（02 §1.2.5）：contextWindowTokens 由 Provider maxContextTokens 补齐；microcompact 选项透传（T5.4）。 */
 export function buildCompactionOptions(
-  raw: { thresholdRatio?: number; keepRecentCount?: number } | undefined,
+  raw: { thresholdRatio?: number; keepRecentCount?: number; microcompact?: MicrocompactOptions } | undefined,
   contextWindowTokens: number,
 ): CompactionOptions | undefined {
   if (raw === undefined) {
@@ -332,6 +332,7 @@ export function buildCompactionOptions(
     contextWindowTokens,
     ...(raw.thresholdRatio !== undefined && { thresholdRatio: raw.thresholdRatio }),
     ...(raw.keepRecentCount !== undefined && { keepRecentCount: raw.keepRecentCount }),
+    ...(raw.microcompact !== undefined && { microcompact: raw.microcompact }),
   };
 }
 

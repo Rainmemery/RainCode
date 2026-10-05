@@ -446,6 +446,7 @@ CREATE VIRTUAL TABLE history_fts USING fts5(
 约定：
 - 工具调用以 `tool_call` 块内嵌于 assistant 消息，结果为独立 `role:"tool"` 消息（`toolCallId` 关联），与 02 §2.3 的 ToolResult 语义一致。
 - checkpoint 的 `pos` = 该行写入后的文件字节数（= 下一条待写行偏移）；`epoch` 为压缩代次；`state` 内是 todo、协作模式等派生快照。
+- `compaction.pruned`（T5.4 microcompact 预剪枝）：storage 级事件（不经 RPC 发布、协议零变更、不携带 epoch 不推进压缩代次）；payload `{prunerId, epoch, replacements[{sourceMessageId, toolCallId, toolName, charsBefore, charsAfter, prunedContent}], charsRemoved, tokensSaved, tokensBefore}`；`sourceMessageId` 回指原文 message 行，`prunedContent` 内联剪后内容（head+marker+tail，02 §1.2.5），原文保留于 JSONL（`session_search` 可召回）。
 
 ### 4.3 追加写协议
 
@@ -459,7 +460,7 @@ CREATE VIRTUAL TABLE history_fts USING fts5(
 
 1. `resume(sessionId)`：读 sessions 行，取 `checkpoint_offset` / `epoch` / `status`；archived 会话仅允许只读浏览。
 2. `seek(checkpoint_offset)`，校验该偏移可解析出完整 checkpoint 行且 `epoch` 与库内一致。
-3. 自 checkpoint 后逐行重放 `message` / `event` 行至 EOF，重建内存历史、todo、未决审批（配对 `approvals` 表补推），完成 `Created→Active`。
+3. 自 checkpoint 后逐行重放 `message` / `event` 行至 EOF，重建内存历史、todo、未决审批（配对 `approvals` 表补推），完成 `Created→Active`；压缩标记 `compaction.applied` 按摘要替换语义应用，`compaction.pruned` 预剪枝事件按 `sourceMessageId` 回指定位原文并以 `prunedContent` 替换（T5.4，重放/内存一致，宽松校验原文不可定位逐项忽略）。
 4. checkpoint 不可用（偏移越界 / 解析失败 / 文件短于 `pos`）：从文件尾反向扫描（末尾 ≤ 256KB）找最近完整 checkpoint；仍无则**全量重放**。
 5. 悬挂 tool_call：assistant 消息含 `toolCallId` 而流内无对应 tool 结果 → 以 `isError=true`、content=「进程中断，结果丢失」补齐（02 §1.4）。
 6. 对账：重放计数与 `sessions.message_count` 比对，回写 `checkpoint_offset` / `epoch` / 统计列。

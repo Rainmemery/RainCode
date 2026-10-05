@@ -8,7 +8,8 @@
 import { LlmAbortedError, LlmError, type LlmStreamEvent } from "@raincode/llm";
 import { ulid, type CheckpointState } from "@raincode/storage";
 import type { CollaborationMode, MessageRecord, TokenUsage } from "@raincode/shared";
-import { estimateContextTokens, createCompactionService, type CompactionService, type CompactionTicket } from "../compact/service.js";
+import type { CompactionTicket } from "../compact/service.js";
+import { TurnCompactionBridge, createTurnCompactionServices } from "../compact/wiring.js";
 import { HookDispatcher } from "../hooks/dispatcher.js";
 import { CommandInbox } from "../inbox/command-inbox.js";
 import type { TurnAdmission, TurnInput, TurnOutcome } from "../ports.js";
@@ -28,11 +29,7 @@ const DEFAULT_MAX_ROUNDS = 32; // turn 内模型↔工具往返轮次上限（02
 // AC-12 受限重试上限：TOOL_INVALID_INPUT 达 3 次强制收束（06 §4.3 段 7）
 const INVALID_INPUT_RETRY_LIMIT = 3;
 
-interface InboxEntry {
-  turnId: string;
-  input: TurnInput;
-  resolve: (outcome: TurnOutcome) => void;
-}
+interface InboxEntry { turnId: string; input: TurnInput; resolve: (outcome: TurnOutcome) => void }
 
 /** 模型 tool_call 完成形态（@raincode/llm tool_calls.completed 事件的 calls 元素）。 */
 type CompletedToolCall = { toolCallId: string; toolName: string; argumentsJSON: string };
@@ -58,8 +55,8 @@ export class SessionTurnLoop {
   /** 协作模式（可运行时切换：session.setMode → setMode()，对运行中 turn 的后续判定立即生效）。 */
   private mode: CollaborationMode;
   private readonly settler: TurnSettler;
-  /** auto-compact（options.compaction 且配置了 Provider 时启用；null = 不压缩）。 */
-  private readonly compaction: CompactionService | null;
+  /** auto-compact（options.compaction 且配置了 Provider 时启用；null = 不压缩）——宿主与边界经 compactionBridge 转授（compact/wiring.ts）。 */
+  private readonly compactionBridge: TurnCompactionBridge;
   /** 压缩代次（resume 起点 + 每次 accepted checkpoint / 压缩提交后同步）。 */
   private compactionEpoch: number;
   /** 最近一轮真实 promptTokens（usage 事件回传；压缩估算优先数据源）。 */
@@ -89,21 +86,37 @@ export class SessionTurnLoop {
         assistantText: () => this.assistantText, persistPartialText: () => this.persistPartialText() },
       this.events,
     );
-    this.compaction =
-      options.compaction !== undefined && options.llm !== null
-        ? createCompactionService(
-            this,
-            {
-              sessionId: options.sessionId,
-              llm: options.llm,
-              storage: options.storage,
-              ...(options.systemPrompt !== undefined && { systemPrompt: options.systemPrompt }),
-              ...(options.compactionOnBeforeReplace !== undefined && { onBeforeReplace: options.compactionOnBeforeReplace }),
-              events: this.events,
-            },
-            options.compaction,
-          )
-        : null;
+    const compactionBridge = new TurnCompactionBridge({
+      history: () => this.history,
+      setHistory: (history) => {
+        this.history = history;
+      },
+      replaceAt: (index, record) => {
+        this.history[index] = record;
+      },
+      mode: () => this.mode,
+      epoch: () => this.compactionEpoch,
+      updateEpoch: (epoch) => {
+        this.compactionEpoch = epoch;
+      },
+      lastPromptTokens: () => this.lastPromptTokens,
+      reduceLastPromptTokens: (saved) => {
+        this.lastPromptTokens = Math.max(0, this.lastPromptTokens - saved);
+      },
+    });
+    compactionBridge.attach(
+      createTurnCompactionServices({
+        host: compactionBridge,
+        sessionId: options.sessionId,
+        llm: options.llm,
+        storage: options.storage,
+        events: this.events,
+        ...(options.systemPrompt !== undefined && { systemPrompt: options.systemPrompt }),
+        ...(options.compactionOnBeforeReplace !== undefined && { onBeforeReplace: options.compactionOnBeforeReplace }),
+        compaction: options.compaction,
+      }),
+    );
+    this.compactionBridge = compactionBridge;
   }
 
   get phase(): TurnPhase {
@@ -240,7 +253,7 @@ export class SessionTurnLoop {
     let usageTotal: TokenUsage | undefined;
     let invalidInputCount = 0; // AC-12：非法入参失败跨轮累计（turn 生命周期内；上限 INVALID_INPUT_RETRY_LIMIT）
     const maxRounds = this.options.maxRoundsPerTurn ?? DEFAULT_MAX_ROUNDS;
-    this.compaction?.maybeTrigger(estimateContextTokens(this.history, this.lastPromptTokens)); // 组装上下文前
+    this.compactionBridge.runBoundary(); // 组装上下文前
     for (let round = 1; round <= maxRounds; round += 1) {
       const outcome = await this.runModelRound(entry, controller, round, usageTotal);
       if (outcome.kind === "settled") {
@@ -259,7 +272,7 @@ export class SessionTurnLoop {
       if (round === maxRounds) {
         break; // 轮次耗尽：超限异常收敛（02 §1.2.1 补充约束）
       }
-      this.compaction?.maybeTrigger(estimateContextTokens(this.history, this.lastPromptTokens)); // T13 聚合后触发点
+      this.compactionBridge.runBoundary(); // T13 聚合后触发点
     }
     const reason = `tool rounds exceeded maxRoundsPerTurn=${String(maxRounds)}`;
     return this.settler.abnormal(entry.turnId, "TURN_MAX_ROUNDS_EXCEEDED", reason);
@@ -432,25 +445,9 @@ export class SessionTurnLoop {
     return { kind: "continue", usage: roundUsage, ...invalidStats };
   }
 
-  // auto-compact：手动入口（06 §2.1 session.compact）+ CompactionHost 实现（compact/service.ts）
+  /** auto-compact 手动入口（06 §2.1 session.compact）；边界/宿主转授见 compact/wiring.ts。 */
   compact(): CompactionTicket | null {
-    return this.compaction?.compactNow() ?? null;
-  }
-
-  replaceWith(prefix: MessageRecord[], count: number): void {
-    this.history = [...prefix, ...this.history.slice(count)];
-  }
-  historyLength(): number {
-    return this.history.length;
-  }
-  currentEpoch(): number {
-    return this.compactionEpoch;
-  }
-  updateEpoch(epoch: number): void {
-    this.compactionEpoch = epoch;
-  }
-  checkpointBase(): Pick<CheckpointState, "mode" | "todo"> {
-    return { mode: this.mode, todo: [] };
+    return this.compactionBridge.compact();
   }
 
   private async writeTurnCheckpoint(usage: TokenUsage | undefined): Promise<void> {

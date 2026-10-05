@@ -14,10 +14,15 @@
  * 用例 B（摘要失败）：空摘要 → ok:false + 原历史保留 + 阈值临时上调 90%（170 < 0.9×200 不再触发）。
  * 用例 C（手动 compact）：低于阈值可手动压缩；in-flight 幂等复用 ticket（alreadyRunning）；
  *   空历史手动压缩 → INVALID_PARAMS。
+ * 用例 D（microcompact 预剪枝，T5.4）：白名单内 read 大结果（940 cps > 600）在 T13 边界被
+ *   head+marker+tail 剪枝（350 ≥ 0.9×0.8×400 触发；节省回落 usage 估算后 184 < 320，
+ *   full compact 让位不触发）→ compaction.pruned 事件 sourceMessageId 回指原文 + 剪后内容
+ *   内联 → 下一请求模型所见与 resume 重放一致（resume 后一致）。
+ * 用例 E（白名单外不动）：compactableTools 限 bash，read 大结果原样保留、无剪枝事件。
  * 全程仅本机回环与临时目录：无外呼、无真实密钥。
  */
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInMemoryTransportPair, createRpcClient } from "../packages/rpc/src/index.ts";
@@ -25,6 +30,7 @@ import type { RpcClient } from "../packages/rpc/src/index.ts";
 import { createAgentServiceNode } from "../packages/server/src/index.ts";
 import type { AgentServiceNode } from "../packages/server/src/index.ts";
 import { RpcCallError } from "../packages/rpc/src/index.ts";
+import { computeWorkspaceHash } from "../packages/storage/src/index.ts";
 import type {
   CompactCompletedEventPayload,
   CompactStartedEventPayload,
@@ -32,7 +38,7 @@ import type {
   SessionCreateResult,
   SessionSendResult,
 } from "../packages/shared/src/index.ts";
-import { beginTurn, startMockLlmServer, withTimeout } from "./p0-lib.mts";
+import { beginTurn, startMockLlmServer, toolCallFrame, withTimeout } from "./p0-lib.mts";
 import type { SseScript } from "./p0-lib.mts";
 
 const WINDOW_TOKENS = 200; // 收紧的上下文窗口（触发阈值 0.8×200=160；失败上调 0.9×200=180）
@@ -44,6 +50,7 @@ const SUMMARY_MARKER = "[上下文压缩]";
 
 interface Scenario {
   home: string;
+  workspace: string;
   client: RpcClient;
   node: AgentServiceNode;
   bodies: Array<{ messages: Array<{ role: string; content: unknown }> }>;
@@ -51,7 +58,12 @@ interface Scenario {
   close: () => Promise<void>;
 }
 
-async function startScenario(name: string, script: SseScript[]): Promise<Scenario> {
+interface ScenarioOptions {
+  windowTokens?: number;
+  compaction?: { keepRecentCount?: number; microcompact?: Record<string, unknown> };
+}
+
+async function startScenario(name: string, script: SseScript[], options: ScenarioOptions = {}): Promise<Scenario> {
   const home = await mkdtemp(join(tmpdir(), `raincode-smoke-compact-${name}-`));
   const workspace = join(home, "ws");
   await mkdir(workspace, { recursive: true });
@@ -65,16 +77,17 @@ async function startScenario(name: string, script: SseScript[]): Promise<Scenari
       baseURL: mock.url,
       model: "mock-model",
       apiKey: "smoke-dummy-key",
-      maxContextTokens: WINDOW_TOKENS,
+      maxContextTokens: options.windowTokens ?? WINDOW_TOKENS,
     },
     tools: { approval: "always-allow" },
     permission: { policy: "default-allow" },
-    compaction: { keepRecentCount: 1 },
+    compaction: options.compaction ?? { keepRecentCount: 1 },
   });
   const client = createRpcClient({ transport: transports[0] });
   await client.call("system.ping", {}); // rpc 握手（首请求必须 system.ping）
   return {
     home,
+    workspace,
     client,
     node,
     bodies: mock.bodies,
@@ -112,6 +125,18 @@ function summaryReply(text: string, delayMs?: number): SseScript {
   };
 }
 
+/** 工具调用请求帧（usage 可注入驱动阈值判定）。 */
+function toolReply(id: string, name: string, args: object, promptTokens: number): SseScript {
+  return {
+    frames: [
+      { choices: [{ index: 0, delta: { role: "assistant", content: "" } }] },
+      toolCallFrame(id, name, args),
+      { choices: [], usage: { prompt_tokens: promptTokens, completion_tokens: 5 } },
+    ],
+    finish: "tool_calls",
+  };
+}
+
 /** 空响应（零内容帧）→ 摘要为空 → 失败路径（02 §1.4）。 */
 function emptySummary(): SseScript {
   return { frames: [], finish: "stop" };
@@ -142,6 +167,11 @@ async function sendTurn(scenario: Scenario, sessionId: string, text: string): Pr
 
 async function createSession(client: RpcClient): Promise<string> {
   const created = (await client.call("session.create", { workspaceRoot: process.cwd() })) as SessionCreateResult;
+  return created.sessionId;
+}
+
+async function createSessionAt(client: RpcClient, workspaceRoot: string, title: string): Promise<string> {
+  const created = (await client.call("session.create", { workspaceRoot, title })) as SessionCreateResult;
   return created.sessionId;
 }
 
@@ -310,11 +340,150 @@ async function caseManual(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// 用例 D：microcompact 预剪枝（T5.4）——触发 / full compact 让位 / 回指 / resume 一致
+// ---------------------------------------------------------------------------
+
+/** 剪枝素材：单行 1540 code points（head 锚 320 H / 中段 900 Q / tail 锚 320 T）；
+ * 剪除 1098 cps ≈ 366 tokens ≥ 256 门槛（过 min savings）。 */
+function bigToolText(): string {
+  return "H".repeat(320) + "Q".repeat(900) + "T".repeat(320);
+}
+
+/** type=tool 消息内容断言辅助。 */
+function toolContentOf(messages: Array<{ role: string; content: unknown }>): string {
+  const tool = messages.find((message) => message.role === "tool");
+  assert.ok(tool !== undefined, "请求上下文含 tool 消息");
+  return tool.content as string;
+}
+
+interface PrunedPayload {
+  replacements: Array<{ sourceMessageId: string; toolName: string; charsBefore: number; charsAfter: number; prunedContent: string }>;
+  tokensSaved: number;
+  tokensBefore: number;
+}
+
+/** 从原始 events.jsonl 找 compaction.pruned 事件行（replay.events 只含末 checkpoint 后增量，剪枝事件在 turn 中途落盘不可见）。 */
+async function readPrunedEvent(scenario: Scenario, sessionId: string): Promise<PrunedPayload | null> {
+  const eventsFile = join(
+    scenario.node.storage.dataRoot,
+    "workspaces",
+    computeWorkspaceHash(scenario.workspace),
+    "sessions",
+    sessionId,
+    "events.jsonl",
+  );
+  const raw = await readFile(eventsFile, "utf8");
+  for (const line of raw.split("\n")) {
+    if (line.length === 0) continue;
+    const parsed = JSON.parse(line) as { type: string; name?: string; payload?: unknown };
+    if (parsed.type === "event" && parsed.name === "compaction.pruned") {
+      return parsed.payload as PrunedPayload;
+    }
+  }
+  return null;
+}
+
+async function caseMicrocompact(): Promise<void> {
+  const bigText = bigToolText();
+  // 窗口 400：full 线 0.8×400=320；micro 线 0.9×320=288。单条剪枝 600/300/100 → 剪后 442 cps
+  const scenario = await startScenario("micro", [
+    toolReply("call_read_1", "read", { path: "big.txt" }, 350), // req0：u1 r1（350 ≥ 288 触发预剪枝）
+    textReply("done1", 50), // req1：u1 r2（剪枝后上下文）
+    textReply("done2", 50), // req2：u2 r1
+  ], {
+    windowTokens: 400,
+    compaction: {
+      keepRecentCount: 1,
+      microcompact: { keepRecentCount: 0, thresholdChars: 600, headChars: 300, tailChars: 100 },
+    },
+  });
+  const watch = watchCompact(scenario.client);
+  try {
+    await writeFile(join(scenario.workspace, "big.txt"), bigText, "utf8");
+    const sessionId = await createSessionAt(scenario.client, scenario.workspace, "micro-prune");
+    await sendTurn(scenario, sessionId, "u1");
+
+    // 预剪枝足够：节省 366 tokens 回落 usage 估算（350→0 < 320），full compact 让位
+    assert.equal(watch.started.length, 0, "预剪枝后 full compact 未触发");
+
+    // 回指校验：事件行 sourceMessageId 回指原文 message 行 + 尺寸账目
+    const payload = await readPrunedEvent(scenario, sessionId);
+    assert.ok(payload !== null, "compaction.pruned 事件落盘");
+    assert.equal(payload.replacements.length, 1);
+    const replacement = payload.replacements[0]!;
+    assert.equal(replacement.toolName, "read");
+    assert.equal(replacement.charsBefore, 1540);
+    assert.equal(replacement.charsAfter, 442);
+    assert.ok(replacement.sourceMessageId.length > 0);
+    assert.equal(payload.tokensSaved, Math.floor((1540 - 442) / 3));
+
+    // resume 重放一致：重放历史按回指替换为同一剪后内容（head + marker + tail）
+    const replay = await scenario.node.storage.resumeSession(sessionId);
+    const toolRecord = replay.history.find((message) => message.role === "tool");
+    assert.ok(toolRecord !== undefined, "重放历史含 tool 消息");
+    const content = toolRecord.content as string;
+    assert.equal(replacement.sourceMessageId, toolRecord.id, "回指命中重放历史中的原文消息");
+    assert.equal(replacement.prunedContent, content);
+    assert.ok(content.startsWith("H".repeat(300)), "head 锚点保留（300 code points）");
+    assert.ok(content.endsWith("T".repeat(100)), "tail 锚点保留（100 code points）");
+    assert.ok(content.includes("中段已预剪枝"), "中段标记在位");
+    assert.ok(!content.includes("Q".repeat(900)), "中段已剪除");
+    assert.equal(content.length, 442, "剪后 442 = head 300 + marker 42 + tail 100（≤ 单条阈值 600）");
+
+    // 内存侧一致：下一请求模型所见 = 重放剪后内容
+    await sendTurn(scenario, sessionId, "u2");
+    assert.equal(toolContentOf(scenario.bodies[1]!.messages), content, "round2 请求上下文 = 剪后内容（内存侧）");
+    assert.equal(toolContentOf(scenario.bodies[2]!.messages), content, "下 turn 请求仍为剪后内容");
+    console.log("case D: microcompact 预剪枝触发 / full compact 让位 / 回指 / resume 一致 OK");
+  } finally {
+    watch.stop();
+    await scenario.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 用例 E：白名单外不动（compactableTools 限 bash，read 大结果原样保留）
+// ---------------------------------------------------------------------------
+
+async function caseWhitelistExclude(): Promise<void> {
+  const bigText = bigToolText();
+  const scenario = await startScenario("micro-wl", [
+    toolReply("call_read_1", "read", { path: "big.txt" }, 300), // req0：300 ≥ 288 触发判定
+    textReply("done1", 50), // req1
+  ], {
+    windowTokens: 400,
+    compaction: {
+      keepRecentCount: 1,
+      microcompact: { keepRecentCount: 0, thresholdChars: 600, headChars: 300, tailChars: 100, compactableTools: ["bash"] },
+    },
+  });
+  const watch = watchCompact(scenario.client);
+  try {
+    await writeFile(join(scenario.workspace, "big.txt"), bigText, "utf8");
+    const sessionId = await createSessionAt(scenario.client, scenario.workspace, "micro-whitelist");
+    await sendTurn(scenario, sessionId, "u1");
+
+    const replay = await scenario.node.storage.resumeSession(sessionId);
+    assert.equal(await readPrunedEvent(scenario, sessionId), null, "白名单外工具结果不产生剪枝事件");
+    const toolRecord = replay.history.find((message) => message.role === "tool");
+    assert.ok(toolRecord !== undefined);
+    assert.equal(toolRecord.content, bigText, "read 大结果原样保留（白名单外不动）");
+    assert.equal(watch.started.length, 0, "无候选无节省，full compact 亦未触发（300 < 320）");
+    console.log("case E: 白名单外工具结果不动 OK");
+  } finally {
+    watch.stop();
+    await scenario.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
   await caseAutoCompact();
   await caseFailure();
   await caseManual();
+  await caseMicrocompact();
+  await caseWhitelistExclude();
   console.log("");
   console.log("SMOKE OK");
 }

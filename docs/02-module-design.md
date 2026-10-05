@@ -219,6 +219,22 @@ flowchart TD
 
 约束：压缩异步执行（性能基线「上下文压缩异步不阻塞」）；压缩读历史快照与写新历史之间以 `epoch` 单调递增防旧写覆盖新写（继承 ZCode「旧快照不得覆盖新状态」的单调合并教训）；压缩期间到达的 steering 与工具结果进入保留区，不丢失。
 
+**microcompact 预剪枝（T5.4，参照 [docs/research/2026-10-04-m5-reference-repos.md] §1-3 两仓同题互证）**：full compact 触发前的独立 pass，与 full compact 同一触发点（组装上下文前 / T13 聚合后），**先 micro 后 full**：
+
+| 常量 | 值 | 来源 |
+| --- | --- | --- |
+| 触发阈值（上下文占比） | 0.9 × full compact 触发线 | ZCode `DEFAULT_MICROCOMPACT_THRESHOLD_RATIO`（偏差申报：不做其绝对 2000-token buffer——小窗口钳 0，比例式尺度无关） |
+| 可压缩工具白名单 | read / bash / grep / glob / web_fetch | ZCode Read/Bash/Grep/Glob/WebFetch 对名映射 |
+| 保留最近候选 | 5 条（可配 0 = 候选全剪） | ZCode `KEEP_RECENT_TOOL_RESULTS` |
+| 最小节省 tokens 门槛 | 256（整 pass all-or-nothing） | ZCode `MIN_TOKEN_SAVINGS` |
+| 单条阈值 / head / tail | 8192 / 4096 / 1024 code points | dsh `DEFAULTS` |
+
+机制约束：
+- **单过确定性收敛**：超阈值 tool result 以 head + marker + tail 替换中段，按 Unicode code point 切分不劈代理对（字素簇仍可能切开，与 dsh 同口径申报）；配置校验 head+marker+tail ≤ 单条阈值 ⇒ 剪后恒 ≤ 阈值且严格小于原文，重入（含 marker）天然跳过（幂等）。
+- **回指事件协议**：剪枝落 `compaction.pruned` 事件行（storage 级，同 compaction.applied 先例，不经 RPC 发布、协议零变更、不 bump epoch）；`replacements[].sourceMessageId` 回指原文 message 行（dsh `sourceEventSeqs` 语义的 RainCode 形态：会话内 message 行 seq 不入内存历史、resume 后不可得，id 为全局唯一稳定回指键），`prunedContent` 内联——resume/回放与内存一致；原文保留于 JSONL，`session_search` 可召回。
+- **压缩锁括弧协议兼容**：预剪枝不取压缩去重锁、不 bump epoch、不产生 compact.started/completed——独立 pass 可插于 full compact 之前；剪枝只换内容不增删消息（index 稳定），full compact 的快照前缀与 `summarizedCount` 位置截断语义不受影响。
+- **节省回落**：应用后节省 tokens 自 usage 估算回落（最近真实请求含未剪枝原文），预剪枝足够时 full compact 让位不再触发。
+
 ### 1.3 对外接口
 
 ```typescript
