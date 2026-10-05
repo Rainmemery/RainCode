@@ -48,6 +48,7 @@
 ~/.raincode/
 ├── raincode.db                    # 全局 SQLite 单库（WAL，§3）
 ├── raincode.db-wal / -shm         # WAL 伴生文件
+├── MEMORY.md                      # 全局记忆（T5.3：跨项目层，双层注入 global 先 workspace 后，02 §7.4）
 ├── config.json                    # 全局配置（04 §5.2，含 providers / activeProviderId / compaction）
 ├── mcp.json                       # 全局 MCP 服务器清单（04 §5.1，结构=02 §3.3 McpServerConfig）
 ├── secrets.json                   # 可选：凭据降级存储（0600，用户显式选择，04 §5.3）
@@ -336,7 +337,9 @@ CREATE TABLE memory_entries (
   status        TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','superseded')),
   superseded_by TEXT REFERENCES memory_entries(id),  -- 矛盾条目旧者标记（02 §7.4）
   created_at    INTEGER NOT NULL,
-  last_seen_at  INTEGER NOT NULL               -- 重复确认时间，淘汰依据
+  last_seen_at  INTEGER NOT NULL,              -- 重复确认时间，淘汰依据
+  scope         TEXT NOT NULL DEFAULT 'workspace' CHECK (scope IN ('workspace','global'))
+                                               -- T5.3 预留：跨项目全局条目扩展位（004 迁移增列）
 );
 CREATE INDEX ix_memory_ws_kind ON memory_entries(workspace_id, status, kind);
 CREATE INDEX ix_memory_ws_conf ON memory_entries(workspace_id, status, confidence DESC);
@@ -347,6 +350,7 @@ CREATE INDEX ix_memory_ws_conf ON memory_entries(workspace_id, status, confidenc
 | status / superseded_by | 02 §7.4「矛盾条目以 lastSeenAt 新者保留并标记 superseded」的落地；superseded 不入召回 |
 | confidence | `< 0.6` 不入召回默认集（02 §7.4 幻觉防线） |
 | refs_json | JSON 数组而非子表：条目 ≤ 200 字、refs 个数小，拆表收益不抵复杂度 |
+| scope | T5.3 存储位预留（004 迁移 `ALTER TABLE` 增列）：v1 业务只写缺省 `'workspace'`，跨项目全局条目（scope='global'）入召回留后续接线，02 §7.4 注记 |
 
 设计理由：memory_entries 是 SQLite 内少数独立真源表之一（JSONL 只提供抽取素材），字段与 02 §7.3 `MemoryEntry` 一一对应；FTS 索引见 §5。
 
@@ -379,6 +383,34 @@ CREATE TABLE settings (
 ```
 
 设计理由：只存**非配置类**运行期状态（最近打开的 workspace、崩溃标记等）；配置真源永远是 config.json / mcp.json，凡 zod config schema 定义的键一律不得写入本表（防双写）。
+
+### 3.12 history_parts —— 会话历史 part 索引（派生，T5.3）
+
+```sql
+CREATE TABLE history_parts (
+  id           INTEGER PRIMARY KEY,
+  session_id   TEXT NOT NULL REFERENCES sessions(id),
+  workspace_id TEXT NOT NULL REFERENCES workspaces(hash),
+  seq          INTEGER NOT NULL,             -- 源 JSONL message 行 seq（行内定位）
+  part_index   INTEGER NOT NULL,             -- 行内块序（0 起；UNIQUE 支撑重扫幂等）
+  kind         TEXT NOT NULL CHECK (kind IN ('text','tool')),
+  role         TEXT NOT NULL CHECK (role IN ('user','assistant','tool')),
+  content      TEXT NOT NULL,                -- text：块正文；tool：工具名
+  ts           INTEGER NOT NULL,             -- 源行 ts
+  UNIQUE (session_id, seq, part_index)
+);
+CREATE INDEX ix_history_parts_ws ON history_parts(workspace_id, id);
+
+CREATE VIRTUAL TABLE history_fts USING fts5(
+  content,
+  content = 'history_parts',
+  content_rowid = 'id',
+  tokenize = 'trigram'
+);
+-- AFTER INSERT / AFTER DELETE 触发器同步倒排（同 §5.3 memory_fts 形态，004 迁移）
+```
+
+设计理由：会话历史唯一真源仍是各会话 events.jsonl（§1.2），本表为**可重建派生索引**——索引对象是 message 行的 part 级内容（文本块 + tool_call 工具名；tool_result 正文与 reasoning 不入，02 §7 口径）。增量迁移（versioned）：检索前按 workspace 全会话自 settings 键 `history.idx.<sessionId>`（JSON `{v, offset}`）记录的字节偏移续扫新行，`HISTORY_INDEX_VERSION` 变更 → 整会话删除重扫；`UNIQUE + INSERT OR IGNORE` 使重扫与并发回填幂等；半行尾不推进偏移（Buffer 层 0x0A 分界，多字节安全）。写入方唯一 = HistorySearchRepo（不经触发器以外的旁路）。
 
 ---
 
@@ -510,6 +542,31 @@ LIMIT :limit;
 
 幂等去重：抽取以 sessionId + checkpoint 为幂等键（02 §7.4「同会话只抽取一次」），幂等记录存 `settings`（`memory.extracted.<sessionId>`）。
 
+**会话历史检索查询（T5.3，§3.12 history_fts）**：
+
+```sql
+-- FTS 路径（≥3 code point 查询）：查询按空白切词、逐词 phrase 转义、词间 OR（部分匹配可召回，
+-- bm25 排序；多词同时命中的文档排前）。3x 过取样取候选后按相对分数地板裁剪。
+SELECT p.session_id, p.seq, p.role, p.kind, p.content, p.ts, bm25(history_fts) AS score
+FROM history_fts f
+JOIN history_parts p ON p.id = f.rowid
+WHERE history_fts MATCH :orPhrases        -- 如 "renderer" OR "冷启动"（词间 OR，引号双写转义）
+  AND p.workspace_id = :wsHash            -- 跨项目串味防线
+  AND p.session_id != :currentSessionId   -- 排除当前会话（自指噪声，02 §7.4 注记）
+ORDER BY score
+LIMIT :limit * 3;                         -- 3x 过取样
+-- 裁剪：保留 |score| ≥ |score(top)| × 0.15 的命中后截断 :limit（BM25 绝对阈值随语料尺寸
+-- 漂移不可用，相对地板取自 MiMo-Code 调研经验，docs/research §2.1）。
+
+-- LIKE 兜底（<3 code point 或 FTS 空结果）
+SELECT session_id, seq, role, kind, content, ts
+FROM history_parts
+WHERE workspace_id = :wsHash AND session_id != :currentSessionId
+  AND content LIKE '%' || :query || '%' ESCAPE '\'
+ORDER BY ts DESC, id DESC
+LIMIT :limit;
+```
+
 ---
 
 ## 6. Migration 策略
@@ -577,6 +634,8 @@ LIMIT :limit;
 | 02 §7.3 | MemoryEntry（kind/content/refs/confidence/source/createdAt/lastSeenAt） | `memory_entries`，逐字段对应 | ✓ |
 | 02 §7.4 | 矛盾条目标记 superseded、confidence 召回阈值 | `memory_entries.status/superseded_by` + 查询条件 | ✓ |
 | 02 §7.1/7.3 | MEMORY.md 章节模板与唯一真源 | `<workspace>/.raincode/MEMORY.md` 文件 | ✓ |
+| 02 §7.4（T5.3） | 全局记忆双层注入（global 先 workspace 后） | `<RAINCODE_HOME>/MEMORY.md` 文件（§2.1） | ✓ |
+| 02 §7.4（T5.3） | 会话历史检索（part 级：文本+工具名）+ 检索一致性不变量 | `history_parts`/`history_fts`（§3.12，派生索引；真源 events.jsonl） | ✓ |
 | 04 §5.1/5.2 | 三级配置、Provider 四要素、apiKeyRef | `config.json` / `secrets.json` 文件 + 系统凭据库 | ✓ |
 | 04 §5.1 | MCP 清单独立文件 | `mcp.json`（全局 + 项目） | ✓ |
 | 01-PRD AC-5 / NFR-7 | 崩溃 100% 可恢复、消息计数一致 | JSONL 追加写 + `sessions.message_count` 对账 | ✓ |

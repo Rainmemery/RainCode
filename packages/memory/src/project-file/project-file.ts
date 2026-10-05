@@ -70,6 +70,32 @@ export async function loadProjectMemory(workspaceRoot: string): Promise<{ conten
 }
 
 // ---------------------------------------------------------------------------
+// 全局记忆（T5.3 双层注入：RAINCODE_HOME/MEMORY.md 跨项目层，global 先 workspace 后）
+// ---------------------------------------------------------------------------
+
+/** 全局 MEMORY.md 绝对路径（数据根 = RAINCODE_HOME，05 §2.1）。 */
+export function globalMemoryPath(dataRoot: string): string {
+  return join(dataRoot, MEMORY_FILE_NAME);
+}
+
+/**
+ * 全局记忆读取（T5.3）：只读不落盘；缺失或空白 → exists:false。与 workspace 层不同——
+ * 全局层无模板骨架，缺失即注入侧整块跳过（避免向每个项目注入空模板噪声，02 §7.4 注记）。
+ * 写路径 v1 不开放（跨项目全局条目经 memory_entries scope 列预留，见 05 §3.9）。
+ */
+export async function loadGlobalMemory(dataRoot: string): Promise<{ content: string; exists: boolean }> {
+  try {
+    const content = await readFile(globalMemoryPath(dataRoot), "utf8");
+    return { content, exists: content.trim().length > 0 };
+  } catch (reason: unknown) {
+    if (isEnoent(reason)) {
+      return { content: "", exists: false };
+    }
+    throw reason;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 章节定位与改写（模板章节头即 `## 项目概览` 等字面量，02 §7.3）
 // ---------------------------------------------------------------------------
 

@@ -52,19 +52,22 @@ async function main(): Promise<void> {
     await s2.close();
     console.log("t2: 重开幂等 OK（版本不重复执行，数据保留）");
 
-    // ---- t3 存量库升级路径：模拟 001+002 时代库（003 表缺失 + 版本行缺失）→ 重放 003 ----
+    // ---- t3 存量库升级路径：模拟 001+002 时代库（003 起的表全部缺失 + 版本行缺失）→ 重放 003→004 ----
     const raw = openDatabase(resolveDataRoot(env));
     const before = (
       raw.prepare("SELECT COUNT(*) AS n FROM permission_rules").get() as { n: number }
     ).n;
     assert.equal(before, 1, "t3 前置：002 规则行应存在");
+    // T5.3 起迁移版本 ≥4：模拟旧时代库必须降版本行到 2 并连带落 004 表（否则 MAX(version) 仍为 4，003 不回放）
+    raw.exec("DROP TABLE IF EXISTS history_fts");
+    raw.exec("DROP TABLE IF EXISTS history_parts");
     raw.exec("DROP TABLE IF EXISTS memory_fts");
     raw.exec("DROP TABLE IF EXISTS memory_entries");
     raw.exec("DROP TABLE IF EXISTS settings");
-    raw.prepare("DELETE FROM schema_migrations WHERE version = 3").run();
+    raw.prepare("DELETE FROM schema_migrations WHERE version >= 3").run();
     raw.close();
 
-    const s3 = await Storage.open({ env }); // 重放 003（001/002 已应用不回改）
+    const s3 = await Storage.open({ env }); // 重放 003→004（001/002 已应用不回改）
     assert.equal(await s3.settings.get("probe.key"), null, "t3：settings 表重建后为空（003 回放语义）");
     const ruleAfterReplay = (await s3.permissionRules.list({})).find((row) => row.id === rule.id);
     assert.ok(ruleAfterReplay !== undefined, "t3：002 数据行应在 003 重放后原样保留（不丢数据）");
@@ -79,7 +82,7 @@ async function main(): Promise<void> {
       source: "manual",
     }); // 重建表可正常写入
     await s3.close();
-    console.log("t3: 存量库（001+002）升级重放 003 OK（表恢复、002 数据保留、可正常写入）");
+    console.log("t3: 存量库（001+002）升级重放 003→004 OK（表恢复、002 数据保留、可正常写入）");
 
     console.log("");
     console.log("SMOKE OK");

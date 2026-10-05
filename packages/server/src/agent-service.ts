@@ -28,6 +28,7 @@ import { ConfigDomain } from "./config-domain.js";
 import { ConfigStore } from "./config-store.js";
 import { ToolDomain } from "./tool-domain.js";
 import { SessionDomain } from "./session-domain.js";
+import { createHistorySearchChannel } from "./history-search-channel.js";
 import { appVersion } from "./app-version.js";
 import { buildLlmClient, resolveLlmForModel, resolveLlmForProvider, type LlmProviderResolverDeps } from "./llm-factory.js";
 import {
@@ -189,6 +190,9 @@ export class AgentService {
     if (this.skills !== null) {
       this.toolDeps.expandSkill = (request) => this.skills!.expandForModel(request.sessionId, request.name, request.arguments);
     }
+    // T5.3 session_search 检索通道：storage.searchHistory 薄投影（part 级 FTS + 相对分数地板
+    // 语义单点在 storage history-search）；排除当前会话 + 错误形态投影见 history-search-channel.ts
+    this.toolDeps.searchHistory = createHistorySearchChannel(options.storage);
   }
 
   /**

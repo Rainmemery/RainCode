@@ -435,6 +435,7 @@ export interface ToolExecutor {
 | `todo_read` | 读当前任务清单 | 无 | none | P0 |
 | `web_fetch` | 抓取 URL 转 Markdown（域名白名单校验） | `url`, `maxBytes` | network | P1 |
 | `ask_user_question` | 向用户提出结构化问题并挂起等答 | `questions[]` | none | P1 |
+| `session_search` | 跨会话检索历史（part 级 FTS：文本+工具名；T5.3） | `query`, `limit` | none | P1 |
 
 > `todo` 状态存于会话内存并随事件落盘；`write/edit` 依赖 `read` 建立的文件快照（read-file state）做「先读后写」校验，防止盲写覆盖。
 
@@ -1097,6 +1098,17 @@ export type MemorySection =
 | 跨项目串味 | 所有查询强制带 workspaceId；服务实例按 workspace 缓存隔离 |
 | 自动抽取（P2）产生幻觉条目 | confidence < 0.6 不入召回默认集；晋升 MEMORY.md 必须经用户确认 |
 | 会话恢复后重复抽取 | 以 sessionId + checkpoint 幂等去重，同会话只抽取一次 |
+| 全局记忆缺失（T5.3） | RAINCODE_HOME/MEMORY.md 缺失或空白 → 全局层整块跳过（无模板骨架，不向每个项目注入空模板） |
+| 会话历史检索无结果（T5.3） | 返回空列表占位文本（模型可见「未找到」，不注入假数据）；<3 code point 查询走 LIKE 兜底 |
+
+**检索结果与模型所见一致（T5.3 不变量）**：`memory.search` RPC、`session_search` 模型工具与
+系统提示注入共用同一记忆/历史真源与同一检索路径（memory 层 recall.ts；历史层 storage
+history-search 的 part 级 FTS + 相对分数地板 top×0.15 + 3x 过取样 + LIKE 兜底），UI 投影与
+模型工具面不允许旁路实现。`session_search` 查询时**排除当前会话**（当前回合全文已在模型
+上下文中，自指命中会以短文本优势占据 top 位，属纯噪声；已知取舍：compact 后同会话早期原文
+不再可经本 API 召回，M6 可议开关）。全局记忆双层注入顺序固定：全局（RAINCODE_HOME/
+MEMORY.md）在前、项目（workspace/.raincode/MEMORY.md）在后。L2 条目 `scope` 列为存储位预留
+（05 §3.9），跨项目全局条目入召回留后续接线。
 
 ---
 

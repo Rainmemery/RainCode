@@ -37,6 +37,7 @@ export function loadMigrationScripts(): MigrationScript[] {
     { version: 1, name: "001_init", sql: readFileSync(join(dir, "001_init.sql"), "utf8") },
     { version: 2, name: "002_permission", sql: readFileSync(join(dir, "002_permission.sql"), "utf8") },
     { version: 3, name: "003_memory", sql: readFileSync(join(dir, "003_memory.sql"), "utf8") },
+    { version: 4, name: "004_history_fts", sql: readFileSync(join(dir, "004_history_fts.sql"), "utf8") },
   ];
 }
 

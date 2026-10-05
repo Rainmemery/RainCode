@@ -16,6 +16,7 @@ import { createBashTool } from "./handlers/bash.js";
 import { webFetchTool } from "./handlers/web-fetch.js";
 import { askUserTool } from "./handlers/ask-user.js";
 import { skillTool } from "./handlers/skill.js";
+import { sessionSearchTool } from "./handlers/session-search.js";
 import { createTodoWriteTool, createTodoReadTool } from "./handlers/todo.js";
 
 export interface BuiltinToolSet {
@@ -59,6 +60,7 @@ export function createBuiltinTools(options: CreateBuiltinToolsOptions = {}): Bui
   registry.register(webFetchTool);
   registry.register(askUserTool);
   registry.register(skillTool); // T4.4：展开经 ctx.expandSkill 通道（skills 域未装配 → TOOL_UNAVAILABLE）
+  registry.register(sessionSearchTool); // T5.3：检索经 ctx.searchHistory 通道（server 装配注入；未装配 → TOOL_UNAVAILABLE）
   registry.register(createTodoWriteTool(todos));
   registry.register(createTodoReadTool(todos));
   return { registry, background, todos };

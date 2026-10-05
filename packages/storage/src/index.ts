@@ -51,6 +51,9 @@ export type { MemoryListFilter, NewMemoryEntry } from "./memory-repo.js";
 
 export { SettingsRepo } from "./settings-repo.js";
 
+export { HistorySearchRepo, HISTORY_INDEX_VERSION, HISTORY_SEARCH_DEFAULT_LIMIT, RELATIVE_SCORE_FLOOR } from "./history-search.js";
+export type { HistoryPartKind, HistorySearchHit, HistorySearchOptions } from "./history-search.js";
+
 export { SessionStream } from "./jsonl-stream.js";
 export type { AppendResult, CheckpointResult, SessionStreamOptions } from "./jsonl-stream.js";
 

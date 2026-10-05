@@ -10,12 +10,14 @@
 export { MemoryError } from "./errors.js";
 export { MEMORY_ERROR_CODES } from "./errors.js";
 
-// 第一层：MEMORY.md 文件真源（02 §7.3；05 §5.1）
+// 第一层：MEMORY.md 文件真源（02 §7.3；05 §5.1）+ 全局记忆层（T5.3：global 先 workspace 后）
 export {
   MEMORY_FILE_DIR,
   MEMORY_FILE_NAME,
   MEMORY_TEMPLATE,
   appendToSection,
+  globalMemoryPath,
+  loadGlobalMemory,
   loadProjectMemory,
   projectMemoryPath,
   updateAgentSection,

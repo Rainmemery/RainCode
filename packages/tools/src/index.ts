@@ -53,7 +53,7 @@ export { TodoStore } from "./todo-store.js";
 // SSRF 守卫（02 §2.4；web_fetch 强制底线，单测断言用）
 export { assertPublicHttpUrl } from "./ssrf.js";
 export type { SsrfLookupDeps } from "./ssrf.js";
-export type { AskUserAnswer, AskUserRequest } from "./tool.js";
+export type { AskUserAnswer, AskUserRequest, SessionHistoryHitView, SessionHistorySearchResult } from "./tool.js";
 
 // 沙箱（02 §5）
 export { execLocal, killProcessTree, resolveShell, spawnLocal } from "./sandbox/local-executor.js";

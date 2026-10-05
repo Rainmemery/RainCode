@@ -25,7 +25,7 @@ import type {
 } from "@raincode/shared";
 import type { LlmPort } from "@raincode/agent-core";
 import type { Storage } from "@raincode/storage";
-import { MEMORY_TEMPLATE, MemoryError, createProjectMemoryService } from "@raincode/memory";
+import { MEMORY_TEMPLATE, MemoryError, createProjectMemoryService, loadGlobalMemory } from "@raincode/memory";
 import type { ExtractedCandidate, MemoryExtractPort, ProjectMemoryService } from "@raincode/memory";
 import type { SectionEditHooks } from "@raincode/memory";
 
@@ -181,6 +181,11 @@ export class MemoryRuntime {
     });
   }
 
+  /** 数据根（T5.3 全局记忆层真源位置 = RAINCODE_HOME，全局 MEMORY.md 落 <dataRoot>/MEMORY.md）。 */
+  get dataRoot(): string {
+    return this.options.storage.dataRoot;
+  }
+
   /** workspace 上下文登记（memory.search / memory.entries.list 判定域；由 memoryLoopEnhancements 调用）。 */
   setCurrentWorkspace(workspaceId: string): void {
     this.currentWorkspaceId = workspaceId;
@@ -303,11 +308,15 @@ export class MemoryRuntime {
 const MEMORY_INJECTION_HEADER =
   "# 项目记忆（MEMORY.md，用户与 Agent 共同维护；'当前进行'/'Agent 备忘'为 Agent 专用章节）";
 
+/** 全局记忆注入标题行（T5.3：跨项目层，global 先 workspace 后；02 §7.4 双层注入注记）。 */
+const GLOBAL_MEMORY_INJECTION_HEADER = "# 全局记忆（RAINCODE_HOME/MEMORY.md，跨项目共享）";
+
 /**
  * MEMORY.md 系统提示注入（04-architecture L86 / 02 §7.4 / ADR-06 唯一组装点，agent-core 零感知）：
  * - memory 未装配 → 原样透传 base systemPrompt（可能 undefined）；
- * - MEMORY.md 不存在/为空 → 注入模板骨架（空章节说明，02 §7.4）——统一注入；
- * - 拼接格式：base + 空行分隔 + 标题行 + 文件全文；
+ * - 双层注入（T5.3）：全局层（RAINCODE_HOME/MEMORY.md，缺失/空白整块跳过，无模板）在前，
+ *   项目层在后；每层以各自标题行起始，空行分隔；
+ * - 项目层 MEMORY.md 不存在/为空 → 注入模板骨架（空章节说明，02 §7.4）——统一注入；
  * - 顺带登记 workspace 上下文（memory.search/entries.list 判定域），并挂 compact 抽取钩子
  *   （02 §7.2：抽取先于历史替换、以快照 prefix 为准；失败由 compact 侧捕获不阻塞提交）。
  */
@@ -322,9 +331,15 @@ export async function memoryLoopEnhancements(
     return { ...(baseSystemPrompt !== undefined && { systemPrompt: baseSystemPrompt }) };
   }
   memory.setCurrentWorkspace(workspaceId);
+  const blocks: string[] = [];
+  const globalSnap = await loadGlobalMemory(memory.dataRoot);
+  if (globalSnap.exists) {
+    blocks.push(`${GLOBAL_MEMORY_INJECTION_HEADER}\n\n${globalSnap.content}`);
+  }
   const snapshot = await memory.service.loadProjectMemory(workspaceRoot);
   const content = snapshot.content.trim().length > 0 ? snapshot.content : MEMORY_TEMPLATE;
-  const memoryBlock = `${MEMORY_INJECTION_HEADER}\n\n${content}`;
+  blocks.push(`${MEMORY_INJECTION_HEADER}\n\n${content}`);
+  const memoryBlock = blocks.join("\n\n");
   return {
     systemPrompt: baseSystemPrompt !== undefined ? `${baseSystemPrompt}\n\n${memoryBlock}` : memoryBlock,
     compactionOnBeforeReplace: async (prefix: MessageRecord[]): Promise<void> => {

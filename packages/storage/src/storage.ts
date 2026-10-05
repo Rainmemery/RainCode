@@ -11,6 +11,7 @@ import { basename } from "node:path";
 import type { MessageRecord } from "@raincode/shared";
 import { openDatabase, type SqliteDatabase } from "./db.js";
 import { StorageError } from "./errors.js";
+import { HistorySearchRepo, type HistorySearchHit, type HistorySearchOptions } from "./history-search.js";
 import { HEADER_EVENT_NAME, JSONL_SCHEMA_VERSION, RAINCODE_VERSION, type CheckpointState } from "./jsonl-lines.js";
 import { replaySessionFile, repairDanglingTail, scanTailState, type ResumeReplay } from "./jsonl-resume.js";
 import { SessionStream, type AppendResult, type CheckpointResult } from "./jsonl-stream.js";
@@ -61,6 +62,8 @@ export class Storage {
   readonly memory: MemoryRepo;
   /** 运行期 KV（05 §3.11；含记忆抽取幂等键 memory.extracted.<sessionId>）。 */
   readonly settings: SettingsRepo;
+  /** 会话历史检索（T5.3：part 级 FTS 派生索引 + 增量回填；正文真源仍是 events.jsonl）。 */
+  readonly history: HistorySearchRepo;
 
   private readonly db: SqliteDatabase;
   private readonly streams = new Map<string, SessionStream>();
@@ -77,6 +80,7 @@ export class Storage {
     this.approvals = new ApprovalsRepo(db);
     this.memory = new MemoryRepo(db);
     this.settings = new SettingsRepo(db);
+    this.history = new HistorySearchRepo(db, dataRoot, this.sessions, this.settings);
   }
 
   /** 打开全局单库：连接 PRAGMA + 迁移在 TUI ready 前同步完成（05 §6，NFR-1）。 */
@@ -215,6 +219,18 @@ export class Storage {
       lastActiveAt: Date.now(),
     });
     return { sessionId, ...replay };
+  }
+
+  /**
+   * 会话历史检索（T5.3）：part 级 FTS（文本块 + 工具名），检索前对本 workspace 全部会话
+   * 增量回填索引；相对分数地板 + LIKE 兜底语义见 history-search.ts（05 §5.4）。
+   */
+  async searchHistory(
+    workspaceId: string,
+    query: string,
+    options: HistorySearchOptions = {},
+  ): Promise<HistorySearchHit[]> {
+    return this.history.search(workspaceId, query, options);
   }
 
   /** 会话 events.jsonl 绝对路径（诊断/测试用）。 */

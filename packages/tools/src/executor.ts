@@ -175,6 +175,7 @@ export class ToolExecutor {
         ...(ctx.pathPolicy !== undefined && { pathPolicy: ctx.pathPolicy }),
         ...(ctx.askUser !== undefined && { askUser: ctx.askUser }),
         ...(ctx.expandSkill !== undefined && { expandSkill: ctx.expandSkill }),
+        ...(ctx.searchHistory !== undefined && { searchHistory: ctx.searchHistory }),
         ...(ctx.onToolProgress !== undefined && {
           onProgress: (event: ToolProgressEvent) => {
             ctx.onToolProgress?.({ ...event, toolCallId: call.toolCallId });

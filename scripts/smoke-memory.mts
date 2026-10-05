@@ -22,6 +22,10 @@
  * 用例 G 晋升草案待确认区（02 §7.2 第三层，协议 v1.7 memory.drafts.*）：抽取高置信（≥0.8）
  *   新条目自动生成草案（todo / 低置信排除）；case E 直接管晋升已收敛 decision 草案为 confirmed；
  *   confirm 合入 MEMORY.md（章节预填）→ 终态不可再变更 → MEMORY_DRAFT_NOT_FOUND 族。
+ * 用例 H 全局记忆双层注入（T5.3）：RAINCODE_HOME/MEMORY.md 落位 → 新会话 system 提示含
+ *   全局层标题行与内容、且先于项目层标题行（global 先 workspace 后，02 §7.4 注记）。
+ * 用例 I session_search 端到端（T5.3）：tool.tools.list 含 session_search；种子会话历史落盘 →
+ *   检索会话模型发起 session_search 工具调用 → 命中回传（计数/出处 sessionId/正文片段）续答收束。
  * 全程仅本机回环与临时目录：无外呼、无真实密钥（mock provider apiKey 为占位符，绝不打印）。
  */
 import assert from "node:assert/strict";
@@ -36,7 +40,7 @@ import type { AgentServiceNode } from "../packages/server/src/index.ts";
 import { computeWorkspaceHash } from "../packages/storage/src/index.ts";
 import { MemoryError, createProjectMemoryService } from "../packages/memory/src/index.ts";
 import type { MemoryEntry, MemorySection } from "../packages/shared/src/index.ts";
-import { beginTurn, startMockLlmServer, textScript, withTimeout } from "./p0-lib.mts";
+import { beginTurn, startMockLlmServer, textScript, toolCallFrame, withTimeout } from "./p0-lib.mts";
 import type { MockLlmServer, SseScript } from "./p0-lib.mts";
 
 // ---------------------------------------------------------------------------
@@ -389,6 +393,74 @@ async function caseDrafts(scenario: Scenario): Promise<void> {
   console.log("case G: 晋升草案待确认区（生成规则 / 直接管晋升收敛 / confirm 合入 / 终态与 NOT_FOUND）OK");
 }
 
+/** H：全局记忆双层注入（T5.3：RAINCODE_HOME/MEMORY.md 先于项目层，02 §7.4 注记）。 */
+async function caseGlobalMemoryInjection(scenario: Scenario): Promise<void> {
+  const { client, mock, home, workspace } = scenario;
+  writeFileSync(join(home, "MEMORY.md"), "# 全局约定\n\n回复始终使用中文交流\n", "utf8");
+
+  mock.setScript([textScript("H 收到")]);
+  const sessionId = ((await client.call("session.create", {
+    workspaceRoot: workspace,
+    title: "memory-global",
+  })) as { sessionId: string }).sessionId;
+  const bodiesStart = mock.bodies.length;
+  await sendAndAwait(scenario, sessionId, "H 第一问");
+  const body = mock.bodies[bodiesStart];
+  const system = body?.messages.find((m) => m.role === "system");
+  assert.ok(system !== undefined && typeof system.content === "string", "system 消息存在");
+  assert.ok(system.content.includes("# 全局记忆（RAINCODE_HOME/MEMORY.md"), "全局层标题行");
+  assert.ok(system.content.includes("回复始终使用中文交流"), "全局层内容注入");
+  assert.ok(system.content.includes("# 项目记忆（MEMORY.md"), "项目层标题行仍在");
+  assert.ok(
+    system.content.indexOf("# 全局记忆") < system.content.indexOf("# 项目记忆"),
+    "global 先 workspace 后（02 §7.4）",
+  );
+  console.log("case H: 全局记忆双层注入（global 先 workspace 后）OK");
+}
+
+/** I：session_search 端到端（T5.3：tools.list 可见 + 种子历史检索命中回传续答）。 */
+async function caseSessionSearch(scenario: Scenario): Promise<void> {
+  const { client, mock, workspace } = scenario;
+
+  const list = (await client.call("tool.tools.list", {})) as { tools: Array<{ name: string }> };
+  assert.ok(list.tools.some((t) => t.name === "session_search"), "session_search 进 tools.list（模型侧可见）");
+
+  // 种子会话：历史文本落盘 → part 级索引可检索
+  mock.setScript([textScript("I 种子回复")]);
+  const seedId = ((await client.call("session.create", {
+    workspaceRoot: workspace,
+    title: "search-seed",
+  })) as { sessionId: string }).sessionId;
+  await sendAndAwait(scenario, seedId, "I 记住部署流水线采用 GitHub Actions");
+
+  // 检索会话：模型发起 session_search（唯一种子命中）→ 工具结果回传 → 续答收束
+  const searchCall: SseScript = {
+    frames: [
+      { choices: [{ index: 0, delta: { role: "assistant", content: "" } }] },
+      toolCallFrame("call_search_1", "session_search", { query: "部署流水线" }),
+    ],
+    finish: "tool_calls",
+  };
+  mock.setScript([searchCall, textScript("I 检索完成")]);
+  const searchId = ((await client.call("session.create", {
+    workspaceRoot: workspace,
+    title: "search-run",
+  })) as { sessionId: string }).sessionId;
+  const bodiesStart = mock.bodies.length;
+  await sendAndAwait(scenario, searchId, "I 帮我找部署流水线的历史");
+
+  const toolMsg = mock.bodies
+    .slice(bodiesStart)
+    .flatMap((b) => b.messages)
+    .find((m) => m.role === "tool");
+  assert.ok(toolMsg !== undefined, "第二轮请求应携带工具结果消息");
+  const content = typeof toolMsg.content === "string" ? toolMsg.content : JSON.stringify(toolMsg.content);
+  assert.ok(content.includes("共 1 条历史命中"), `命中计数（种子唯一），实得：${content.slice(0, 120)}`);
+  assert.ok(content.includes(seedId), "命中出处 sessionId");
+  assert.ok(content.includes("部署流水线"), "命中正文片段");
+  console.log("case I: session_search 端到端（tools.list 可见 + 历史检索命中回传）OK");
+}
+
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
@@ -401,6 +473,8 @@ async function main(): Promise<void> {
     await casePromote(scenario, ids.decisionId);
     await caseCompactExtraction(scenario);
     await caseDrafts(scenario);
+    await caseGlobalMemoryInjection(scenario);
+    await caseSessionSearch(scenario);
   } finally {
     await scenario.close();
   }

@@ -41,6 +41,24 @@ export interface AskUserRequest {
  */
 export type AskUserAnswer = { answerText: string } | { cancelled: true };
 
+// ---------------------------------------------------------------------------
+// session_search 会话历史检索通道（T5.3；检索真源在 storage，server 装配注入）
+// ---------------------------------------------------------------------------
+
+/** 历史命中投影（索引细节 seq/bm25 分数不外露工具面；已按相关性排序、分数地板裁剪）。 */
+export interface SessionHistoryHitView {
+  sessionId: string;
+  role: string;
+  kind: "text" | "tool";
+  content: string;
+  ts: number;
+}
+
+/** 检索结果：ok = 命中列表；!ok = 域码投影（同 expandSkill 口径，跨包错误类不越 port）。 */
+export type SessionHistorySearchResult =
+  | { ok: true; hits: SessionHistoryHitView[] }
+  | { ok: false; code: string; message: string };
+
 export interface ToolExecutionContext {
   /** 贯穿取消（02 §1.4 T12：中断信号广播到工具执行器）。 */
   signal: AbortSignal;
@@ -67,6 +85,12 @@ export interface ToolExecutionContext {
     name: string;
     arguments?: string;
   }) => Promise<{ ok: true; expanded: string } | { ok: false; code: string; message: string }>;
+  /**
+   * session_search 会话历史检索通道（T5.3；agent-core tool-phase 从 ToolPhaseDeps 注入并绑定
+   * 会话归属与 workspace 判定域）。缺省 = 未装配，session_search 以 TOOL_UNAVAILABLE 收敛
+   * （同 ask_user/skill fail-safe 口径）。
+   */
+  searchHistory?: (request: { query: string; limit?: number }) => Promise<SessionHistorySearchResult>;
   /** 进度回调（长耗时工具周期性产出）。 */
   onProgress?: (event: ToolProgressEvent) => void;
 }

@@ -171,6 +171,12 @@ export interface ToolPhaseDeps {
    * 不越 port），以 ok/code 投影交由工具侧收敛为 ToolResult.error。
    */
   expandSkill?: SkillExpansionChannel;
+  /**
+   * session_search 会话历史检索通道（T5.3；可选——缺省未装配，工具以 TOOL_UNAVAILABLE 收敛）。
+   * 真实实现由 server 装配（storage.searchHistory 薄投影：part 级 FTS + 相对分数地板，
+   * 会话归属与 workspace 判定域由 tool-phase 注入）；结果形态不复用异常（同 expandSkill 口径）。
+   */
+  searchHistory?: SessionHistorySearchChannel;
 }
 
 // ---------------------------------------------------------------------------
@@ -212,3 +218,33 @@ export type AskUserAnswer = { answerText: string } | { cancelled: true };
 
 /** ask_user_question 通道（server 注入；approval-broker.request + askAndWait 的薄封装）。 */
 export type AskUserChannel = (request: AskUserChannelRequest) => Promise<AskUserAnswer>;
+
+// ---------------------------------------------------------------------------
+// session_search 会话历史检索通道（T5.3；02 §7 检索真源在 storage，server 装配注入）
+// ---------------------------------------------------------------------------
+
+/** 检索请求（tool-phase 由 turn ctx 注入会话归属与 workspace 判定域）。 */
+export interface SessionHistorySearchRequest {
+  sessionId: string;
+  /** workspaceHash（历史检索判定域；05 §3.12 history_parts 归属列）。 */
+  workspaceId: string;
+  query: string;
+  limit?: number;
+}
+
+/** 命中投影（索引细节 seq/bm25 分数不外露工具面；已按相关性排序、分数地板裁剪）。 */
+export interface SessionHistoryHitView {
+  sessionId: string;
+  role: string;
+  kind: "text" | "tool";
+  content: string;
+  ts: number;
+}
+
+/** 结果：ok = 命中列表；!ok = 域码投影（同 expandSkill，跨包错误类不越 port）。 */
+export type SessionHistorySearchResult =
+  | { ok: true; hits: SessionHistoryHitView[] }
+  | { ok: false; code: string; message: string };
+
+/** 检索通道（server 注入；storage.searchHistory 薄投影）。 */
+export type SessionHistorySearchChannel = (request: SessionHistorySearchRequest) => Promise<SessionHistorySearchResult>;

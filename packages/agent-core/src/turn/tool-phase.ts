@@ -300,6 +300,12 @@ export class ToolPhaseRunner {
         expandSkill: (request: { name: string; arguments?: string }) =>
           deps.expandSkill!({ sessionId: ctx.sessionKey, name: request.name, arguments: request.arguments }),
       }),
+      // T5.3 session_search 检索通道：会话归属 + workspace 判定域注入；deps.searchHistory 缺省 → TOOL_UNAVAILABLE
+      ...(deps.searchHistory !== undefined && {
+        searchHistory: (request: { query: string; limit?: number }) =>
+          deps.searchHistory!({ sessionId: ctx.sessionKey, workspaceId: ctx.workspaceId, query: request.query,
+            ...(request.limit !== undefined && { limit: request.limit }) }),
+      }),
       onToolProgress: (event: ToolProgressEvent & { toolCallId: string }) => {
         this.publishThrottledProgress(event, progressThrottleMs);
       },
