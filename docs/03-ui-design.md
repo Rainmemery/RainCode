@@ -1,6 +1,6 @@
 # RainCode UI 设计规范
 
-> 版本 v1.6 · 2026-10-05（v1.0 · 2026-09-24 初稿；v1.1 双端统一；v1.2 思考块与工具卡深化；v1.3 组件化重构与冷重建；v1.4 浅色主题落地；v1.5 三栏布局演进；v1.6 变更见文末「16. v1.6 变更记录」）
+> 版本 v1.7 · 2026-10-05（v1.0 · 2026-09-24 初稿；v1.1 双端统一；v1.2 思考块与工具卡深化；v1.3 组件化重构与冷重建；v1.4 浅色主题落地；v1.5 三栏布局演进；v1.6 管理面板深化；v1.7 变更见文末「17. v1.7 变更记录」）
 > 适用范围：RainCode 个人代码智能助手——Windows 桌面端（Electron + React 18 + Zustand + Tailwind CSS，shadcn/ui 风格组件）、Web 工作台（React 18 + Zustand + Tailwind CSS）与 CLI 端（readline REPL + ANSI）。
 > 配套高保真设计稿见文末「设计稿索引」，四张稿件与本文档 tokens 严格一致。
 
@@ -265,26 +265,28 @@ flowchart TD
 4. **子代理进度卡**（紫色标识）：主代理派发的并行子任务列表，每行子代理名 + 当前动作 + 迷你进度条；可展开查看子代理各自的消息流缩略；全部完成后折叠为一行汇总。
 5. **流式输出**：生成中的助手消息尾部为 1×16px 橙色光标块（闪烁）；未完成段落底部呈现一行 shimmer 扫过的占位文本「正在生成…」。
 6. **权限审批弹窗态**（模态叠加）：遮罩 `rgba(6,9,14,.62)` + `--shadow-3` 对话框（`--r-xl`，带取景框角标）。内容：风险徽章（低/中/高）、工具名与完整命令（等宽、可复制）、影响文件列表、四级决策按钮「仅本次允许（主按钮）/ 本会话允许 / 始终允许 / 拒绝（danger 幽灵按钮）」、「记住此选择并写入权限规则」复选框。键盘 `1–4` 直选，`Esc`=拒绝。
-7. **输入区**：底部输入框（`--bg-raised`，聚焦边框转 `--accent-dim`），支持 `/` 命令面板、`@` 文件引用、模型快切；右侧发送主按钮，生成中变为「停止」方块按钮；下方一行弱化提示（当前模型 · context 用量）。
+7. **输入区**：底部输入框（`--bg-raised`，聚焦边框转 `--accent-dim`），支持 `/` 命令面板、`@` 文件引用、模型快切；右侧发送主按钮，生成中变为「停止」方块按钮；下方一行弱化提示（当前模型 · context 用量）。**v1.7 实现注记（双端）**：ctx 行模型名改为按钮 → 弹层（`config.providers.list`）→ 点选 `config.providers.switch` 快切（仅影响后续请求，会话历史不动，04 §5.2）；`config.providers.list` 无活跃 Provider / 为空时输入区置灰禁用（文本域与发送钮 disabled）+ 引导条「先配置模型 Provider →」跳设置页 Provider 与模型组。
 
-**右侧上下文面板**（Tab：记忆 | MCP | 子代理 | 沙箱，激活 Tab 底部 2px 模块色指示条）——**v1.5 实现注记**：三 Tab（记忆 | MCP | 子代理）已双端落地（300px 可折叠 + 竖条唤起 + 非会话视图隐藏）；**沙箱 Tab 未实现**（06 全文无 `sandbox.*` RPC 域，禁做有 Tab 无数据的假 UI；沙箱域登记协议缺口，补域后在此扩展 Tab 槽位）。子代理 Tab 的数据口径：`subagent.*` 事件为全局事件（payload 无 sessionId），前端按「事件到达时活跃会话」归属，记录为瞬态不落盘（resume 后右栏与进度卡重置为 `subagent.list` 可及范围，历史派发由事件到达期间在线时呈现）：
+**右侧上下文面板**（Tab：记忆 | MCP | 子代理 | 后台，激活 Tab 底部 2px 模块色指示条；沙箱 Tab 槽位预留）——**v1.5 / v1.7 实现注记**：四 Tab（记忆 | MCP | 子代理 | 后台）已双端落地（300px 可折叠 + 竖条唤起 + 非会话视图隐藏；第 4 Tab「后台」为 v1.7 增补，cyan 工具调用模块色、沿用既有 2px 指示条与折叠语义）；**沙箱 Tab 未实现**（06 全文无 `sandbox.*` RPC 域，禁做有 Tab 无数据的假 UI；沙箱域登记协议缺口，补域后在此扩展 Tab 槽位）。子代理 Tab 的数据口径：`subagent.*` 事件为全局事件（payload 无 sessionId），前端按「事件到达时活跃会话」归属，记录为瞬态不落盘（resume 后右栏与进度卡重置为 `subagent.list` 可及范围，历史派发由事件到达期间在线时呈现）：
 
 - **记忆 Tab**（默认，绿色标识）：MEMORY.md 摘要卡（条目数 +「打开管理器」链接）、检索框（300ms 防抖 `memory.search`）、最近记忆条目列表（类型徽章 + 两行截断摘要 + 来源·相对时间，`memory.entries.list`）。工作区未设定时显示一行引导。
 - **MCP Tab**（蓝色标识）：已连接服务器列表（名称、状态灯、工具数、传输方式 stdio/SSE），点击行展开工具清单；Failed 行「重试」按钮；行内启停开关；`mcp.server_status_changed` 事件经 store tick 驱动实时重拉。
 - **子代理 Tab**（紫色标识）：当前运行中子代理实时列表（名称、任务、阶段摘要、状态灯）与历史派发记录（终态 + turnsUsed）。
+- **后台 Tab（v1.7，cyan 工具调用模块色）**：`tool.background.list` 任务行（五态状态灯 Running/Completed/Failed/Timeout/Killed + 等宽 command + 相对时间 + exitCode）、Running 行「终止」（`tool.background.kill`）、行展开产出 tail（`tool.background.output {tail:200}`，truncated 提示）、存在 Running 且面板可见时 2s 轮询 + 「刷新」、空态一行；拆独立文件 `BackgroundTab.tsx`（护 500 行门禁）。**口径注记**：`tool.background.list` 返回 registry 全局共享的全量任务（06 §2.7），面板据此标注数据口径，不做按会话过滤的假 UI。
 - **沙箱 Tab**（薄荷绿标识）：沙箱总开关、当前模式（只读/工作区可写/完全离线）、资源限制读数（CPU/内存/网络）、最近被拦截操作列表。**（未实现——协议缺口，见上注记）**
 
 ### 6.2 设置页（稿件 02）
 
-左侧垂直导航（6 组）：通用 / Provider 与模型 / 命令权限 / MCP 服务器 / 快捷键 / 关于。右侧内容区每块均为「区块标题 + 卡片」结构，改动即时保存并显示「已保存」弱化提示。**v1.6 实现注记（双端落地）**：新组件 `SettingsView.tsx`（顶行「← 返回」+ 标题「设定」+ 左导航 200px——激活项 text-hi + 2px accent 指示条 + 32px 行高；超限分区拆 `SettingsPermissions.tsx`/`SettingsMcp.tsx`，desktop 另有共享 `SettingsCard.tsx`）——通用（主题三态显式选择与侧栏「◐」同状态源 + 工作区路径只读行 + 语言 zh-CN 静态行）；Provider 与模型（既有 ProviderSettings 原样迁入，行为零变更）；命令权限（`permission.rules.list/add/remove`：behavior 徽章 allow=ok/ask=warn/deny=danger + 等宽 `tool:pattern ?? "*"` + 作用域 + 来源 手动/会话决策/导入 + 删除；「新建规则」表单 scope 仅 project/global——session 驻内存不入库；危险示例提示置顶）；MCP 服务器（`mcp.servers.add/remove`：卡片列表 + 添加表单 serverKey/transport/command/args/env/url + 实时 JSON 预览 + 删除两段确认；运行态启停/重试/健康仍在右栏 MCP Tab，不重复）；快捷键（静态 `.kbd` 键位表 + 浏览器保留键附注）；关于（`system.version` 四行 + docs 指引）。
+左侧垂直导航（7 组）：通用 / Provider 与模型 / 命令权限 / MCP 服务器 / 快捷键 / 关于 / 工具。右侧内容区每块均为「区块标题 + 卡片」结构，改动即时保存并显示「已保存」弱化提示。**v1.6 实现注记（双端落地）**：新组件 `SettingsView.tsx`（顶行「← 返回」+ 标题「设定」+ 左导航 200px——激活项 text-hi + 2px accent 指示条 + 32px 行高；超限分区拆 `SettingsPermissions.tsx`/`SettingsMcp.tsx`，desktop 另有共享 `SettingsCard.tsx`）——通用（主题三态显式选择与侧栏「◐」同状态源 + 工作区路径只读行 + 语言 zh-CN 静态行）；Provider 与模型（既有 ProviderSettings 原样迁入，行为零变更）；命令权限（`permission.rules.list/add/remove`：behavior 徽章 allow=ok/ask=warn/deny=danger + 等宽 `tool:pattern ?? "*"` + 作用域 + 来源 手动/会话决策/导入 + 删除；「新建规则」表单 scope 仅 project/global——session 驻内存不入库；危险示例提示置顶）；MCP 服务器（`mcp.servers.add/remove`：卡片列表 + 添加表单 serverKey/transport/command/args/env/url + 实时 JSON 预览 + 删除两段确认；运行态启停/重试/健康仍在右栏 MCP Tab，不重复）；快捷键（静态 `.kbd` 键位表 + 浏览器保留键附注）；关于（`system.version` 四行 + docs 指引）。**v1.7 实现注记（双端落地）**：导航 6 → 7 组，末位增「工具」——`SettingsTools.tsx` 经 `tool.tools.list` 呈现三源（builtin/mcp/plugin）过滤 chips + 行（glyph + 等宽工具名 + source 徽章 + 描述截断）+ 行展开参数 schema（JSON Schema 投影，等宽代码块），只读无调用入口，支持 `list-nav.ts` 键盘（↑↓/Home/End + Enter 展开）；「命令权限」组内嵌「决策审计」子区——`SettingsAudit.tsx` 经 `permission.decisions.list` 呈现 decision 三态（全部/allow/deny）+ toolName 输入过滤（300ms 防抖）+ 记录表（相对时间 / 等宽 `toolName` / decision 徽章 / `matchedBy` / `respondLatencyMs`）+ 游标「加载更多」（page.limit 50），只读无写入口。无活跃 Provider 时设置页默认落「Provider 与模型」组。
 
 - **Provider 与模型**：当前 Provider 卡片（名称、状态灯、默认模型徽章）；表单：API Key（掩码显示 + 显示切换 + 测试连接按钮）、Base URL、模型选择下拉、上下文窗口读数、温度与最大输出滑杆；「添加自定义 Provider」次按钮。
-- **命令权限**：规则表（模式 allow/ask/deny 彩色徽章 + 等宽规则表达式 + 作用域 + 来源[手动/会话决策] + 删除）；顶部「新建规则」与模式说明；危险示例（`rm -rf` deny）必须置顶展示。
+- **命令权限**：规则表（模式 allow/ask/deny 彩色徽章 + 等宽规则表达式 + 作用域 + 来源[手动/会话决策] + 删除）；顶部「新建规则」与模式说明；危险示例（`rm -rf` deny）必须置顶展示。**v1.7 增补**：组内嵌「决策审计」只读子区（`permission.decisions.list`）。
 - **MCP 服务器**：服务器卡片列表（名称、传输方式、状态灯、工具数、启停开关、编辑/删除）；「添加服务器」卡片含 JSON 配置预览；连接失败态给出重试按钮与错误摘要。
+- **工具（v1.7 新增组）**：`tool.tools.list` 三源过滤（全部/内置/MCP/插件）chips + 工具行（glyph + 等宽工具名 + source 徽章 + 描述截断）+ 行展开参数 schema（JSON Schema 投影）；只读目录，不提供调用入口。
 
 ### 6.3 记忆管理界面（稿件 03）
 
-三栏：左侧记忆源列表（MEMORY.md / 项目约定 / 用户偏好 / 命令速查 / 架构决策，各含条目数）+「新建记忆」；中部 MEMORY.md 预览（Markdown 渲染：标题、列表、行内代码、引用块，顶部含文件路径与「在编辑器打开」）；右侧条目面板（顶部检索框 + 类型过滤 chips，条目列表含类型徽章、摘要两行截断、来源「会话 #id 自动提取 / 手动」、引用次数、置顶图钉与删除）。检索命中时条目内关键词以 `--accent-bg` 高亮。
+三栏：左侧记忆源列表（MEMORY.md / 项目约定 / 用户偏好 / 命令速查 / 架构决策，各含条目数）+「新建记忆」；中部 MEMORY.md 预览（Markdown 渲染：标题、列表、行内代码、引用块，顶部含文件路径与「在编辑器打开」）；右侧条目面板（顶部检索框 + 类型过滤 chips，条目列表含类型徽章、摘要两行截断、来源「会话 #id 自动提取 / 手动」、引用次数、置顶图钉与删除）。检索命中时条目内关键词以 `--accent-bg` 高亮。**v1.7 实现注记（双端）**：MEMORY.md 预览由 `<pre>` 纯文本改为复用既有 `Markdown.tsx` 渲染（标题 / 列表 / 行内代码 / 代码块 / 引用，保持只读与「未建」说明）；检索查询非空改走服务端 `memory.search { query, kind?, limit: 50 }`（250ms 防抖，与 02 §7.4「同一真源同一路径禁旁路」一致，移除端层 `content.includes` 本地过滤旁路），空查询仍走 `memory.entries.list` 基线；命中片段经 `highlight.ts` 的 `splitHighlight` 分段（大小写不敏感、多命中、正则元字符零语义）以 `--accent-bg` 高亮。
 
 ### 6.4 工具调用卡片规范（核心组件）
 
@@ -347,17 +349,17 @@ flowchart TD
 | 状态 | 规范 |
 |---|---|
 | 空态 | 会话列表空：插画级 ASCII 纹样 +「新建第一个会话」引导；记忆空：说明文案 + 示例条目灰态 |
-| 加载 | MCP/沙箱面板加载：骨架条（`--bg-raised` 微 shimmer，320ms）；不使用全屏 spinner |
+| 加载 | MCP/沙箱面板加载：骨架条（`--bg-raised` 微 shimmer，320ms）；不使用全屏 spinner。**v1.7 已实现（双端）**：`.skeleton` 骨架条（320ms 微 shimmer，`prefers-reduced-motion: reduce` 收敛为静态）替换全部面板级「加载中…」纯文本——MCP 工具清单 / 记忆 MEMORY.md 预览 / 关于版本 / 工具目录 / 后台任务 / 决策审计六处 |
 | 流式中 | 助手消息尾光标闪烁；输入区发送钮变「停止」；工具卡 running 状态灯旋转 |
 | 审批中 | Agent 暂停、消息流顶部出现琥珀「等待你的确认」横条；审批弹窗唯一可交互焦点（其他区域禁用） |
-| 错误 | 工具卡 error 红灯 + 可展开错误详情（stderr 全文等宽渲染）；助手消息失败给出「重试」按钮；网络断开在标题栏显示 `--danger` 圆点 +「离线」徽章 |
+| 错误 | 工具卡 error 红灯 + 可展开错误详情（stderr 全文等宽渲染）；助手消息失败给出「重试」按钮；网络断开在标题栏显示 `--danger` 圆点 +「离线」徽章。**v1.7 已实现（双端）**：端层消费 `error` 事件 `scope/code/message/recoverable/turnId` 结构化字段——失败回合处 danger 卡「回合失败（`code`）」，`recoverable === true` 呈现「重试」按钮（以该轮原始输入重发，斜杠命令经 `skills.invoke` 同路径），`false` 或缺结构化字段回落既有字符串横条；侧栏连接徽章补 `disconnected` danger 圆点 +「离线」；连接非 `ready` 且非 `fatal` 时主区顶部呈现 warn 重连条「重连中（断线补偿）…」，ready 后自动消失 |
 | 沙箱拦截 | 沙箱 Tab 与对应工具卡同时出现 `--mint` 拦截记录，内容含被拦命令与原因 |
 | MCP 连接失败 | 服务器行状态灯红 + 「重连中…」琥珀文案 + 重试按钮；相关工具调用卡片提示「服务器不可用」 |
-| 未配置 Provider | 输入区置灰 + 引导条「先配置模型 Provider →」跳设置页 |
+| 未配置 Provider | 输入区置灰 + 引导条「先配置模型 Provider →」跳设置页。**v1.7 已实现（双端）**：`config.providers.list` 无 active / 为空时文本域与发送按钮 disabled + 引导条跳设置页 Provider 与模型组 |
 | 审批超时 | 审批弹窗保持等待不自动关闭；CLI 中超过 10 分钟提示「仍在等待，Ctrl+C 可中断」；中断后工具卡标记为「已取消」灰态 |
 | token/context 超限 | context 条超过 80% 变琥珀、95% 变红；触顶时 Agent 自动总结压缩上下文并在消息流顶部提示「上下文已压缩」（**v1.6 已实现**：双端 `compact-view.ts` 消费 `compact.started/completed` 为会话级瞬态提示条——running shimmer / ok「⌃ 上下文已压缩 · 第 N 代 · 手动/自动 · tokens X→Y」/ failed danger 色 + reason，可 dismiss；输入区 ctx 行「压缩」按钮触发 `session.compact`，完成后用量条联动回落；microcompact 为存储级事件不经 RPC 不呈现；历史未超出保留区时压缩请求落域错误横条） |
 | 会话恢复失败 | 启动时显示「会话文件损坏，已隔离至 sessions/orphan/」+ 可跳转目录；不阻塞新建会话 |
-| Provider 限流（429） | 会话流顶部蓝色横条「模型限流中，将于 Ns 后自动重试」+ 手动重试按钮；子代理块内则逐个暂停再恢复 |
+| Provider 限流（429） | 会话流顶部蓝色横条「模型限流中，将于 Ns 后自动重试」+ 手动重试按钮；子代理块内则逐个暂停再恢复。**（未实现——维持登记）**：协议无 429 / 限流专用错误码，不做有横条无数据的假 UI |
 | 磁盘空间不足 | 标题栏持久琥珀徽章「本地空间不足」，禁止新的会话写入但可只读浏览 |
 
 **CLI 与桌面端状态一致性**：工具卡状态灯 ⇄ TUI 行内符号（`✓ ⋯ ✗ ⚠`）、审批四级决策 ⇄ 数字选项、context 用量条 ⇄ 状态栏进度块、沙箱拦截记录 ⇄ `✂` 行——两端共享同一状态机与同一份配色语义，任何一端产生的决策（如「始终允许」）实时同步到另一端。
@@ -375,9 +377,9 @@ flowchart TD
 
 键盘是开发者的第一交互路径，与 CLI 的纯键盘操作保持同等地位：
 
-- 审批弹窗打开即获得焦点环，`1–4` 直选、`Esc` 拒绝、`Tab` 在按钮组间循环；焦点环使用 `--border-strong` + 1px 外扩，不隐藏。
+- 审批弹窗打开即获得焦点环，`1–4` 直选、`Esc` 拒绝、`Tab` 在按钮组间循环；焦点环使用 `--border-strong` + 1px 外扩，不隐藏。**v1.7 实现注记（双端）**：审批弹窗与两段确认弹窗接入焦点陷阱（纯函数 `focus-trap.ts`：打开聚焦首个可交互元素、`Tab`/`Shift+Tab` 在弹窗内回绕不逃逸、关闭归还触发元素焦点）；`:focus-visible` 焦点环双端全局落地（`--border-strong` + 1px 外扩）。
 - 主工作区核心路径全程无鼠标可达：`Ctrl+N` 新会话 → 输入 → `Enter` 发送 → `1–4` 审批 → `Ctrl+J` 展开上下文面板。**v1.6 实现注记**：`Ctrl+N`/`Ctrl+J` 双端全局 keydown 已落地（(Ctrl|Cmd)+N/J，非 alt/shift，preventDefault）；浏览器保留键口径——Web 端 Ctrl+N/Ctrl+J 可能被浏览器截获（Electron 桌面端完整可用），设置页快捷键组附注说明，按钮入口始终存在。
-- 列表（会话、记忆条目、规则表）支持 `↑↓` 移动 + `Enter` 进入，`Delete` 触发删除确认。
+- 列表（会话、记忆条目、规则表）支持 `↑↓` 移动 + `Enter` 进入，`Delete` 触发删除确认。**v1.7 实现注记（双端）**：会话列表 / 权限规则表 / MCP 服务器行 / 记忆条目 / 工具目录行落地 `↑↓`/`Home`/`End` 移动高亮（纯函数 `list-nav.ts`：钳制 + 回绕）+ `Enter` 激活 + `Delete` 触发确认动作（会话 = 归档确认、规则 / MCP = 删除确认），高亮行以 `scrollIntoView({block:"nearest"})` 滚动入视。
 - 状态不得仅用颜色表达：状态灯旁始终伴随文字或符号（`✓ ⋯ ✗ ⚠`），满足色觉障碍可判读。
 
 ### 8.2 文案风格
@@ -491,3 +493,22 @@ flowchart TD
 7. **产品截图 +11（双端 31 张：web 16 + desktop 15）**：web 增 Hooks 分区 / 设置页命令权限（规则种子）/ MCP 服务器 / 关于 / 压缩提示条五张，desktop 增设置页命令权限（真实表单加规则）/ MCP 服务器 / Provider（此前无设置页截图）/ 关于 / 压缩提示条 / Hooks 分区六张；shots 脚本补 hooks.json 双源种子（matcher `__never__` 零真实执行）、权限规则 RPC 种子（web）/真实表单驱动（desktop）、压缩前置历史补足（`cutIndex = length − keepRecent(20)`，历史未超出保留区时 `session.compact` 无事件——首跑修出）。
 8. **验收留存**：电脑控制真机验收 14 项（会话回合 / 重命名 / 搜索 / 归档两段确认 / 过滤开关 / 设置页导航 / 权限增删 / MCP 卡片 / 快捷键与关于 / 主题三态 / Hooks 授信闭环 / Ctrl+J / Ctrl+N / 压缩按钮域错误路径）全过（首跑「已归档开关」缺陷 → 双端修复 → 复验通过）；门禁 typecheck 14 项目 / lint 0 error（11 warning 旧存留）/ architecture 289 文件 0 违规 / 单测 374（+19：双端 applyCompactEvent 5+4、session-filters 5+5）/ protocol:check 58 方法 21 事件 + event-matrix:check 25 事件（双生成物门禁绿；event-matrix 因新增端层 compact.* 消费者登记再生成）/ 双端构建 + walkthrough-web 19/19 + walkthrough-desktop 14/14（装配与修复改动后复跑全绿）。
 9. **已知口径登记**：沙箱 Tab 维持协议缺口（06 无 `sandbox.*` RPC 域）；消息数徽章维持未实现（无数据源）；「已归档」开关开启时的归档行仅灰态展示（协议无取消归档方法，单向只读）；i18n 仅静态展示（en-US 资源未装载）。
+
+---
+
+## 17. v1.7 变更记录（2026-10-05 · UI 异常态与运行时面板收口轮）
+
+本轮把 v1.6 后剩余的「§7 纸面异常态 / §8.1 键盘可达未落地 / 三个 RPC 方法族有方法无界面」缺口一次收口，全部基于既有协议面（58 方法 / 21 事件**零变更**，无假 UI）；**token 色值零变更**（深浅两主题经既有语义 token 自动重映射，组件零硬编码色值）：
+
+1. **异常态与加载态收口（§7 + §8.1，本轮主项）**：新组件 `StatusBanner.tsx`（双端同构，tone `info|warn|danger` + 可选动作 + 可选关闭，接入 ChatFlow 顶部错误/重连条与各面板错误行）；端层 `error` 分支升级为结构化——新纯函数 `turn-error.ts`（双端同构，自贴 500 行的 `session-view.ts` 下沉）`parseTurnError`（`scope/code/message/recoverable/turnId`，缺结构化字段回落既有字符串横条，未知 scope 保底 system，兼容历史嵌套 `{error:{...}}`）+ `applyErrorEvent`；ChatFlow 失败回合处 danger 卡「回合失败（code）」+ `recoverable === true` 时「重试」按钮（以该轮原始输入重发，斜杠命令经 `skills.invoke` 同路径）；侧栏连接徽章补 `disconnected` danger 圆点 +「离线」，连接非 ready 且非 fatal 时主区顶部 warn 重连条「重连中（断线补偿）…」（ready 后消失）；`.skeleton` 骨架条（`--bg-raised` 微 shimmer 320ms，`prefers-reduced-motion: reduce` 收敛为静态）替换 MCP 工具清单 / 记忆预览 / 关于 / 工具目录 / 后台任务 / 决策审计六处纯文本「加载中…」。
+2. **键盘可达与焦点管理（§8.1）**：新纯函数 `list-nav.ts`（`clampIndex` / `nextIndex` / `nextIndexFromKey`，双端同构）——会话列表（Delete = 归档确认）/ 权限规则表（Delete = 删除确认）/ MCP 服务器行 / 记忆条目 / 工具目录行落地 `↑↓`/`Home`/`End` 移动高亮 + `Enter` 激活 + `Delete` 确认，高亮行 `scrollIntoView({block:"nearest"})` 滚动入视；新纯函数 `focus-trap.ts`（`FOCUSABLE_SELECTOR` / `focusableWithin` / `nextFocusIndex`）——审批弹窗与两段确认弹窗打开聚焦首个可交互元素、`Tab`/`Shift+Tab` 弹窗内回绕不逃逸、关闭归还触发元素焦点；`:focus-visible` 焦点环双端全局落地（`--border-strong` + 1px 外扩）。
+3. **后台任务面板（B1，§6.1 第 4 Tab）**：新组件 `BackgroundTab.tsx` + 纯函数 `background-view.ts`（`backgroundStatusView` 五态状态灯映射 / `isRunning` / `sortTasks` 双端同构）——`tool.background.list` 任务行（状态灯五态 + 等宽 `command` + 相对时间 + `exitCode`）、Running 行「终止」（`tool.background.kill`）、行展开 `tool.background.output {tail:200}`（truncated 提示）、存在 Running 且面板可见时 2s 轮询（挂载即 Tab 激活，卸载清定时器）+「刷新」、空态一行；**口径注记**：registry 全局共享，展示全量（06 §2.7），不做按会话过滤的假 UI。
+4. **工具目录（B2，§6.2 第 7 组）**：新组件 `SettingsTools.tsx`——`tool.tools.list` 三源（`builtin|mcp|plugin`）过滤 chips + 行（glyph 与 CLI 同源 + 等宽工具名 + source 徽章 + 描述截断）+ 行展开参数 schema（JSON Schema 投影，等宽代码块）；只读，不提供调用入口；`list-nav.ts` 键盘（↑↓/Home/End + Enter）；域未装配（METHOD_NOT_FOUND）落一行「工具域未装配」。
+5. **审批审计（B3，§6.2「命令权限」子区）**：新组件 `SettingsAudit.tsx`——`permission.decisions.list` decision 三态（全部/allow/deny）+ `toolName` 输入过滤（300ms 防抖 + 请求序号丢弃过期响应）+ 记录表（相对时间 / 等宽 `toolName` / decision 徽章 / `matchedBy` / `respondLatencyMs`）+ 游标「加载更多」（page.limit 50）；只读。
+6. **记忆管理器与输入区深化（§6.3 / §6.1）**：MEMORY.md 预览改复用既有 `Markdown.tsx` 渲染（保留只读与「未建」说明）；检索查询非空改走服务端 `memory.search {query, kind?, limit:50}`（250ms 防抖，移除端层 `content.includes` 本地过滤旁路，02 §7.4 同源），空查询走 `memory.entries.list` 基线；新纯函数 `highlight.ts`（`splitHighlight`：大小写不敏感 / 多命中 / 空 query 原样 / 正则元字符零语义，`indexOf` 扫描不构造 RegExp）——命中片段以 `--accent-bg` 高亮；输入区 ctx 行模型名改按钮 → 弹层（`config.providers.list`）→ `config.providers.switch` 快切（仅影响后续请求，会话历史不动，04 §5.2），无活跃 Provider 时输入区置灰禁用 + 引导条「先配置模型 Provider →」跳设置页。
+7. **L-22 收口（mcp 域装配降级）**：`packages/server/src/mcp-runtime.ts` 的 `init()` 读配置失败（缺失/损坏/跨层冲突）改为安静空投影 + stderr 诊断 `mcp domain degraded: config load failed …`，不再以未分类 `INTERNAL` 上抛；域方法表照常可用（`mcp.servers.list` 空投影）；右栏 MCP Tab 空态改一行配置指引；`mcp-degrade.test.ts` 补「缺失 mcp.json」回归用例。
+8. **产品截图 +12（双端 43 张：web 22 + desktop 21）**：双端各补工具目录（含 schema 展开）/ 决策审计 / 模型快切弹层 / 后台任务 Tab（真实 Running + 产出展开）/ 会话列表键盘高亮 / 回合失败重试卡六张（`*-tools-catalog.png` / `*-audit.png` / `*-model-switch.png` / `*-background.png` / `*-session-keyboard.png` / `*-turn-failed.png`）。
+9. **电脑控制真机验收 12 项全过**（`trae-remote-official:computer-use`，真实 Web 工作台 + 种子 home，Edge + UI Automation）：起始态 / 右栏 4 Tab / 后台 Tab 空态与 registry 全量注记 / MCP Tab 空态 / 设置页 7 组导航 / 工具目录三源 chips 与 JSON-Schema 展开 / 命令权限决策审计子区 / 关于版本渲染 / 模型快切弹层与 active 标记 / 会话列表 ↑↓ 高亮 / 主题三态循环 / 回合失败卡「重试」重发。两处环境限制如实申报：① 瞬态骨架态未捕获（数据瞬时返回，过快）；② `Ctrl+J` 被浏览器扩展 Sider 劫持（RainCode 自带「/」折叠按钮正常、Electron 不受影响，与 §8.1「浏览器保留键」口径一致）。
+10. **夹具教训（非产品缺陷）**：种子 `config.json` 以 PowerShell `Set-Content -Encoding utf8` 写入会带 UTF-8 **BOM**，`ConfigStore` 据此报「not valid JSON」→ 首跑全部 RPC 返回 `INTERNAL`；改用无 BOM UTF-8（Node `writeFileSync`，与仓库自身 shot/walkthrough 脚本一致）后复验全过（PROGRESS §4 记一笔）。
+11. **验收留存**：门禁 typecheck 14 项目 / lint 0 error（11 warning 旧存留基线）/ architecture 320 文件 0 违规（maxFileLines 500）/ **protocol:check 58 方法 21 事件一致 + event-matrix:check 25 事件一致（双生成物门禁绿，佐证协议零变更）** / 单测 455（374 + 本轮 +81：双端 turn-error / list-nav / focus-trap / highlight / background-view 五纯函数模块与 mcp-degrade 缺失用例）/ 双端 renderer + web dist 构建通过 / walkthrough-web 19/19 + walkthrough-desktop 14/14（DOM 契约零破坏，第 4 Tab 与第 7 组导航为纯增量）。
+12. **已知口径登记**：**附件入口不做**（`session.send` 协议已支持 `input.attachments`，但 Web 端无法取得真实文件路径、桌面端需新增 Electron dialog IPC 通道，跨端不对称 → legacy-items L-24 登记，不伪造入口）；沙箱 Tab 维持协议缺口；消息数徽章维持未实现；限流 429 横条维持未实现（无错误码）；i18n 仅静态展示。

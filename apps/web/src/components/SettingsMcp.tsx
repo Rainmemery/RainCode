@@ -7,6 +7,7 @@
 import { memo, useCallback, useEffect, useState } from "react";
 import { RpcCallError } from "@raincode/rpc/web";
 import type { McpServerStatusEntry, McpServerStatus, McpTransport } from "@raincode/shared";
+import { nextIndexFromKey } from "../list-nav.js";
 import { rpcCall } from "../state.js";
 
 /** 状态灯映射（03 §6.5，与 ExtensionsPanel 同款）：绿常亮 / 青脉冲 / 红常亮 / 灰常亮。 */
@@ -59,17 +60,25 @@ const ServerCard = memo(function ServerCard({
   server,
   removeArmed,
   removeBusy,
+  highlighted,
+  index,
   onRemoveClick,
   onRemoveConfirm,
 }: {
   server: McpServerStatusEntry;
   removeArmed: boolean;
   removeBusy: boolean;
+  highlighted: boolean;
+  index: number;
   onRemoveClick: (serverKey: string) => void;
   onRemoveConfirm: (serverKey: string) => void;
 }) {
   return (
-    <div className="rounded-lg border border-border-base bg-card px-3 py-2">
+    <div
+      data-server-index={index}
+      className={`relative rounded-lg border bg-card px-3 py-2 ${highlighted ? "border-border-strong bg-hover" : "border-border-base"}`}
+    >
+      {highlighted && <span className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-accent" />}
       <div className="flex items-center gap-2">
         <span className={statusDotClass(server.status)} title={STATUS_LABELS[server.status]} />
         <span className="mono text-2xs text-hi">{server.serverKey}</span>
@@ -122,6 +131,8 @@ export function SettingsMcp(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [removeArmed, setRemoveArmed] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
+  /** 键盘高亮序号（§8.1；-1 = 尚无高亮，落到首卡）。 */
+  const [highlight, setHighlight] = useState(-1);
   // 添加服务器表单
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -215,6 +226,37 @@ export function SettingsMcp(): JSX.Element {
     ...(transport !== "stdio" && url.trim().length > 0 && { url: url.trim() }),
   };
 
+  /** 服务器卡键位（§8.1）：容器获焦时 ↑↓/Home/End 移动高亮并滚动入视；Enter 无动作；Delete 两段删除确认。 */
+  function onServersKeyDown(event: React.KeyboardEvent<HTMLElement>): void {
+    const target = event.target as HTMLElement;
+    if (target !== event.currentTarget || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+    if (servers.length === 0) return;
+    const next = nextIndexFromKey(event.key, highlight, servers.length);
+    if (next !== null) {
+      event.preventDefault();
+      setHighlight(next);
+      event.currentTarget.querySelector<HTMLElement>(`[data-server-index="${next}"]`)?.scrollIntoView({ block: "nearest" });
+      return;
+    }
+    const server = servers[highlight];
+    if (server === undefined) return;
+    if (event.key === "Escape") {
+      if (removeArmed !== null) {
+        event.preventDefault();
+        setRemoveArmed(null);
+      }
+      return;
+    }
+    if (event.key !== "Delete" && event.key !== "Enter") return;
+    event.preventDefault();
+    if (removeArmed === server.serverKey) {
+      void removeServer(server.serverKey);
+      event.currentTarget.focus(); // 确认后焦点归还服务器列表（§8.1）
+    } else if (event.key === "Delete") {
+      setRemoveArmed(server.serverKey); // 第一段：展开「确认删除？」两段确认
+    }
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-[760px] flex-col gap-4 px-6 py-5">
       <section>
@@ -225,18 +267,25 @@ export function SettingsMcp(): JSX.Element {
             MCP 域未装配（当前宿主未启用）
           </div>
         ) : (
-          <div className="flex flex-col gap-2">
+          <div
+            tabIndex={0}
+            onKeyDown={onServersKeyDown}
+            aria-label="MCP 服务器列表（↑↓ 移动，Delete 删除确认）"
+            className="flex flex-col gap-2"
+          >
             {servers.length === 0 && (
               <div className="rounded-md border border-border-faint bg-card px-3 py-2 text-2xs text-faint">
                 暂无服务器（mcp.json 配置后自动连接，或用下方表单添加）
               </div>
             )}
-            {servers.map((server) => (
+            {servers.map((server, index) => (
               <ServerCard
                 key={server.serverKey}
                 server={server}
                 removeArmed={removeArmed === server.serverKey}
                 removeBusy={removing}
+                highlighted={highlight === index}
+                index={index}
                 onRemoveClick={setRemoveArmed}
                 onRemoveConfirm={(key) => void removeServer(key)}
               />

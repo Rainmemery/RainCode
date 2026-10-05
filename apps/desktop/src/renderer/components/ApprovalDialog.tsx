@@ -1,8 +1,11 @@
 /**
  * 权限审批弹窗（03 §6.1 第 5 条）：固定遮罩 + 520px 对话框；风险徽章、工具名与完整参数、
  * reason、四级决策按钮；键盘 1-4 直选、Esc = 拒绝（仅挂载于 approvals 非空时）。
+ * polish-ui-states-and-runtime A6（§8.1）：打开聚焦首个可交互元素、Tab/Shift+Tab 在弹窗内循环
+ * （focus-trap）、关闭归还触发元素焦点。
  */
 import { useEffect, useRef } from "react";
+import { focusableWithin, nextFocusIndex } from "../focus-trap.js";
 import { useDesktop } from "../store.js";
 
 interface RiskStyle {
@@ -26,16 +29,39 @@ export default function ApprovalDialog() {
   const respondApproval = useDesktop((s) => s.respondApproval);
   // B4 缺陷修复：弹窗出现时主动接管焦点。此前审批弹出时消息输入框保持焦点，keydown 守卫
   // 「输入控件聚焦不响应」使快捷键 1-4/Esc 全部落入输入框（用户刚发完消息的常态场景必现）。
+  // polish-ui-states-and-runtime A6：记录触发元素 → 打开聚焦弹窗首个可交互元素 → 关闭归还。
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  const previousFocus = useRef<HTMLElement | null>(null);
   const grantId = approval?.grantId;
   useEffect(() => {
-    if (grantId !== undefined) dialogRef.current?.focus();
+    if (grantId === undefined) return;
+    previousFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const root = dialogRef.current;
+    const first = root !== null ? focusableWithin(root)[0] : undefined;
+    (first ?? root)?.focus();
+    return () => {
+      previousFocus.current?.focus();
+      previousFocus.current = null;
+    };
   }, [grantId]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent): void {
       // 输入控件聚焦时不响应数字直选，避免误批
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+      // Tab / Shift+Tab 焦点陷阱：在弹窗按钮组间循环，不逃逸到背景
+      if (event.key === "Tab") {
+        const root = dialogRef.current;
+        if (root === null) return;
+        const items = focusableWithin(root);
+        if (items.length === 0) return;
+        event.preventDefault();
+        const active = document.activeElement;
+        const at = active instanceof HTMLElement ? items.indexOf(active) : -1;
+        const next = at < 0 ? (event.shiftKey ? items.length - 1 : 0) : nextFocusIndex(at, items.length, event.shiftKey);
+        items[next]?.focus();
+        return;
+      }
       const current = useDesktop.getState().approvals[0];
       if (current === undefined) return;
       const respond = useDesktop.getState().respondApproval;
@@ -67,6 +93,9 @@ export default function ApprovalDialog() {
       <div
         ref={dialogRef}
         tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-label="权限审批"
         className="corner-ticks anim-rise w-[520px] overflow-hidden rounded-xl border border-border-strong bg-popover shadow-3 outline-none"
       >
         {/* 顶部色带：等待审批语义（warn，dsh 审批卡范式） */}

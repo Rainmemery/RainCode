@@ -6,6 +6,7 @@ import type { McpServerStatusEntry, McpServerStatus, PluginStatus, PluginSummary
 import type { ThemePref } from "./theme.js";
 import type { SubagentRecord } from "./subagent-view.js";
 import type { CompactionBanner } from "./compact-view.js";
+import { applyErrorEvent, type TurnErrorState } from "./turn-error.js";
 
 export interface ChatItem {
   kind: "message";
@@ -86,7 +87,7 @@ export interface SessionListEntry {
   contextUsage?: { tokens: number; maxTokens: number };
 }
 
-export interface DesktopState {
+export interface DesktopState extends TurnErrorState {
   connection: "connecting" | "ready" | "agent-down";
   runMode: string;
   /** extensions = MCP / 插件面板（UI-4，T3.9）。 */
@@ -140,6 +141,7 @@ export function initialDesktopState(themePref: ThemePref = "dark"): DesktopState
     providers: [],
     activeProviderId: null,
     error: null,
+    turnError: null,
     mcpServers: [],
     plugins: [],
     extensionsTick: 0,
@@ -384,10 +386,8 @@ export function applySessionEvent(state: DesktopState, name: string, payload: Re
       );
       return { ...patchView(state, sessionId, { items }), streaming: false };
     }
-    case "error": {
-      const message = (payload["error"] as { message?: string } | undefined)?.message;
-      return { ...state, error: typeof message === "string" ? message : "turn error" };
-    }
+    case "error":
+      return { ...state, ...applyErrorEvent(payload) }; // 结构化错误切片（A2；缺字段回落字符串横条）
     case "session.snapshot": {
       // 服务端事件形态的快照推送（重连补推；06 §3.2 C 组）——Alpha 经 resume response 消费，此处保底
       return state;

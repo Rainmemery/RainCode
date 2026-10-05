@@ -1,9 +1,11 @@
 /**
- * 设置页（UI 管理面板深化轮）：顶行「← 返回」+ 标题「设定」；左侧 200px 垂直导航六组
- * （通用 / Provider 与模型 / 命令权限 / MCP 服务器 / 快捷键 / 关于，激活项左侧 2px accent 指示条），
- * 右侧内容区 flex-1 overflow-y-auto（区块标题 + 卡片 bg-card border-border-faint rounded-md）。
+ * 设置页（UI 管理面板深化轮；polish-ui-states-and-runtime 扩至七组）：顶行「← 返回」+ 标题「设定」；
+ * 左侧 200px 垂直导航七组（通用 / Provider 与模型 / 命令权限 / MCP 服务器 / 快捷键 / 关于 / 工具，
+ * 激活项左侧 2px accent 指示条），右侧内容区 flex-1 overflow-y-auto（区块标题 + 卡片 rounded-md）。
  * 「Provider 与模型」Tab 迁入 ProviderSettings（行为零变更）；命令权限 / MCP 服务器拆分至
- * SettingsPermissions.tsx / SettingsMcp.tsx（500 行治理）；「← 返回」自 ProviderSettings 头行上移至此。
+ * SettingsPermissions.tsx / SettingsMcp.tsx（500 行治理）；「工具」组拆至 SettingsTools.tsx；
+ * 「← 返回」自 ProviderSettings 头行上移至此。默认组：无活跃 Provider 时开「Provider 与模型」
+ * （自包含规则，仅本文件，用于引导首次配置）。
  */
 import { useEffect, useState } from "react";
 import { RpcCallError } from "@raincode/rpc/client";
@@ -14,9 +16,10 @@ import type { ThemePref } from "../theme.js";
 import ProviderSettings from "./ProviderSettings.js";
 import SettingsPermissions from "./SettingsPermissions.js";
 import SettingsMcp from "./SettingsMcp.js";
+import SettingsTools from "./SettingsTools.js";
 import { SettingsCard } from "./SettingsCard.js";
 
-type SettingsTab = "general" | "provider" | "permissions" | "mcp" | "shortcuts" | "about";
+type SettingsTab = "general" | "provider" | "permissions" | "mcp" | "shortcuts" | "about" | "tools";
 
 const NAV: Array<{ key: SettingsTab; label: string }> = [
   { key: "general", label: "通用" },
@@ -25,6 +28,7 @@ const NAV: Array<{ key: SettingsTab; label: string }> = [
   { key: "mcp", label: "MCP 服务器" },
   { key: "shortcuts", label: "快捷键" },
   { key: "about", label: "关于" },
+  { key: "tools", label: "工具" },
 ];
 
 /** 主题三态 segmented（深色/浅色/跟随系统）：与侧栏「◐」同一 store 状态源，激活项 accent 底。 */
@@ -121,7 +125,12 @@ function AboutTab() {
   return (
     <SettingsCard title="关于">
       {error !== null && <div className="text-2xs text-danger">{error}</div>}
-      {version === null && error === null && <div className="shimmer-text text-2xs">加载中…</div>}
+      {version === null && error === null && (
+        <div className="flex flex-col gap-2" role="status" aria-label="加载中">
+          <div className="skeleton h-5 w-full" aria-hidden="true" />
+          <div className="skeleton h-5 w-2/3" aria-hidden="true" />
+        </div>
+      )}
       {version !== null && (
         <div className="flex flex-col">
           <AboutRow label="协议版本" value={version.protocolVersion} />
@@ -148,7 +157,10 @@ function AboutRow({ label, value }: { label: string; value: string }) {
 
 export default function SettingsView() {
   const setView = useDesktop((s) => s.setView);
-  const [tab, setTab] = useState<SettingsTab>("general");
+  // 无活跃 Provider（含 providers 为空）时默认开「Provider 与模型」引导配置；否则开「通用」（只读初值，自包含）
+  const [tab, setTab] = useState<SettingsTab>(() =>
+    useDesktop.getState().activeProviderId === null ? "provider" : "general",
+  );
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col bg-base">
@@ -192,6 +204,7 @@ export default function SettingsView() {
             {tab === "mcp" && <SettingsMcp />}
             {tab === "shortcuts" && <ShortcutsTab />}
             {tab === "about" && <AboutTab />}
+            {tab === "tools" && <SettingsTools />}
           </div>
         </div>
       </div>

@@ -4,13 +4,16 @@
  * 子代理进度卡（refine-ui-context-panel 轮 §6.1 第 4 条）：violet 标识卡片挂在 items 流之后，
  * 按 spawned 事件归属的活跃会话过滤（subagent.* 不带 sessionId）。
  * 压缩提示条（UI 管理面板深化轮）：挂会话流顶部，compact.* 事件投影（compact-view.ts）。
+ * 顶部通知条（polish-ui-states-and-runtime）：连接非 ready 时 warn「重连中」；回合结构化错误
+ * danger 卡「回合失败（code）」+ recoverable 时「重试」以该轮原始输入重提交（§A2/A3）。
  */
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useDesktop } from "../store.js";
 import MessageBubble from "./MessageBubble.js";
 import ToolCard from "./ToolCard.js";
 import InputArea from "./InputArea.js";
-import type { HookItem } from "../session-view.js";
+import { StatusBanner } from "./StatusBanner.js";
+import { parseSlashInvocation, type HookItem, type SessionView } from "../session-view.js";
 import type { CompactionBanner } from "../compact-view.js";
 import type { SubagentRecord } from "../subagent-view.js";
 
@@ -194,6 +197,16 @@ const SubagentCard = memo(function SubagentCard({ records }: { records: Subagent
   );
 });
 
+/** 活跃视图最后一条用户消息文本（回合重试的原始输入；无则 null）。 */
+function lastUserText(view: SessionView | undefined): string | null {
+  if (view === undefined) return null;
+  for (let i = view.items.length - 1; i >= 0; i -= 1) {
+    const item = view.items[i]!;
+    if (item.kind === "message" && item.role === "user") return item.text;
+  }
+  return null;
+}
+
 export default function ChatFlow() {
   const view = useDesktop((s) => (s.activeId === null ? undefined : s.views[s.activeId]));
   const hasApprovals = useDesktop((s) => s.approvals.length > 0);
@@ -201,6 +214,11 @@ export default function ChatFlow() {
   const subagents = useDesktop((s) => s.subagents);
   const compaction = useDesktop((s) => s.compaction);
   const dismissCompaction = useDesktop((s) => s.dismissCompaction);
+  const connection = useDesktop((s) => s.connection);
+  const turnError = useDesktop((s) => s.turnError);
+  const streaming = useDesktop((s) => s.streaming);
+  const send = useDesktop((s) => s.send);
+  const invokeSkill = useDesktop((s) => s.invokeSkill);
   // spawned 事件归属的活跃会话过滤（subagent.* 不带 sessionId，归属=事件到达时 activeId）
   const sessionSubagents = useMemo(
     () => subagents.filter((record) => record.sessionId === activeId),
@@ -215,6 +233,29 @@ export default function ChatFlow() {
 
   const items = view?.items ?? [];
   const stripVisible = compaction !== null && compaction.sessionId === activeId;
+  // 结构化回合错误卡（仅 turn 域；recoverable 决定是否呈现「重试」）
+  const turnCard = turnError !== null && turnError.scope === "turn" ? turnError : null;
+
+  // 组件级瞬态清理（不新增 store 动作）：切会话或新回合开始即清上一轮失败卡
+  useEffect(() => {
+    useDesktop.setState({ turnError: null });
+  }, [activeId]);
+  useEffect(() => {
+    if (streaming) useDesktop.setState({ turnError: null });
+  }, [streaming]);
+
+  /** 重试（§A2）：取该轮原始用户输入，经与输入区同路径重发（普通文本 → send；/命令 → invokeSkill）。 */
+  function retryTurn(): void {
+    const text = lastUserText(view)?.trim() ?? "";
+    if (text.length === 0) return;
+    useDesktop.setState({ turnError: null });
+    if (text.startsWith("/")) {
+      const invocation = parseSlashInvocation(text);
+      if (invocation !== null) void invokeSkill(invocation.name, invocation.args);
+    } else {
+      void send(text);
+    }
+  }
 
   return (
     <main className="flex min-w-0 flex-1 flex-col bg-base">
@@ -222,6 +263,12 @@ export default function ChatFlow() {
       {/* 压缩提示条（items 之前；单行条与审批横条同层，随会话归属过滤） */}
       {stripVisible && compaction !== null && <CompactionStrip banner={compaction} onDismiss={dismissCompaction} />}
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+        {/* 断连补偿条（§A3）：连接非 ready 时呈现，宿主重启自动重连后消失 */}
+        {connection === "connecting" && (
+          <div className="mx-6 mt-3">
+            <StatusBanner tone="warn" text="重连中（断线补偿）… 恢复后将自动续传历史" />
+          </div>
+        )}
         {items.length === 0 ? (
           <EmptyState />
         ) : (
@@ -234,6 +281,27 @@ export default function ChatFlow() {
               ) : (
                 <ToolCard key={item.toolCallId} item={item} />
               ),
+            )}
+            {/* 回合失败卡（03 §7 / §A2）：code + message；recoverable 时呈现「重试」（重发该轮原始输入） */}
+            {turnCard !== null && (
+              <div className="anim-rise rounded-md border border-danger/40 border-l-2 border-l-danger bg-danger/5 px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <span className="dot dot-err" />
+                  <span className="mono text-2xs text-danger">回合失败（{turnCard.code}）</span>
+                  {turnCard.recoverable && (
+                    <button
+                      type="button"
+                      disabled={streaming}
+                      onClick={retryTurn}
+                      className="ml-auto shrink-0 rounded-md border border-danger px-2 py-0.5 text-2xs text-danger transition-colors duration-fast hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-40"
+                      title="以该轮原始输入重新提交"
+                    >
+                      重试
+                    </button>
+                  )}
+                </div>
+                <p className="mt-1 break-words text-2xs text-mid">{turnCard.message}</p>
+              </div>
             )}
             {sessionSubagents.length > 0 && <SubagentCard records={sessionSubagents} />}
           </div>

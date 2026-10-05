@@ -15,7 +15,7 @@
 | --- | --- |
 | ![RainCode Web 会话工作台](picture/web-chat.png) | ![RainCode 桌面端](picture/desktop-chat.png) |
 
-视觉遵循 [docs/03-ui-design](docs/03-ui-design.md) v1.6「赤陶磷光」token 体系：**三栏工作台（左侧栏可折叠图标态 · 会话流 · 右侧上下文面板 300px：记忆 / MCP / 子代理三 Tab）**、**设置页六组导航（通用 / Provider 与模型 / 命令权限规则增删 / MCP 服务器配置增删 / 快捷键 / 关于）**、**会话操作与检索（搜索 / 重命名 / 分叉 / 归档 / 已归档与子会话过滤开关）**、**压缩可视化（compact 事件端层监听 + 手动压缩 + 「上下文已压缩」提示条）**、**扩展面板 Hooks 分区（hooks.list 投影 + 授信闭环）**、**键盘可达（Ctrl+N 新会话 / Ctrl+J 上下文面板）**、思考块（`✻ 思考过程` 流式展开 / 完成折叠，随会话持久化）、子代理进度卡（violet 标识，完成折叠汇总）、工具卡五状态（glyph 语言 ◇✱←$ 与 CLI 同源 + 参数摘要按工具域提炼 + 状态底色 tint + diff 行着色）、代码围栏头行语言芯片与一键复制、kbd 快捷键芯片、取景框角标、context 用量条（>80% 琥珀 / >95% 红）、**浅色主题（深色 / 浅色 / 跟随系统三态切换，同一套语义 token 重映射）**。截图由 `pnpm shots:web` / `pnpm shots:desktop` 驱动**真实产品入口**自动生成（mock LLM + CDP，[scripts/](scripts/)），非设计稿。
+视觉遵循 [docs/03-ui-design](docs/03-ui-design.md) v1.7「赤陶磷光」token 体系：**三栏工作台（左侧栏可折叠图标态 · 会话流 · 右侧上下文面板 300px：记忆 / MCP / 子代理 / 后台四 Tab）**、**设置页七组导航（通用 / Provider 与模型 / 命令权限规则增删与决策审计 / MCP 服务器配置增删 / 快捷键 / 关于 / 工具目录）**、**后台任务面板（`tool.background.list/kill/output`：五态状态灯 + 等宽命令 + 终止 + 产出 tail + 2s 轮询）**、**工具目录（`tool.tools.list` 三源过滤 + JSON-Schema 参数展开，只读）**、**决策审计（`permission.decisions.list` 记录表 + 游标加载更多，只读）**、**异常态收口（回合失败结构化错误卡 + `recoverable` 重试重发 / 离线态徽章 / 重连通知条 / 骨架加载条）**、**键盘可达（会话/规则/MCP/记忆/工具目录 `↑↓`·`Enter`·`Delete` + 弹窗焦点陷阱与焦点归还 + `:focus-visible` 焦点环）**、**会话操作与检索（搜索 / 重命名 / 分叉 / 归档 / 已归档与子会话过滤开关）**、**压缩可视化（compact 事件端层监听 + 手动压缩 + 「上下文已压缩」提示条）**、**扩展面板 Hooks 分区（hooks.list 投影 + 授信闭环）**、**记忆管理器深化（MEMORY.md Markdown 渲染 + `memory.search` 服务端检索 + 命中高亮）**、**输入区模型快切（`config.providers.switch` + 未配置 Provider 引导条）**、**键盘全局快捷键（Ctrl+N 新会话 / Ctrl+J 上下文面板）**、思考块（`✻ 思考过程` 流式展开 / 完成折叠，随会话持久化）、子代理进度卡（violet 标识，完成折叠汇总）、工具卡五状态（glyph 语言 ◇✱←$ 与 CLI 同源 + 参数摘要按工具域提炼 + 状态底色 tint + diff 行着色）、代码围栏头行语言芯片与一键复制、kbd 快捷键芯片、取景框角标、context 用量条（>80% 琥珀 / >95% 红）、**浅色主题（深色 / 浅色 / 跟随系统三态切换，同一套语义 token 重映射）**。截图由 `pnpm shots:web` / `pnpm shots:desktop` 驱动**真实产品入口**自动生成（mock LLM + CDP，[scripts/](scripts/)），非设计稿。
 
 RainCode 的功能定位与 Claude Code / Codex 对齐：整合**代码生成、工具调用、MCP 调用、子代理管理、沙箱执行环境、命令权限控制、项目记忆**七大核心模块，提供 **CLI 与 Windows 桌面应用**双端形态，两端共享同一套后端服务（`@raincode/server` 唯一组装点）与同一套 RPC 协议（传输无关：进程内 in-memory / 子进程 stdio）。
 
@@ -166,7 +166,7 @@ pnpm --filter @raincode/desktop build
 pnpm --filter @raincode/desktop dist
 ```
 
-Alpha 功能范围：三栏主界面（可折叠侧栏 + 会话流 + **右侧上下文面板（记忆 / MCP / 子代理三 Tab，300px 可折叠 / 竖条唤起）** + 输入区）、思考块（`✻ 思考过程` 流式展开 / 完成后自动折叠，reducer 层 reasoning 独立累积）、**子代理进度卡（violet 标识，运行中行级状态灯，完成折叠为单行汇总）**、工具调用卡片（五状态：排队 / 运行中 / 成功 / 失败 / 已作废；glyph 语言与 CLI 同源 ◇✱←$；`mcp__` 调用与子代理派发带模块徽标；参数摘要按工具域提炼；结果 diff 行着色）、权限审批弹窗（顶部琥珀色带 + 风险徽章 + kbd 快捷键芯片 + `1-4` 直选 + `Esc` 拒绝，弹窗出现时自动接管焦点——消息输入框聚焦时快捷键同样生效）、Provider 设置（添加 / 切换 / 活跃徽章）、记忆管理器（MEMORY.md 预览 / 晋升草案确认 / 条目检索与晋升）、**扩展面板（MCP 服务器启停 / 健康检查 / 重试 + 插件启停与状态 + 「刷新」重扫描免重启装载新插件，全局事件活更）**、**斜杠命令面板（`/` 唤起技能清单，↑↓ + Tab 补全，Enter 经 `skills.invoke` 端到端执行）**、**会话用量统计（↑/↓ tokens / 回合数 / 费用估算）**、**会话列表时间分组（今天 / 昨天 / 更早）**、**侧栏折叠图标态（56px）**、**ctx 用量条（>80% 琥珀 / >95% 红）**、**设置页六组导航（通用：主题三态显式选择 / Provider 与模型 / 命令权限：规则增删真实数据 / MCP 服务器：配置增删 / 快捷键 / 关于：system.version）**、**会话操作与检索（300ms 防抖搜索框服务端过滤 / 会话项「⋯」菜单：重命名·分叉·归档两段确认 / 「已归档」「子会话」过滤开关默认关 + localStorage 持久化，归档行灰态只读）**、**压缩可视化（ChatFlow 顶部「上下文已压缩」提示条 + 输入区「压缩」按钮触发 session.compact，用量条联动回落）**、**扩展面板 Hooks 分区（hooks.list 双源投影 + project 授信/撤销闭环）**、**键盘可达（Ctrl+N 新会话 / Ctrl+J 上下文面板）**、工作区目录选择、流式输出与光标、代码围栏一键复制、子进程崩溃自动重启提示、**浅色主题（侧栏「◐」按钮循环 深/浅/跟随系统，localStorage 持久化，跟随系统经 prefers-color-scheme 实时重映射；设置页通用组同状态源显式选择）**。视觉遵循 [docs/03-ui-design](docs/03-ui-design.md) v1.6「赤陶磷光」体系（取景框角标 / 模块标识色 / 减动效偏好全覆盖）。与 CLI 共享同一 `RAINCODE_HOME` 数据目录——CLI 里开始的会话，桌面端打开即续接。会话列表为数据根**全量会话**（跨工作区共享、跨端可见，不按工作区过滤——L-20 口径；状态与子会话维度经侧栏开关过滤）。GUI 回归走查：`pnpm walkthrough:desktop`（CDP 驱动构建产物，14 断言；`RAINCODE_WALKTHROUGH_APP_PATH` 指向静默安装后的 RainCode.exe 即对安装产物冒烟——T4.7 已验证 nsis 安装包全链路）。
+Alpha 功能范围：三栏主界面（可折叠侧栏 + 会话流 + **右侧上下文面板（记忆 / MCP / 子代理 / 后台四 Tab，300px 可折叠 / 竖条唤起）** + 输入区）、思考块（`✻ 思考过程` 流式展开 / 完成后自动折叠，reducer 层 reasoning 独立累积）、**子代理进度卡（violet 标识，运行中行级状态灯，完成折叠为单行汇总）**、工具调用卡片（五状态：排队 / 运行中 / 成功 / 失败 / 已作废；glyph 语言与 CLI 同源 ◇✱←$；`mcp__` 调用与子代理派发带模块徽标；参数摘要按工具域提炼；结果 diff 行着色）、权限审批弹窗（顶部琥珀色带 + 风险徽章 + kbd 快捷键芯片 + `1-4` 直选 + `Esc` 拒绝，弹窗出现时自动接管焦点——消息输入框聚焦时快捷键同样生效）、Provider 设置（添加 / 切换 / 活跃徽章）、记忆管理器（MEMORY.md Markdown 渲染 / 晋升草案确认 / 条目检索与晋升，检索经服务端 `memory.search` + 命中高亮）、**扩展面板（MCP 服务器启停 / 健康检查 / 重试 + 插件启停与状态 + 「刷新」重扫描免重启装载新插件，全局事件活更）**、**斜杠命令面板（`/` 唤起技能清单，↑↓ + Tab 补全，Enter 经 `skills.invoke` 端到端执行）**、**会话用量统计（↑/↓ tokens / 回合数 / 费用估算）**、**会话列表时间分组（今天 / 昨天 / 更早）**、**侧栏折叠图标态（56px）**、**ctx 用量条（>80% 琥珀 / >95% 红）**、**设置页七组导航（通用：主题三态显式选择 / Provider 与模型 / 命令权限：规则增删真实数据 + 「决策审计」只读子区 / MCP 服务器：配置增删 / 快捷键 / 关于：system.version / 工具：只读工具目录三源过滤与 JSON-Schema 参数展开）**、**会话操作与检索（300ms 防抖搜索框服务端过滤 / 会话项「⋯」菜单：重命名·分叉·归档两段确认 / 「已归档」「子会话」过滤开关默认关 + localStorage 持久化，归档行灰态只读）**、**压缩可视化（ChatFlow 顶部「上下文已压缩」提示条 + 输入区「压缩」按钮触发 session.compact，用量条联动回落）**、**扩展面板 Hooks 分区（hooks.list 双源投影 + project 授信/撤销闭环）**、**后台任务 Tab（tool.background.list/kill/output：五态状态灯 + 终止 + 产出 tail + 2s 轮询 + registry 全量口径注记）**、**回合失败重试（结构化 error 卡 + recoverable 重试重发）与离线/重连条、骨架加载态**、**输入区模型快切（config.providers.switch + 未配置 Provider 引导条）**、**键盘可达（Ctrl+N 新会话 / Ctrl+J 上下文面板 + 列表 ↑↓·Enter·Delete 与弹窗焦点陷阱/焦点归还）**、工作区目录选择、流式输出与光标、代码围栏一键复制、子进程崩溃自动重启提示、**浅色主题（侧栏「◐」按钮循环 深/浅/跟随系统，localStorage 持久化，跟随系统经 prefers-color-scheme 实时重映射；设置页通用组同状态源显式选择）**。视觉遵循 [docs/03-ui-design](docs/03-ui-design.md) v1.7「赤陶磷光」体系（取景框角标 / 模块标识色 / 减动效偏好全覆盖）。与 CLI 共享同一 `RAINCODE_HOME` 数据目录——CLI 里开始的会话，桌面端打开即续接。会话列表为数据根**全量会话**（跨工作区共享、跨端可见，不按工作区过滤——L-20 口径；状态与子会话维度经侧栏开关过滤）。GUI 回归走查：`pnpm walkthrough:desktop`（CDP 驱动构建产物，14 断言；`RAINCODE_WALKTHROUGH_APP_PATH` 指向静默安装后的 RainCode.exe 即对安装产物冒烟——T4.7 已验证 nsis 安装包全链路）。
 
 | 工具卡（摘要 v2 + 展开态） | 权限审批弹窗 |
 | --- | --- |
@@ -190,6 +190,18 @@ Alpha 功能范围：三栏主界面（可折叠侧栏 + 会话流 + **右侧上
 | 侧栏折叠图标态（56px，悬停出 title 提示） |
 | --- |
 | ![桌面端侧栏折叠](picture/desktop-sidebar-collapsed.png) |
+
+| 右栏 · 后台任务 Tab（五态状态灯 + 终止 + 产出 tail） | 设置页 · 工具目录（三源过滤 + JSON-Schema 展开） |
+| --- | --- |
+| ![桌面端后台任务 Tab](picture/desktop-background.png) | ![桌面端工具目录](picture/desktop-tools-catalog.png) |
+
+| 设置页 · 决策审计（permission.decisions.list 记录表） | 输入区模型快切（config.providers.switch） |
+| --- | --- |
+| ![桌面端决策审计](picture/desktop-audit.png) | ![桌面端模型快切](picture/desktop-model-switch.png) |
+
+| 会话列表键盘高亮（↑↓ 移动行） | 回合失败重试卡（可重试 error） |
+| --- | --- |
+| ![桌面端会话列表键盘高亮](picture/desktop-session-keyboard.png) | ![桌面端回合失败重试](picture/desktop-turn-failed.png) |
 
 </details>
 
@@ -216,7 +228,7 @@ raincode web --port 8787
 - **多连接扇出**：多个浏览器标签页可同时连接，会话事件投递到全部活跃连接；多标签审批弹窗互相同步（同一 `pendingApprovals` 投影）。
 - **心跳**：宿主 30s 周期 WS ping 探活，空闲连接自动断开；`RAINCODE_WS_DELTA_WINDOW_MS` 可调大流式批量窗口（广域网）。
 
-Alpha 功能范围：会话列表（今天/昨天/更早时间分组）/ 新建 / 切换、**会话搜索（300ms 防抖服务端过滤）与会话操作（重命名 / 分叉 / 归档两段确认；「已归档」「子会话」过滤开关默认关）**、工作区路径输入、三栏布局（右侧上下文面板：记忆 Tab 摘要卡与检索 / MCP Tab 状态灯实时刷新与启停重试 / 子代理 Tab 运行中与历史）、子代理进度卡（violet 标识 + 完成折叠汇总）、会话流式渲染（markdown 轻渲染、思考块流式展开 / 完成后自动折叠、工具卡五状态与模块徽标、代码围栏一键复制）、交互审批（四级决策 + kbd 快捷键芯片 + 键盘直选）、**设置页六组导航（与桌面端同构：通用 / Provider 与模型 / 命令权限规则增删 / MCP 服务器配置增删 / 快捷键 / 关于）**、**压缩可视化（「上下文已压缩」提示条 + 「压缩」按钮）**、**扩展面板 Hooks 分区（授信/撤销闭环）**、**键盘可达（Ctrl+N / Ctrl+J）**、Provider 设置、连接状态条（重连可视化）、ctx 用量条（>80% 琥珀 / >95% 红）、管理面板四件套——记忆管理器（MEMORY.md 预览 / 草案确认 / 条目检索晋升）、扩展面板（MCP 状态启停与健康检查 + 插件启停）、斜杠命令面板（`/` 唤起技能清单，↑↓/Tab 补全）、用量统计（侧栏 ↑/↓ token 与回合数）——与桌面端同构消费同一服务面（T4.5，L-08 核销）、**浅色主题（与桌面端同语义：侧栏「◐」循环 深/浅/跟随系统，localStorage 持久化）**。视觉与桌面端统一（[docs/03-ui-design](docs/03-ui-design.md) v1.6「赤陶磷光」token 体系，UI 重设计轮自 `ink-*` 简化盘迁移）。真浏览器回归走查：`pnpm walkthrough:web`（Edge/Chrome headless CDP 驱动真实 `raincode web` 入口，19 断言：鉴权 / 会话 / 审批落盘 / 宿主重启恢复 / 多标签扇出与标签冻结补偿——T4.7，L-05 核销）。
+Alpha 功能范围：会话列表（今天/昨天/更早时间分组）/ 新建 / 切换、**会话搜索（300ms 防抖服务端过滤）与会话操作（重命名 / 分叉 / 归档两段确认；「已归档」「子会话」过滤开关默认关）**、工作区路径输入、三栏布局（右侧上下文面板：记忆 Tab 摘要卡与检索（服务端 `memory.search` + 命中高亮）/ MCP Tab 状态灯实时刷新与启停重试 / 子代理 Tab 运行中与历史 / 后台 Tab 任务五态与终止）、子代理进度卡（violet 标识 + 完成折叠汇总）、会话流式渲染（markdown 轻渲染、思考块流式展开 / 完成后自动折叠、工具卡五状态与模块徽标、代码围栏一键复制）、交互审批（四级决策 + kbd 快捷键芯片 + 键盘直选）、**设置页七组导航（与桌面端同构：通用 / Provider 与模型 / 命令权限规则增删与决策审计 / MCP 服务器配置增删 / 工具目录 / 快捷键 / 关于）**、**压缩可视化（「上下文已压缩」提示条 + 「压缩」按钮）**、**扩展面板 Hooks 分区（授信/撤销闭环）**、**后台任务 Tab / 工具目录 / 决策审计 / 回合失败重试与离线·重连·骨架态 / 输入区模型快切**、**键盘可达（Ctrl+N / Ctrl+J + 列表 ↑↓·Enter·Delete 与弹窗焦点陷阱/焦点归还）**、Provider 设置、连接状态条（重连可视化）、ctx 用量条（>80% 琥珀 / >95% 红）、管理面板四件套——记忆管理器（MEMORY.md Markdown 渲染 / 草案确认 / 条目检索晋升 + 服务端检索命中高亮）、扩展面板（MCP 状态启停与健康检查 + 插件启停）、斜杠命令面板（`/` 唤起技能清单，↑↓/Tab 补全）、用量统计（侧栏 ↑/↓ token 与回合数）——与桌面端同构消费同一服务面（T4.5，L-08 核销）、**浅色主题（与桌面端同语义：侧栏「◐」循环 深/浅/跟随系统，localStorage 持久化）**。视觉与桌面端统一（[docs/03-ui-design](docs/03-ui-design.md) v1.7「赤陶磷光」token 体系，UI 重设计轮自 `ink-*` 简化盘迁移）。真浏览器回归走查：`pnpm walkthrough:web`（Edge/Chrome headless CDP 驱动真实 `raincode web` 入口，19 断言：鉴权 / 会话 / 审批落盘 / 宿主重启恢复 / 多标签扇出与标签冻结补偿——T4.7，L-05 核销）。
 
 | 会话流（思考块 + 工具卡 + 语言芯片围栏） | 权限审批弹窗（kbd 快捷键直选） |
 | --- | --- |
@@ -240,6 +252,18 @@ Alpha 功能范围：会话列表（今天/昨天/更早时间分组）/ 新建 
 | 侧栏折叠图标态（56px，悬停出 title 提示） |
 | --- |
 | ![Web 侧栏折叠](picture/web-sidebar-collapsed.png) |
+
+| 右栏 · 后台任务 Tab（五态状态灯 + 终止 + 产出 tail） | 设置页 · 工具目录（三源过滤 + JSON-Schema 展开） |
+| --- | --- |
+| ![Web 后台任务 Tab](picture/web-background.png) | ![Web 工具目录](picture/web-tools-catalog.png) |
+
+| 设置页 · 决策审计（permission.decisions.list 记录表） | 输入区模型快切（config.providers.switch） |
+| --- | --- |
+| ![Web 决策审计](picture/web-audit.png) | ![Web 模型快切](picture/web-model-switch.png) |
+
+| 会话列表键盘高亮（↑↓ 移动行） | 回合失败重试卡（可重试 error） |
+| --- | --- |
+| ![Web 会话列表键盘高亮](picture/web-session-keyboard.png) | ![Web 回合失败重试](picture/web-turn-failed.png) |
 
 </details>
 
@@ -460,8 +484,8 @@ pnpm bench:all                        # NFR-1/2/3/5/7（冷启动 / 发送开销
 pnpm bench:mem:desktop                # NFR-4 桌面端空载内存（先 pnpm --filter @raincode/desktop build；窗口会弹出）
 
 # 产品截图再生（README picture/ 素材；真实入口 + mock LLM + CDP，先构建对应端）
-pnpm shots:web                        # web 16 张（会话流深/浅 / 工具卡 / 斜杠面板 / 记忆 / 扩展+Hooks 分区 / 设置×4 / 压缩条 / 审批 / 右栏×2 / 侧栏折叠）
-pnpm shots:desktop                    # desktop 15 张（会话流深/浅 / 工具卡 / 审批 / 记忆 / 扩展+Hooks 分区 / 设置×4 / 压缩条 / 右栏×2 / 侧栏折叠）
+pnpm shots:web                        # web 22 张（会话流深/浅 / 工具卡 / 斜杠面板 / 记忆 / 扩展+Hooks 分区 / 设置×4 / 压缩条 / 审批 / 右栏×2 / 侧栏折叠 / 工具目录 / 决策审计 / 模型快切 / 后台任务 / 会话键盘 / 回合失败）
+pnpm shots:desktop                    # desktop 21 张（会话流深/浅 / 工具卡 / 审批 / 记忆 / 扩展+Hooks 分区 / 设置×4 / 压缩条 / 右栏×2 / 侧栏折叠 / 工具目录 / 决策审计 / 模型快切 / 后台任务 / 会话键盘 / 回合失败）
 ```
 
 测试体系与各脚本覆盖范围详见 [docs/testing.md](docs/testing.md)；基准留存见 [docs/benchmarks/](docs/benchmarks/)。

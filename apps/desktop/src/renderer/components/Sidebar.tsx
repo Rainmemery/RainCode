@@ -9,12 +9,17 @@
  * UI 管理面板深化轮：检索行（300ms 防抖 keyword 重拉）→ filterSessionRows（归档/子会话双开关，
  * localStorage 持久化）→ groupSessions 分组；会话项「⋯」菜单（重命名 / 分叉 / 归档两段确认，
  * 仅未归档行；归档行灰态只读）。
+ * polish-ui-states-and-runtime A5（§8.1）：会话列表 ↑↓ 移动高亮 / Home·End / Enter 进入会话 /
+ * Delete 两段归档确认；高亮行 scrollIntoView block:nearest 入视。
  */
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
 import { filterSessionRows } from "../session-filters.js";
+import { nextIndexFromKey } from "../list-nav.js";
 import { groupSessions } from "../subagent-view.js";
 import { useDesktop } from "../store.js";
 import { nextTheme, THEME_LABEL } from "../theme.js";
+import SessionItem from "./SessionItem.js";
 import type { SessionListEntry } from "../session-view.js";
 
 type SessionRow = SessionListEntry;
@@ -24,155 +29,12 @@ function shortName(path: string): string {
   return segments[segments.length - 1] ?? path;
 }
 
-function relativeTime(ts: number): string {
-  const diff = Date.now() - ts;
-  if (diff < 60_000) return "刚刚";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
-  return `${Math.floor(diff / 86_400_000)} 天前`;
-}
-
 /** token 数三档缩写（用量统计行，UI-4）：1234 → 1.2k。 */
 function formatTokens(count: number): string {
   if (count < 1000) return String(count);
   if (count < 1_000_000) return `${(count / 1000).toFixed(1)}k`;
   return `${(count / 1_000_000).toFixed(1)}m`;
 }
-
-const MENU_ITEM_CLASS =
-  "block w-full px-3 py-1.5 text-left text-2xs text-mid transition-colors duration-fast hover:bg-hover hover:text-hi";
-
-/**
- * 会话行（memo）：标题 + 相对时间 +「⋯」操作菜单（重命名 / 分叉 / 归档两段确认）。
- * 归档行灰态（opacity-60）只读无菜单；重命名为行内 input（Enter 提交，1~200 字符约束）。
- */
-const SessionItem = memo(function SessionItem({
-  session,
-  active,
-  onOpen,
-  onRename,
-  onFork,
-  onArchive,
-}: {
-  session: SessionRow;
-  active: boolean;
-  onOpen: (id: string) => void;
-  onRename: (id: string, title: string) => void;
-  onFork: (id: string) => void;
-  onArchive: (id: string) => void;
-}) {
-  const archived = session.state === "Archived";
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [renaming, setRenaming] = useState(false);
-  const [confirmArchive, setConfirmArchive] = useState(false);
-  const [draft, setDraft] = useState("");
-  const titleValid = draft.trim().length >= 1 && draft.trim().length <= 200;
-
-  function startRename(): void {
-    setMenuOpen(false);
-    setConfirmArchive(false);
-    setDraft(session.title);
-    setRenaming(true);
-  }
-
-  function commitRename(): void {
-    if (!titleValid) return; // 1~200 字符约束（06 §2.1 session.rename schema 同口径）
-    const title = draft.trim();
-    setRenaming(false);
-    if (title !== session.title) onRename(session.id, title);
-  }
-
-  return (
-    <div
-      className={`relative flex items-center transition-colors duration-fast ${archived ? "opacity-60" : ""} ${
-        active ? "bg-selected" : "hover:bg-hover"
-      }`}
-      title={archived ? "已归档会话（只读）" : undefined}
-    >
-      {active && <span className="absolute inset-y-0 left-0 w-0.5 bg-accent" />}
-      {renaming ? (
-        <input
-          autoFocus
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          onBlur={() => setRenaming(false)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && titleValid) {
-              event.preventDefault();
-              commitRename();
-            } else if (event.key === "Escape") {
-              event.preventDefault();
-              setRenaming(false);
-            }
-          }}
-          title="标题需 1~200 字符：Enter 提交，Esc 取消"
-          className="mx-3 my-1 h-6 min-w-0 flex-1 rounded border border-border-base bg-raised px-1.5 text-2xs text-hi outline-none focus:border-accent-dim"
-        />
-      ) : (
-        <button
-          type="button"
-          onClick={() => onOpen(session.id)}
-          className="flex min-w-0 flex-1 items-center gap-2 px-4 py-1.5 text-left"
-        >
-          <span className={`min-w-0 flex-1 truncate text-2xs ${active ? "text-hi" : "text-mid"}`}>{session.title}</span>
-          <span className="shrink-0 text-2xs text-faint">{relativeTime(session.lastActiveAt)}</span>
-        </button>
-      )}
-      {!archived && !renaming && (
-        <button
-          type="button"
-          onClick={() => {
-            setMenuOpen(!menuOpen);
-            setConfirmArchive(false);
-          }}
-          className="h-6 shrink-0 rounded px-1.5 text-2xs text-faint transition-colors duration-fast hover:text-hi"
-          title="会话操作"
-        >
-          ⋯
-        </button>
-      )}
-      {menuOpen && !renaming && (
-        <>
-          {/* 遮罩点击关闭（z-40 在菜单下方，吞掉本次点击不误触底层行） */}
-          <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
-          <div className="absolute right-1 top-7 z-50 w-36 rounded-md border border-border-faint bg-popover py-1 shadow-2">
-            <button type="button" onClick={startRename} className={MENU_ITEM_CLASS}>
-              重命名
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMenuOpen(false);
-                onFork(session.id);
-              }}
-              className={MENU_ITEM_CLASS}
-              title="复制全量历史分叉新会话（新会话独立演进）"
-            >
-              分叉
-            </button>
-            {confirmArchive ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setMenuOpen(false);
-                  onArchive(session.id);
-                }}
-                className="block w-full px-3 py-1.5 text-left text-2xs text-danger transition-colors duration-fast hover:bg-hover"
-                title="归档后移出默认列表（可用侧栏「已归档」开关找回）"
-              >
-                确认归档？
-              </button>
-            ) : (
-              <button type="button" onClick={() => setConfirmArchive(true)} className={MENU_ITEM_CLASS}>
-                归档
-              </button>
-            )}
-          </div>
-        </>
-      )}
-    </div>
-  );
-});
 
 /** 侧栏底部过滤开关（UI 管理面板深化轮）：已归档 / 子会话，localStorage 持久化。 */
 function FilterToggle({ label, on, onToggle }: { label: string; on: boolean; onToggle: () => void }) {
@@ -219,7 +81,11 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const [query, setQuery] = useState("");
   const [pendingSearchFocus, setPendingSearchFocus] = useState(false);
+  // 列表键盘导航（A5）：高亮索引 + 归档两段确认目标（Delete 首次待确认、再次落档）
+  const [navIndex, setNavIndex] = useState<number | null>(null);
+  const [pendingArchive, setPendingArchive] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const navRef = useRef<HTMLElement | null>(null);
   const lastFetched = useRef<string | null>(null);
 
   // 检索 300ms 防抖：keyword 重拉列表（服务端过滤）；挂载首跑跳过（bootstrap 已拉全量）
@@ -251,21 +117,71 @@ export default function Sidebar() {
     [sessions, showArchived, showSubsessions],
   );
   const groups = useMemo(() => groupSessions(visibleSessions, Date.now()), [visibleSessions]);
+  // 列表键盘导航按渲染顺序展平（今天 / 昨天 / 更早），与 DOM 顺序一致
+  const orderedSessions = useMemo(
+    () => [...groups.today, ...groups.yesterday, ...groups.earlier],
+    [groups],
+  );
+  const navIndexById = useMemo(
+    () => new Map(orderedSessions.map((session, index) => [session.id, index])),
+    [orderedSessions],
+  );
 
   const openSession = useCallback((id: string) => void selectSession(id), [selectSession]);
   const doRename = useCallback((id: string, title: string) => void renameSession(id, title), [renameSession]);
   const doFork = useCallback((id: string) => void forkSession(id), [forkSession]);
-  const doArchive = useCallback((id: string) => void archiveSession(id), [archiveSession]);
+  const doArchive = useCallback(
+    (id: string) => {
+      setPendingArchive(null);
+      void archiveSession(id);
+    },
+    [archiveSession],
+  );
+
+  /** 键盘导航：高亮行滚动入视（block:nearest，最小滚动）。 */
+  function scrollSessionIntoView(index: number): void {
+    navRef.current?.querySelectorAll<HTMLElement>("[data-nav-row]")[index]?.scrollIntoView({ block: "nearest" });
+  }
+
+  /** 会话列表键盘：↑↓/Home/End 移动高亮，Enter 进入会话，Delete 两段归档确认。 */
+  function handleListKey(event: KeyboardEvent<HTMLElement>): void {
+    const target = event.target;
+    // 输入控件聚焦时不劫持按键（重命名 input / 检索框 / 表单）
+    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
+    const next = nextIndexFromKey(event.key, navIndex ?? -1, orderedSessions.length);
+    if (next !== null) {
+      event.preventDefault();
+      setNavIndex(next);
+      scrollSessionIntoView(next);
+      return;
+    }
+    const row = navIndex !== null ? orderedSessions[navIndex] : undefined;
+    if (row === undefined) return;
+    if (event.key === "Enter") {
+      event.preventDefault();
+      setPendingArchive(null);
+      openSession(row.id);
+    } else if (event.key === "Delete") {
+      event.preventDefault();
+      if (row.state === "Archived") return; // 归档行只读，无归档动作
+      if (pendingArchive === row.id) doArchive(row.id);
+      else setPendingArchive(row.id);
+    }
+  }
 
   function renderSession(session: SessionRow): JSX.Element {
+    const index = navIndexById.get(session.id) ?? -1;
     return (
       <SessionItem
         key={session.id}
         session={session}
         active={session.id === activeId}
+        highlighted={navIndex === index}
+        archivePending={pendingArchive === session.id}
         onOpen={openSession}
         onRename={doRename}
         onFork={doFork}
+        onCancelArchive={() => setPendingArchive(null)}
         onArchive={doArchive}
       />
     );
@@ -416,7 +332,13 @@ export default function Sidebar() {
           className="h-7 w-full rounded-md border border-border-base bg-raised px-2 text-2xs text-hi outline-none placeholder:text-faint focus:border-accent-dim"
         />
       </div>
-      <nav className="min-h-0 flex-1 overflow-y-auto">
+      <nav
+        ref={navRef}
+        tabIndex={0}
+        onKeyDown={handleListKey}
+        className="min-h-0 flex-1 overflow-y-auto"
+        aria-label="会话列表"
+      >
         {visibleSessions.length === 0 && (
           <div className="px-4 py-3 text-2xs text-faint">{sessions.length === 0 ? "暂无会话" : "无匹配会话"}</div>
         )}

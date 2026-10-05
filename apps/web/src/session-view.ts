@@ -6,6 +6,8 @@
 import type { ThemePref } from "./theme.js";
 import type { SubagentRecord } from "./subagent-view.js";
 import type { CompactionBanner } from "./compact-view.js";
+import { applyErrorEvent } from "./turn-error.js";
+import type { TurnErrorState } from "./turn-error.js";
 
 export interface ChatItem {
   kind: "message";
@@ -80,7 +82,7 @@ export interface ProviderRow {
 
 export type ConnectionState = "connecting" | "ready" | "reconnecting" | "closed";
 
-export interface WebState {
+export interface WebState extends TurnErrorState {
   connection: ConnectionState;
   fatal: string | null; // 鉴权失败等不可恢复错误（停止重连）
   /** 视图路由（T4.5 面板对齐：chat / settings / memory / extensions）。 */
@@ -140,6 +142,7 @@ export function initialWebState(themePref: ThemePref = "dark"): WebState {
     showArchived: false,
     showSubsessions: false,
     compaction: null,
+    turnError: null,
   };
 }
 
@@ -358,10 +361,8 @@ export function applySessionEvent(state: WebState, name: string, payload: Record
       );
       return { ...patchView(state, sessionId, { items }), streaming: false };
     }
-    case "error": {
-      const message = (payload["error"] as { message?: string } | undefined)?.message;
-      return { ...state, error: typeof message === "string" ? message : "turn error" };
-    }
+    case "error":
+      return { ...state, ...applyErrorEvent(payload) }; // 结构化错误切片（A2；缺字段回落字符串横条）
     case "session.snapshot":
       return state; // 重连补推经 resume response 消费，此处保底
     default:

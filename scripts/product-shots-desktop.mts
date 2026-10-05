@@ -7,6 +7,7 @@
  * 全程临时目录 + 占位假 key（绝不打印，04 §5.3）；窗口会真实弹出数十秒。
  */
 import { spawn } from "node:child_process";
+import { createServer } from "node:http";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -80,6 +81,47 @@ function toolsRound(): SseScript {
   };
 }
 
+/**
+ * 后台任务素材脚本：bash + runInBackground（真实启动一个持续输出日志的进程）。
+ * 命令限时自退（120×500ms≈60s），避免残留进程；输出行供 tool.background.output 展开投影。
+ */
+function bashBackgroundRound(): SseScript {
+  return {
+    frames: [
+      { choices: [{ index: 0, delta: { role: "assistant" } }] },
+      toolCallFrame(
+        "t-bg",
+        "bash",
+        { command: `node -e "let i=0;setInterval(function(){i=i+1;console.log('bg tick '+i);if(i>120){process.exit(0)}},500)"`, runInBackground: true },
+        0,
+      ),
+    ],
+    finish: "tool_calls",
+  };
+}
+
+/**
+ * 确定性回合失败素材：本地 Provider 一律回 500。
+ * session.create 绑定该 Provider → llm.streamChat 抛 LlmHttpError(LLM_HTTP_ERROR)
+ * → settle.failed 发 error{scope:"turn", recoverable:true} → ChatFlow 失败卡「重试」。
+ */
+function startErrorLlmServer(): Promise<{ url: string; close: () => Promise<void> }> {
+  const server = createServer((_req, res) => {
+    res.writeHead(500, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: { message: "shots: deterministic upstream failure", type: "server_error" } }));
+  });
+  return new Promise((resolvePromise) => {
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      const port = typeof address === "object" && address !== null ? address.port : 0;
+      resolvePromise({
+        url: `http://127.0.0.1:${String(port)}/v1`,
+        close: () => new Promise((done) => server.close(() => done())),
+      });
+    });
+  });
+}
+
 function seedHome(home: string, workspace: string, mockUrl: string): void {
   mkdirSync(join(home, "plugins"), { recursive: true });
   mkdirSync(join(home, "skills"), { recursive: true });
@@ -149,6 +191,7 @@ async function main(): Promise<number> {
   if (!existsSync(rendererIndex)) { console.error("dist/renderer 缺失——先 pnpm --filter @raincode/desktop build"); return 1; }
   mkdirSync(PICTURE_DIR, { recursive: true });
   const mock = await startMockLlmServer();
+  const errLlm = await startErrorLlmServer();
   const home = await mkdtemp(join(tmpdir(), "raincode-shots-desktop-"));
   const workspace = join(home, "ws");
   seedHome(home, workspace, mock.url);
@@ -325,6 +368,97 @@ async function main(): Promise<number> {
     await cdp.eval(`(() => { const el = [...document.querySelectorAll("h3,span,div")].find(d => d.textContent === "Hooks"); if (el) el.scrollIntoView({ block: "start" }); return true; })()`);
     await sleep(400);
     await shot(cdp, "desktop-extensions-hooks");
+
+    // ===== polish-ui-states-and-runtime 本轮新增素材（全部真实渲染数据） =====
+    const clickSettingsNav = (label: string): string =>
+      `(() => { const b = [...document.querySelectorAll("nav button")].find(x => x.textContent.trim() === ${JSON.stringify(label)}); if (!b) return false; b.click(); return true; })()`;
+    const clickModelCtx = `(() => { const b = [...document.querySelectorAll("button")].find(x => x.getAttribute("title") === "活跃 Provider 模型（点击快切，仅影响后续请求）"); if (!b) return false; b.click(); return true; })()`;
+    const scrollSection = (title: string): string =>
+      `(() => { const el = [...document.querySelectorAll("div")].find(d => d.textContent === ${JSON.stringify(title)}); el?.closest("section")?.scrollIntoView({ block: "start" }); return true; })()`;
+    await cdp.eval<boolean>(clickButtonExpr("← 返回")); // 扩展面板 → chat
+
+    // 3. 模型快切弹层（config.providers.list → switch）：先补第二 Provider（error-mock，亦服务第 6 张）
+    await cdp.eval(`window.__raincodeStore.getState().addProvider({ name: "error-mock", baseURL: ${JSON.stringify(errLlm.url)}, model: "error-model", maxContextTokens: 8192 })`);
+    await cdp.waitFor(`window.__raincodeStore.getState().providers.length === 2`, "第二 Provider 投影", 15_000);
+    await cdp.eval<boolean>(clickModelCtx);
+    await cdp.waitFor(`${bodyContains("切换 Provider")} && ${bodyContains("error-mock")} && ${bodyContains("活跃")}`, "模型快切弹层渲染", 15_000);
+    await sleep(250);
+    await shot(cdp, "desktop-model-switch");
+    await cdp.eval<boolean>(clickModelCtx); // 关闭弹层
+
+    // 1. 设置「工具」目录（tool.tools.list）：展开一行显示 JSON-Schema 参数块
+    await cdp.eval<boolean>(clickButtonExpr("设置"));
+    await cdp.waitFor(bodyContains("设定"), "设置页渲染", 15_000);
+    await cdp.eval<boolean>(clickSettingsNav("工具"));
+    await cdp.waitFor(`${bodyContains("工具目录")} && ${bodyContains("内置")}`, "工具组渲染", 15_000);
+    await cdp.eval<boolean>(`(() => { const b = document.querySelector("[data-nav-primary]"); if (!b) return false; b.click(); return true; })()`);
+    await cdp.waitFor(bodyContains("参数 schema"), "工具 schema 展开", 15_000);
+    await cdp.eval<boolean>(scrollSection("工具目录"));
+    await sleep(300);
+    await shot(cdp, "desktop-tools-catalog");
+
+    // 2. 决策审计（permission.decisions.list）：命令权限组内子区，真实审批决策记录
+    await cdp.eval<boolean>(clickSettingsNav("命令权限"));
+    await cdp.waitFor(bodyContains("决策审计"), "决策审计子区渲染", 15_000);
+    const auditHasRow = await cdp.eval<boolean>(bodyContains("耗时"));
+    console.log(`  [audit] 真实决策记录存在：${String(auditHasRow)}${auditHasRow ? "" : "（空态：暂无决策记录）"}`);
+    await cdp.eval<boolean>(scrollSection("决策审计"));
+    await sleep(300);
+    await shot(cdp, "desktop-audit");
+    await cdp.eval<boolean>(clickButtonExpr("← 返回"));
+
+    // 5. 会话列表键盘导航高亮（A5）：补足具名会话 → 聚焦列表容器 + ↑↓ 移动到非活跃行
+    await cdp.waitFor(`!document.querySelector("textarea").disabled`, "会话发送区就绪", 15_000);
+    for (const title of ["布局重构方案", "流式布局验证", "回归测试清单"]) {
+      await cdp.eval(`window.__raincodeStore.getState().createSession(${JSON.stringify(title)})`);
+    }
+    await cdp.waitFor(`document.querySelectorAll('[data-nav-row]').length >= 4`, "会话列表多行", 15_000);
+    await cdp.eval(`document.querySelector('nav[aria-label="会话列表"]').focus()`);
+    await cdp.waitFor(`document.activeElement?.getAttribute("aria-label") === "会话列表"`, "会话列表容器聚焦", 10_000);
+    for (let i = 0; i < 3; i += 1) {
+      await cdp.key("ArrowDown", "ArrowDown", 40);
+    }
+    // 断言：存在「非活跃」行带键盘高亮底色（活跃行另有左侧 accent 指示条，故用其区分）
+    try {
+      await cdp.waitFor(
+        `[...document.querySelectorAll('[data-nav-row]')].some(r => String(r.className).includes('bg-selected') && r.querySelector('.bg-accent') === null)`,
+        "键盘高亮非活跃行",
+        10_000,
+      );
+      console.log("  [keyboard] 键盘高亮非活跃会话行：true");
+    } catch {
+      console.log("  [keyboard] 键盘高亮非活跃会话行：false（↑↓ 未生效）");
+    }
+    await sleep(300);
+    await shot(cdp, "desktop-session-keyboard");
+
+    // 4. 后台 Tab（tool.background.list/output）：真实 bash runInBackground 任务行
+    mock.setScript([bashBackgroundRound(), textScript("已在后台启动日志进程，右侧「后台」Tab 可见任务行与产出。")]);
+    await sendTurn(cdp, "在后台启动一个持续输出日志的进程");
+    try {
+      await cdp.waitFor(bodyContains("仅本次允许"), "bash 审批弹窗", 15_000);
+      await sleep(200);
+      await cdp.eval<boolean>(clickButtonExpr("仅本次允许"));
+    } catch { /* bash 若免审批则直行 */ }
+    await cdp.waitFor(bodyContains("右侧「后台」Tab 可见"), "后台回合完成", 30_000);
+    await cdp.eval<boolean>(`(() => { const b = [...document.querySelectorAll("button")].find(x => x.textContent.trim() === "后台"); if (!b) return false; b.click(); return true; })()`);
+    await cdp.waitFor(`${bodyContains("终止")} || ${bodyContains("bg tick")}`, "后台 Tab 任务行", 15_000);
+    await sleep(1_500);
+    await cdp.eval<boolean>(`(() => { const b = [...document.querySelectorAll("button")].find(x => x.getAttribute("title") === "展开产出"); if (!b) return false; b.click(); return true; })()`);
+    await cdp.waitFor(`/bg tick \\d/.test(document.body.innerText)`, "后台产出 tail 投影", 15_000);
+    await sleep(300);
+    await shot(cdp, "desktop-background");
+
+    // 6. 回合失败卡「重试」：切换活跃 Provider → 新建会话（create 时绑定 error-mock）→ 发回合 → LLM_HTTP_ERROR
+    await cdp.eval(`window.__raincodeStore.getState().switchProvider(window.__raincodeStore.getState().providers.find(p => p.name === "error-mock").id)`);
+    await cdp.waitFor(`window.__raincodeStore.getState().activeProviderId !== null && window.__raincodeStore.getState().providers.find(p => p.id === window.__raincodeStore.getState().activeProviderId)?.name === "error-mock"`, "活跃 Provider 切换", 15_000);
+    await cdp.eval(`window.__raincodeStore.getState().createSession()`);
+    await cdp.waitFor(`!document.querySelector("textarea").disabled`, "错误 Provider 会话就绪", 15_000);
+    await sendTurn(cdp, "触发一次可重试的回合失败");
+    await cdp.waitFor(`${bodyContains("回合失败")} && ${bodyContains("重试")}`, "回合失败卡（recoverable）", 30_000);
+    await sleep(300);
+    await shot(cdp, "desktop-turn-failed");
+
     console.log("桌面端截图完成");
     return 0;
   } catch (err) {
@@ -336,6 +470,7 @@ async function main(): Promise<number> {
     await sleep(800);
     await rm(home, { recursive: true, force: true }).catch(() => undefined);
     await mock.close();
+    await errLlm.close();
   }
 }
 

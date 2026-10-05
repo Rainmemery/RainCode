@@ -1,15 +1,21 @@
-﻿/**
+/**
  * 记忆管理器（03-ui-design §6.3 / MR-4；T4.5 Web 端对齐桌面端，按端最小实现）：
  * 左：记忆源（MEMORY.md 卡片 + kind 分桶计数，点击即过滤）；
  * 中：MEMORY.md 预览（只读；文件真源 `.raincode/MEMORY.md`，Agent 专用章节经会话增量更新）；
  * 右：晋升草案待确认区（confirm 合入 / reject 忽略）+ 条目检索与列表（kind 过滤 / 置信度 /
  * 来源 / superseded 标记 / 直接管晋升）。
  * memory 域无事件推送：进入视图与每次处置后全量刷新（低频管理面，拉取成本可忽略）。
+ * polish-ui-states-and-runtime 轮 C1~C3：预览改 Markdown 渲染；query 非空走服务端 `memory.search`
+ * （02 §7.4 同源禁旁路，移除端层 includes 过滤），命中片段以 `--accent-bg` 高亮；错误行接 StatusBanner。
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { RpcCallError } from "@raincode/rpc/web";
 import type { MemoryDraft, MemoryEntry, MemorySection } from "@raincode/shared";
+import { splitHighlight } from "../highlight.js";
+import { nextIndexFromKey } from "../list-nav.js";
 import { rpcCall, useWeb } from "../state.js";
+import { Markdown } from "./Markdown.js";
+import { StatusBanner } from "./StatusBanner.js";
 
 interface MemoryReadResult {
   content: string;
@@ -64,10 +70,14 @@ export function MemoryManager(): JSX.Element {
   const [entries, setEntries] = useState<MemoryEntry[]>([]);
   const [kindFilter, setKindFilter] = useState<MemoryEntry["kind"] | null>(null);
   const [query, setQuery] = useState("");
+  /** 服务端检索结果（key = 发起时的 query+kind；与当前检索键不等即视为旧结果，避免闪现错位）。 */
+  const [search, setSearch] = useState<{ key: string; entries: MemoryEntry[] } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** 直接管晋升的章节选择（entryId/draftId → 当前选中章节）。 */
   const [promoteSection, setPromoteSection] = useState<Record<string, MemorySection>>({});
+  /** 条目列表键盘高亮序号（§8.1；-1 = 尚无高亮，落到首条）。 */
+  const [highlight, setHighlight] = useState(-1);
 
   const refresh = useCallback(async (): Promise<void> => {
     if (workspace === null) return;
@@ -98,14 +108,42 @@ export function MemoryManager(): JSX.Element {
     return counts;
   }, [entries]);
 
+  /** 检索键：query 非空时走服务端 `memory.search`（02 §7.4 同源禁旁路），空查询回落 list 基线。 */
+  const trimmedQuery = query.trim();
+  const searchKey = trimmedQuery === "" ? "" : JSON.stringify([trimmedQuery, kindFilter]);
+  const searching = searchKey !== "" && (search === null || search.key !== searchKey);
+
+  useEffect(() => {
+    if (searchKey === "") return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void rpcCall<{ entries: MemoryEntry[] }>("memory.search", {
+        query: trimmedQuery,
+        ...(kindFilter !== null && { kind: kindFilter }),
+        limit: 50,
+      })
+        .then((result) => {
+          if (cancelled) return;
+          setSearch({ key: searchKey, entries: result.entries });
+          setError(null);
+        })
+        .catch((err: unknown) => {
+          if (!cancelled) setError(err instanceof RpcCallError ? `${err.code}: ${err.message}` : String(err));
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [searchKey, trimmedQuery, kindFilter]);
+
   const visibleEntries = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return entries.filter((entry) => {
-      if (kindFilter !== null && entry.kind !== kindFilter) return false;
-      if (q !== "" && !entry.content.toLowerCase().includes(q)) return false;
-      return true;
-    });
-  }, [entries, kindFilter, query]);
+    if (searchKey !== "") {
+      return search !== null && search.key === searchKey ? search.entries : [];
+    }
+    // 空查询基线（既口径不变）：memory.entries.list 投影 + 端层 kind 过滤
+    return kindFilter === null ? entries : entries.filter((entry) => entry.kind === kindFilter);
+  }, [entries, kindFilter, search, searchKey]);
 
   async function handleResolve(draftId: string, action: "confirm" | "reject", section?: MemorySection): Promise<void> {
     setBusyId(draftId);
@@ -129,6 +167,18 @@ export function MemoryManager(): JSX.Element {
     } finally {
       setBusyId(null);
     }
+  }
+
+  /** 条目列表键位（§8.1）：容器获焦时 ↑↓/Home/End 移动高亮并滚动入视（条目无 Enter/Delete 动作）。 */
+  function onEntriesKeyDown(event: React.KeyboardEvent<HTMLElement>): void {
+    const target = event.target as HTMLElement;
+    if (target !== event.currentTarget || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+    if (visibleEntries.length === 0) return;
+    const next = nextIndexFromKey(event.key, highlight, visibleEntries.length);
+    if (next === null) return;
+    event.preventDefault();
+    setHighlight(next);
+    event.currentTarget.querySelector<HTMLElement>(`[data-entry-index="${next}"]`)?.scrollIntoView({ block: "nearest" });
   }
 
   return (
@@ -190,16 +240,30 @@ export function MemoryManager(): JSX.Element {
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
               {memoryMd === null ? (
-                <div className="shimmer-text text-2xs">加载中…</div>
+                <div className="flex flex-col gap-2" role="status" aria-label="加载中">
+                  {["w-full", "w-11/12", "w-full", "w-2/3"].map((width, index) => (
+                    <div key={index} className={`skeleton h-4 ${width}`} aria-hidden="true" />
+                  ))}
+                </div>
               ) : (
-                <pre className="whitespace-pre-wrap break-words font-sans text-2xs leading-5 text-mid">{memoryMd.content}</pre>
+                <div className="text-2xs leading-5 text-mid">
+                  {!memoryMd.exists && (
+                    <div className="mb-2 text-2xs text-faint">MEMORY.md 尚未建立，以下为待写入的模板骨架（只读）。</div>
+                  )}
+                  {/* 复用既有 Markdown 组件（03 §6.3：标题 / 列表 / 行内代码 / 代码块 / 引用），保持只读 */}
+                  <Markdown text={memoryMd.content} />
+                </div>
               )}
             </div>
           </section>
 
           {/* 右栏：待确认区 + 条目检索与列表 */}
           <section className="flex w-[400px] shrink-0 flex-col">
-            {error !== null && <div className="border-b border-danger bg-raised px-3 py-1.5 text-2xs text-danger">{error}</div>}
+            {error !== null && (
+              <div className="border-b border-border-faint px-3 py-2">
+                <StatusBanner tone="danger" text={error} onDismiss={() => setError(null)} />
+              </div>
+            )}
             <div className="min-h-0 flex-1 overflow-y-auto">
               <div className="border-b border-border-faint px-3 py-2">
                 <div className="pb-1.5 text-2xs text-hi">
@@ -253,14 +317,32 @@ export function MemoryManager(): JSX.Element {
                   className="h-7 w-full rounded-md border border-border-base bg-raised px-2 text-2xs text-hi outline-none placeholder:text-faint transition-colors duration-fast focus:border-accent-dim"
                 />
               </div>
-              <div className="px-3 pb-3">
+              <div
+                tabIndex={0}
+                onKeyDown={onEntriesKeyDown}
+                aria-label="记忆条目列表（↑↓ 移动高亮）"
+                className="px-3 pb-3"
+              >
                 {visibleEntries.length === 0 && (
                   <div className="px-1 py-3 text-2xs text-faint">
-                    {entries.length === 0 ? "暂无记忆条目：会话结束 / 压缩时自动抽取" : "无匹配条目"}
+                    {searching
+                      ? "检索中…"
+                      : searchKey !== ""
+                        ? "无匹配条目"
+                        : entries.length === 0
+                          ? "暂无记忆条目：会话结束 / 压缩时自动抽取"
+                          : "无匹配条目"}
                   </div>
                 )}
-                {visibleEntries.map((entry) => (
-                  <div key={entry.id} className="mb-2 rounded-md border border-border-base bg-card px-2.5 py-2">
+                {visibleEntries.map((entry, index) => (
+                  <div
+                    key={entry.id}
+                    data-entry-index={index}
+                    className={`relative mb-2 rounded-md border px-2.5 py-2 ${
+                      highlight === index ? "border-border-strong bg-hover" : "border-border-base bg-card"
+                    }`}
+                  >
+                    {highlight === index && <span className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-accent" />}
                     <div className="flex items-center gap-2">
                       <span className={`shrink-0 rounded-sm border px-1 text-2xs ${KIND_BADGE[entry.kind]}`}>{KIND_LABELS[entry.kind]}</span>
                       {entry.status === "superseded" && (
@@ -272,7 +354,15 @@ export function MemoryManager(): JSX.Element {
                       <span className="mono shrink-0 text-2xs text-faint" title="置信度">{Math.round(entry.confidence * 100)}%</span>
                     </div>
                     <div className={`mt-1 text-2xs leading-4 ${entry.status === "superseded" ? "text-faint line-through" : "text-mid"}`}>
-                      {entry.content}
+                      {splitHighlight(entry.content, query).map((segment, segmentIndex) =>
+                        segment.hit ? (
+                          <mark key={segmentIndex} className="rounded-sm bg-accent-bg px-0.5 text-inherit">
+                            {segment.text}
+                          </mark>
+                        ) : (
+                          <span key={segmentIndex}>{segment.text}</span>
+                        ),
+                      )}
                     </div>
                     <div className="mt-1.5 flex items-center gap-2">
                       <span className="shrink-0 text-2xs text-faint">{SOURCE_LABELS[entry.source]} · {relativeTime(entry.lastSeenAt)}</span>

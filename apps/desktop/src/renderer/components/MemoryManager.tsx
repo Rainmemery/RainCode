@@ -1,15 +1,25 @@
-﻿/**
+/**
  * 记忆管理器（03-ui-design §6.3 稿件 03 / MR-4）：三栏——
  * 左：记忆源（MEMORY.md 卡片 + kind 分桶计数，点击即过滤）；
  * 中：MEMORY.md 预览（只读；文件真源 `.raincode/MEMORY.md`，编辑经 Agent 专用章节走会话）；
  * 右：晋升草案待确认区（02 §7.2 第三层，confirm 合入 / reject 忽略）+ 条目检索与列表
- *（kind chips / 置信度 / 来源 / lastSeen / superseded 标记 / 直接管晋升）。
+ * （kind chips / 置信度 / 来源 / lastSeen / superseded 标记 / 直接管晋升）。
  * memory 域无事件推送：进入视图与每次处置后全量刷新（低频管理面，拉取成本可忽略）。
+ * polish-ui-states-and-runtime A5（§8.1）：条目列表 ↑↓ 移动高亮 / Enter 聚焦「晋升」动作
+ * （无晋升按钮的行 no-op；无删除 RPC，故不提供 Delete）；高亮行滚动入视。
+ * 同轮深化（spec C1~C3）：MEMORY.md 预览改 Markdown 渲染（复用 Markdown.tsx，仍只读）；
+ * 检索非空走服务端 `memory.search`（不再本地 filter 旁路），命中片段以 `--accent-bg` 高亮；
+ * 面板错误行接入统一 StatusBanner（A1）。
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
 import { RpcCallError } from "@raincode/rpc/client";
 import type { MemoryDraft, MemoryEntry, MemorySection } from "@raincode/shared";
+import { splitHighlight } from "../highlight.js";
+import { nextIndexFromKey } from "../list-nav.js";
 import { rpcCall, useDesktop } from "../store.js";
+import { Markdown } from "./Markdown.js";
+import { StatusBanner } from "./StatusBanner.js";
 
 interface MemoryReadResult {
   content: string;
@@ -66,10 +76,14 @@ export default function MemoryManager() {
   const [entries, setEntries] = useState<MemoryEntry[]>([]);
   const [kindFilter, setKindFilter] = useState<MemoryEntry["kind"] | null>(null);
   const [query, setQuery] = useState("");
+  const [search, setSearch] = useState<{ key: string; entries: MemoryEntry[] } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** 直接管晋升的章节选择（entryId → 当前选中章节）。 */
   const [promoteSection, setPromoteSection] = useState<Record<string, MemorySection>>({});
+  // 条目列表键盘导航（A5）：高亮索引
+  const [navIndex, setNavIndex] = useState<number | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
 
   const refresh = useCallback(async (): Promise<void> => {
     if (workspace === null) return;
@@ -92,6 +106,35 @@ export default function MemoryManager() {
     void refresh();
   }, [refresh]);
 
+  /** 检索键：query 非空时走服务端 `memory.search`（02 §7.4 同源禁旁路），空查询回落 list 基线。 */
+  const trimmedQuery = query.trim();
+  const searchKey = trimmedQuery === "" ? "" : JSON.stringify([trimmedQuery, kindFilter]);
+  const searching = searchKey !== "" && (search === null || search.key !== searchKey);
+
+  useEffect(() => {
+    if (searchKey === "") return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void rpcCall<{ entries: MemoryEntry[] }>("memory.search", {
+        query: trimmedQuery,
+        ...(kindFilter !== null && { kind: kindFilter }),
+        limit: 50,
+      })
+        .then((result) => {
+          if (cancelled) return;
+          setSearch({ key: searchKey, entries: result.entries });
+          setError(null);
+        })
+        .catch((err: unknown) => {
+          if (!cancelled) setError(err instanceof RpcCallError ? `${err.code}: ${err.message}` : String(err));
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [searchKey, trimmedQuery, kindFilter]);
+
   const kindCounts = useMemo(() => {
     const counts = new Map<MemoryEntry["kind"], number>();
     for (const entry of entries) {
@@ -101,13 +144,12 @@ export default function MemoryManager() {
   }, [entries]);
 
   const visibleEntries = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return entries.filter((entry) => {
-      if (kindFilter !== null && entry.kind !== kindFilter) return false;
-      if (q !== "" && !entry.content.toLowerCase().includes(q)) return false;
-      return true;
-    });
-  }, [entries, kindFilter, query]);
+    if (searchKey !== "") {
+      return search !== null && search.key === searchKey ? search.entries : [];
+    }
+    // 空查询基线（既口径不变）：memory.entries.list 投影 + 端层 kind 过滤
+    return kindFilter === null ? entries : entries.filter((entry) => entry.kind === kindFilter);
+  }, [entries, kindFilter, search, searchKey]);
 
   async function handleResolve(draftId: string, action: "confirm" | "reject", section?: MemorySection): Promise<void> {
     setBusyId(draftId);
@@ -130,6 +172,33 @@ export default function MemoryManager() {
       setError(err instanceof RpcCallError ? `${err.code}: ${err.message}` : String(err));
     } finally {
       setBusyId(null);
+    }
+  }
+
+  /** 键盘导航：高亮行滚动入视（block:nearest，最小滚动）。 */
+  function scrollEntryIntoView(index: number): void {
+    listRef.current?.querySelectorAll<HTMLElement>("[data-nav-row]")[index]?.scrollIntoView({ block: "nearest" });
+  }
+
+  /** 条目列表键盘：↑↓/Home/End 移动高亮；Enter 触发该行「晋升」动作（无按钮行 no-op）。 */
+  function handleListKey(event: KeyboardEvent<HTMLElement>): void {
+    const target = event.target;
+    // 检索框 / 章节下拉聚焦时不劫持按键
+    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
+    const next = nextIndexFromKey(event.key, navIndex ?? -1, visibleEntries.length);
+    if (next !== null) {
+      event.preventDefault();
+      setNavIndex(next);
+      scrollEntryIntoView(next);
+      return;
+    }
+    if (event.key === "Enter" && navIndex !== null) {
+      const row = listRef.current?.querySelectorAll<HTMLElement>("[data-nav-row]")[navIndex];
+      if (row === undefined || row === null) return;
+      const primary = row.querySelector<HTMLButtonElement>("[data-nav-primary]");
+      if (primary === null) return; // 已被取代 / 非活跃行无晋升动作
+      event.preventDefault();
+      primary.click();
     }
   }
 
@@ -188,11 +257,19 @@ export default function MemoryManager() {
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
               {memoryMd === null ? (
-                <div className="shimmer-text text-2xs">加载中…</div>
+                <div className="flex flex-col gap-2" role="status" aria-label="加载中">
+                  <div className="skeleton h-3 w-full" aria-hidden="true" />
+                  <div className="skeleton h-3 w-11/12" aria-hidden="true" />
+                  <div className="skeleton h-3 w-full" aria-hidden="true" />
+                  <div className="skeleton h-3 w-3/4" aria-hidden="true" />
+                </div>
               ) : (
-                <pre className="whitespace-pre-wrap break-words font-sans text-2xs leading-5 text-mid">
-                  {memoryMd.content}
-                </pre>
+                <div className="text-2xs leading-5 text-mid">
+                  {!memoryMd.exists && (
+                    <div className="mb-2 text-2xs text-faint">MEMORY.md 尚未建立，以下为待写入的模板骨架（只读）。</div>
+                  )}
+                  <Markdown text={memoryMd.content} />
+                </div>
               )}
             </div>
           </section>
@@ -200,7 +277,9 @@ export default function MemoryManager() {
           {/* 右栏：待确认区 + 条目检索与列表 */}
           <section className="flex w-[420px] shrink-0 flex-col">
             {error !== null && (
-              <div className="border-b border-danger bg-raised px-3 py-1.5 text-2xs text-danger">{error}</div>
+              <div className="border-b border-border-faint p-2">
+                <StatusBanner tone="danger" text={error} onDismiss={() => setError(null)} />
+              </div>
             )}
             <div className="min-h-0 flex-1 overflow-y-auto">
               {/* 晋升草案待确认区（02 §7.2 第三层） */}
@@ -257,14 +336,32 @@ export default function MemoryManager() {
                   className="h-7 w-full rounded-md border border-border-base bg-raised px-2 text-2xs text-hi outline-none placeholder:text-faint focus:border-accent-dim"
                 />
               </div>
-              <div className="px-3 pb-3">
+              <div
+                ref={listRef}
+                tabIndex={0}
+                onKeyDown={handleListKey}
+                aria-label="记忆条目列表"
+                className="px-3 pb-3"
+              >
                 {visibleEntries.length === 0 && (
                   <div className="px-1 py-3 text-2xs text-faint">
-                    {entries.length === 0 ? "暂无记忆条目：会话结束 / 压缩时自动抽取" : "无匹配条目"}
+                    {searching
+                      ? "检索中…"
+                      : searchKey !== ""
+                        ? "无匹配条目"
+                        : entries.length === 0
+                          ? "暂无记忆条目：会话结束 / 压缩时自动抽取"
+                          : "无匹配条目"}
                   </div>
                 )}
-                {visibleEntries.map((entry) => (
-                  <div key={entry.id} className="mb-2 rounded-md border border-border-base bg-panel px-2.5 py-2">
+                {visibleEntries.map((entry, index) => (
+                  <div
+                    key={entry.id}
+                    data-nav-row
+                    className={`mb-2 rounded-md border border-border-base px-2.5 py-2 ${
+                      navIndex === index ? "bg-selected" : "bg-panel"
+                    }`}
+                  >
                     <div className="flex items-center gap-2">
                       <span className={`rounded border px-1 text-2xs ${KIND_BADGE[entry.kind]}`}>{KIND_LABELS[entry.kind]}</span>
                       {entry.status === "superseded" && (
@@ -276,7 +373,15 @@ export default function MemoryManager() {
                       <span className="text-2xs text-faint" title="置信度">{Math.round(entry.confidence * 100)}%</span>
                     </div>
                     <div className={`mt-1 text-2xs leading-4 ${entry.status === "superseded" ? "text-faint line-through" : "text-mid"}`}>
-                      {entry.content}
+                      {splitHighlight(entry.content, query).map((segment, segmentIndex) =>
+                        segment.hit ? (
+                          <mark key={segmentIndex} className="rounded-sm bg-accent-bg px-0.5 text-inherit">
+                            {segment.text}
+                          </mark>
+                        ) : (
+                          <span key={segmentIndex}>{segment.text}</span>
+                        ),
+                      )}
                     </div>
                     <div className="mt-1.5 flex items-center gap-2">
                       <span className="text-2xs text-faint">{SOURCE_LABELS[entry.source]} · {relativeTime(entry.lastSeenAt)}</span>
@@ -294,6 +399,7 @@ export default function MemoryManager() {
                           </select>
                           <button
                             type="button"
+                            data-nav-primary
                             disabled={busyId === entry.id}
                             onClick={() => void handlePromote(entry.id)}
                             title="合入 MEMORY.md 指定章节（调用即用户确认动作）"

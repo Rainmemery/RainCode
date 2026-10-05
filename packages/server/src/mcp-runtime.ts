@@ -78,7 +78,14 @@ export class McpRuntime {
     if (this.projectConfigPath !== null && existsSync(this.projectConfigPath)) {
       sources.push({ path: this.projectConfigPath, level: "project" });
     }
-    const loaded = await loadMcpConfig(sources);
+    // L-22：配置读取失败（缺失/损坏/冲突）在域装配层即降级——空投影 + stderr 诊断，
+    // 绝不以未分类 INTERNAL 上抛（06 §4.3）；域方法表照常可用（mcp.servers.list 返回空）。
+    const loaded = await loadMcpConfig(sources).catch((err: unknown) => {
+      const detail = err instanceof McpConfigError ? `${err.code}: ${err.message}` : err;
+      console.error("[raincode/server] mcp domain degraded: config load failed", detail);
+      return null;
+    });
+    if (loaded === null) return;
     for (const [serverKey, config] of loaded.configs) {
       this.manager.register(config);
       this.syncTools(serverKey, false);

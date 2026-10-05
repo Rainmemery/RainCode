@@ -1,24 +1,25 @@
 /**
- * 设置页六组导航（ui-panel-deepening 轮主项）：顶行「← 返回」+ 标题「设定」，下方
- * 左侧垂直导航（通用 / Provider 与模型 / 命令权限 / MCP 服务器 / 快捷键 / 关于；激活项
- * text-hi + 2px accent 指示条，32px 行高）+ 右侧内容区。
+ * 设置页七组导航（ui-panel-deepening 轮主项 + polish-ui-states-and-runtime 轮增「工具」）：顶行「← 返回」
+ * + 标题「设定」，下方左侧垂直导航（通用 / Provider 与模型 / 命令权限 / MCP 服务器 / 快捷键 / 关于 /
+ * 工具；激活项 text-hi + 2px accent 指示条，32px 行高）+ 右侧内容区。
  * - 通用：主题三态（与侧栏「◐」同状态源）+ 工作区只读行 + 语言静态行（en-US 预留）；
  * - Provider 与模型：ProviderSettings 主体迁入（行为零变更，头行已移除）；
  * - 命令权限 / MCP 服务器：SettingsPermissions / SettingsMcp 分区组件；
  * - 快捷键：静态两列表（.kbd 芯片）+ 浏览器保留键附注；
  * - 关于：system.version 四行 + docs 指引。
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { RpcCallError } from "@raincode/rpc/web";
-import type { SystemVersionResult } from "@raincode/shared";
+import type { ConfigProvidersListResult, SystemVersionResult } from "@raincode/shared";
 import { rpcCall, useWeb } from "../state.js";
 import { THEME_LABEL } from "../theme.js";
 import type { ThemePref } from "../theme.js";
 import { ProviderSettings } from "./ProviderSettings.js";
 import { SettingsPermissions } from "./SettingsPermissions.js";
 import { SettingsMcp } from "./SettingsMcp.js";
+import { SettingsTools } from "./SettingsTools.js";
 
-type SettingsSection = "general" | "provider" | "permissions" | "mcp" | "shortcuts" | "about";
+type SettingsSection = "general" | "provider" | "permissions" | "mcp" | "shortcuts" | "about" | "tools";
 
 const SECTIONS: Array<{ key: SettingsSection; label: string }> = [
   { key: "general", label: "通用" },
@@ -27,6 +28,7 @@ const SECTIONS: Array<{ key: SettingsSection; label: string }> = [
   { key: "mcp", label: "MCP 服务器" },
   { key: "shortcuts", label: "快捷键" },
   { key: "about", label: "关于" },
+  { key: "tools", label: "工具" },
 ];
 
 const THEME_OPTIONS: ThemePref[] = ["dark", "light", "system"];
@@ -154,7 +156,13 @@ function AboutSection(): JSX.Element {
         {error !== null ? (
           <div className="rounded-md border border-border-faint bg-card px-3 py-2 text-2xs text-danger">{error}</div>
         ) : info === null ? (
-          <div className="rounded-md border border-border-faint bg-card px-3 py-2 text-2xs text-faint">版本信息加载中…</div>
+          <div className="rounded-md border border-border-faint bg-card px-3 py-2 text-2xs text-faint">
+            <div className="flex flex-col gap-2" role="status" aria-label="加载中">
+              {[0, 1].map((index) => (
+                <div key={index} className="skeleton h-4 w-full" aria-hidden="true" />
+              ))}
+            </div>
+          </div>
         ) : (
           <div className="rounded-md border border-border-faint bg-card">
             {rows.map(([label, value]) => (
@@ -174,6 +182,27 @@ function AboutSection(): JSX.Element {
 export function SettingsView(): JSX.Element {
   const setView = useWeb((s) => s.setView);
   const [section, setSection] = useState<SettingsSection>("general");
+  /** 用户已手动选过导航项（false 时允许「无活跃 Provider」默认跳转覆盖初始组）。 */
+  const navigated = useRef(false);
+
+  // 自包含规则：无活跃 Provider（或 provider 列表为空）时默认打开「Provider 与模型」组引导配置
+  useEffect(() => {
+    let cancelled = false;
+    void rpcCall<ConfigProvidersListResult>("config.providers.list", {})
+      .then((result) => {
+        if (cancelled || navigated.current) return;
+        if (result.activeProviderId === undefined || result.providers.length === 0) setSection("provider");
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function selectSection(key: SettingsSection): void {
+    navigated.current = true;
+    setSection(key);
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -200,7 +229,7 @@ export function SettingsView(): JSX.Element {
                 className={`relative flex h-8 items-center rounded-md px-3 text-left text-2xs transition-colors duration-fast ${
                   active ? "text-hi" : "text-mid hover:bg-hover hover:text-hi"
                 }`}
-                onClick={() => setSection(item.key)}
+                onClick={() => selectSection(item.key)}
               >
                 {active && <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-accent" />}
                 {item.label}
@@ -220,6 +249,8 @@ export function SettingsView(): JSX.Element {
             <SettingsMcp />
           ) : section === "shortcuts" ? (
             <ShortcutsSection />
+          ) : section === "tools" ? (
+            <SettingsTools />
           ) : (
             <AboutSection />
           )}

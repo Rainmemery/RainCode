@@ -10,6 +10,7 @@ import { useEffect } from "react";
 import { useDesktop } from "./store.js";
 import Sidebar from "./components/Sidebar.js";
 import ChatFlow from "./components/ChatFlow.js";
+import { StatusBanner } from "./components/StatusBanner.js";
 import SettingsView from "./components/SettingsView.js";
 import MemoryManager from "./components/MemoryManager.js";
 import ExtensionsPanel from "./components/ExtensionsPanel.js";
@@ -20,6 +21,7 @@ export default function App() {
   const connection = useDesktop((s) => s.connection);
   const view = useDesktop((s) => s.view);
   const error = useDesktop((s) => s.error);
+  const turnError = useDesktop((s) => s.turnError);
   const contextPanelCollapsed = useDesktop((s) => s.contextPanelCollapsed);
   const hasApprovals = useDesktop((s) => s.approvals.length > 0);
   const dismissError = useDesktop((s) => s.dismissError);
@@ -44,18 +46,17 @@ export default function App() {
 
   return (
     <div className="flex h-full flex-col bg-base text-hi">
+      {/* 离线态（§A3）：agent 子进程退出 = 宿主离线，danger 圆点 +「离线」文案，短板自动重启 */}
       {connection === "agent-down" && (
-        <div className="flex items-center gap-2 border-b border-danger bg-raised px-4 py-1.5 text-2xs text-danger">
-          <span className="dot dot-err" />
-          Agent 子进程已断开，正在重启…
+        <div className="px-3 pt-2">
+          <StatusBanner tone="danger" text="离线 —— Agent 子进程已断开，正在重启…" />
         </div>
       )}
-      {error !== null && (
-        <div className="flex items-center gap-2 border-b border-danger bg-raised px-4 py-1.5 text-2xs text-danger">
-          <span className="min-w-0 flex-1 truncate">{error}</span>
-          <button type="button" onClick={dismissError} className="shrink-0 text-danger hover:text-hi" title="关闭">
-            ✕
-          </button>
+      {/* 全局错误横条（统一通知条 §A1）：会话域动作错误 / 无结构化字段的旧 error 路径；
+          chat 视图已呈结构化回合失败卡时不重复（同 Web 端 error !== null && turnCard === null 口径） */}
+      {error !== null && !(view === "chat" && turnError?.scope === "turn") && (
+        <div className="px-3 pt-2">
+          <StatusBanner tone="danger" text={error} onDismiss={dismissError} />
         </div>
       )}
       <div className="flex min-h-0 flex-1">

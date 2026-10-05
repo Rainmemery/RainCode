@@ -145,9 +145,9 @@ pre,
   font-family: var(--font-mono);
 }
 
-/* 焦点环：键盘可达（03 §8.1），鼠标点击不显 */
+/* 焦点环：键盘可达（03 §8.1：--border-strong + 1px 外扩，不隐藏）；:focus-visible 保证鼠标点击不显 */
 :focus-visible {
-  outline: 1px solid var(--accent-dim);
+  outline: 1px solid var(--border-strong);
   outline-offset: 1px;
 }
 
@@ -222,6 +222,15 @@ pre,
   background-size: 400px 100%;
   -webkit-background-clip: text;
   background-clip: text;
+  animation: shimmer 1.6s linear infinite;
+}
+
+/* 骨架条（03 §7 面板级加载：--bg-raised 微 shimmer，替换纯文本「加载中…」）
+ * 复用上方 shimmer 关键帧（与 .shimmer-text 同节奏）；reduced-motion 下收敛为静态。 */
+.skeleton {
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--bg-raised) 30%, var(--bg-hover) 50%, var(--bg-raised) 70%);
+  background-size: 400px 100%;
   animation: shimmer 1.6s linear infinite;
 }
 
@@ -325,7 +334,8 @@ pre,
   .stream-cursor,
   .dot-run,
   .dot-warn,
-  .shimmer-text {
+  .shimmer-text,
+  .skeleton {
     animation: none;
   }
   .anim-fade,

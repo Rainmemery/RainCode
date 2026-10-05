@@ -19,6 +19,28 @@ after(async () => {
 });
 
 describe("mcp.json 损坏 → 域降级不崩装配（T3.9 回归）", () => {
+  it("缺失配置（L-22）：域装配降级为空投影，mcp.servers.list 不落 INTERNAL", async () => {
+    const home = await mkdtemp(join(tmpdir(), "raincode-mcp-missing-"));
+    homes.push(home); // 不写 mcp.json（缺失路径）
+    const transports = createInMemoryTransportPair();
+    const node = await createAgentServiceNode(transports[1], {
+      env: { RAINCODE_HOME: home },
+      provider: null,
+      mcp: {},
+    });
+    try {
+      const client = createRpcClient({ transport: transports[0] });
+      await client.call("system.ping", {});
+      const list = await client.call<{ servers: unknown[] }>("mcp.servers.list", {});
+      assert.equal(list.servers.length, 0); // 空投影可用，无未分类 INTERNAL 上抛
+      client.close();
+    } finally {
+      await node.close();
+      await transports[0].close();
+      await transports[1].close();
+    }
+  });
+
   it("损坏配置装配节点后 ping/list 可用，mcp.servers.list 为空投影", async () => {
     const home = await mkdtemp(join(tmpdir(), "raincode-mcp-degrade-"));
     homes.push(home);

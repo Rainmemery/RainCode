@@ -10,6 +10,7 @@ import { RpcCallError } from "@raincode/rpc/web";
 import type { McpHealthReport, McpServerStatus, McpServerStatusEntry, PluginSummary } from "@raincode/shared";
 import { rpcCall, useWeb } from "../state.js";
 import { HooksSection } from "./ExtensionsHooks.js";
+import { StatusBanner } from "./StatusBanner.js";
 
 /** 状态灯映射（03 §6.5）：绿常亮 / 琥珀脉冲 / 红常亮；Disconnected 灰常亮。 */
 function statusDotClass(status: McpServerStatus): string {
@@ -58,6 +59,17 @@ function reasonText(reason: unknown): string {
 const ROW_BUTTON_CLASS =
   "h-6 rounded-md border border-border-strong px-2 text-2xs text-mid transition-colors duration-fast hover:bg-hover disabled:opacity-50";
 
+/** 面板级骨架加载（03 §7）：3 行骨架条，替换纯文本「加载中…」；reduced-motion 下静态可判读。 */
+function SkeletonRows(): JSX.Element {
+  return (
+    <div className="flex flex-col gap-2" role="status" aria-label="加载中">
+      {[0, 1, 2].map((index) => (
+        <div key={index} className="skeleton h-10 w-full" aria-hidden="true" />
+      ))}
+    </div>
+  );
+}
+
 export function ExtensionsPanel(): JSX.Element {
   const extTick = useWeb((s) => s.extTick);
   const setView = useWeb((s) => s.setView);
@@ -70,6 +82,7 @@ export function ExtensionsPanel(): JSX.Element {
   const [healthBusy, setHealthBusy] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async (): Promise<void> => {
     setError(null);
@@ -105,6 +118,7 @@ export function ExtensionsPanel(): JSX.Element {
     } else {
       setError(reasonText(pluginsResult.reason));
     }
+    setLoading(false); // 首载骨架收敛（allSettled 恒不抛；后续刷新直取旧投影）
   }, []);
 
   // 挂载与全局状态事件（extTick）时重拉：拉取可能早于域就绪（init 异步受理），
@@ -177,7 +191,11 @@ export function ExtensionsPanel(): JSX.Element {
           刷新
         </button>
       </header>
-      {error !== null && <div className="border-b border-danger bg-raised px-4 py-1.5 text-2xs text-danger">{error}</div>}
+      {error !== null && (
+        <div className="border-b border-border-faint px-4 py-2">
+          <StatusBanner tone="danger" text={error} onDismiss={() => setError(null)} />
+        </div>
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
         <div className="mx-auto flex w-full max-w-[760px] flex-col gap-6">
           {/* MCP 服务器 */}
@@ -206,6 +224,9 @@ export function ExtensionsPanel(): JSX.Element {
                 MCP 域未装配（当前宿主未启用）
               </div>
             )}
+            {loading && mcpServers.length === 0 && !mcpUnavailable ? (
+              <SkeletonRows />
+            ) : (
             <div className="flex flex-col gap-2">
               {mcpServers.map((server) => {
                 const report = health[server.serverKey];
@@ -255,6 +276,7 @@ export function ExtensionsPanel(): JSX.Element {
                 );
               })}
             </div>
+            )}
           </section>
 
           {/* 插件 */}

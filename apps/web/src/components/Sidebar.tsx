@@ -12,15 +12,18 @@
 import { useEffect, useRef, useState } from "react";
 import { useWeb } from "../state.js";
 import { filterSessionRows } from "../session-filters.js";
+import { nextIndexFromKey } from "../list-nav.js";
 import { groupSessions } from "../subagent-view.js";
-import type { SessionListEntry } from "../session-view.js";
+import { relativeTime, SessionRowItem } from "./SessionRow.js";
 import { nextTheme, THEME_LABEL } from "../theme.js";
 
+/** 连接徽章四态映射（WebConnectionState：connecting / ready / reconnecting / closed）。
+ * `closed` 为终端离线态（onFatal 或 close 后）——danger 圆点 +「离线」文案（03 §7）。 */
 const CONNECTION_LABEL: Record<string, { text: string; className: string; dot: string }> = {
   connecting: { text: "连接中…", className: "bg-warn/10 text-warn border border-warn/40", dot: "dot dot-warn" },
   ready: { text: "已连接", className: "bg-ok/10 text-ok border border-ok/40", dot: "dot dot-ok" },
   reconnecting: { text: "重连中（断线补偿）…", className: "bg-warn/10 text-warn border border-warn/40", dot: "dot dot-warn" },
-  closed: { text: "已断开", className: "bg-danger/10 text-danger border border-danger/40", dot: "dot dot-err" },
+  closed: { text: "离线", className: "bg-danger/10 text-danger border border-danger/40", dot: "dot dot-err" },
 };
 
 /** 面板入口（走查契约文案；模块标识色折叠态用 bg 色点投影）。 */
@@ -33,118 +36,11 @@ const PANEL_ENTRIES = [
 const SEARCH_INPUT_CLASS =
   "h-7 w-full rounded-md border border-border-base bg-raised px-2 text-2xs text-hi outline-none placeholder:text-faint focus:border-accent-dim";
 
-const MENU_ITEM_CLASS =
-  "block w-full px-2.5 py-1 text-left text-2xs text-mid transition-colors duration-fast hover:bg-hover hover:text-hi";
-
 /** token 数三档缩写（用量统计行，UI-4）：1234 → 1.2k。 */
 function formatTokens(count: number): string {
   if (count < 1000) return String(count);
   if (count < 1_000_000) return `${(count / 1000).toFixed(1)}k`;
   return `${(count / 1_000_000).toFixed(1)}m`;
-}
-
-function relativeTime(ts: number): string {
-  const diff = Date.now() - ts;
-  if (diff < 60_000) return "刚刚";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
-  return `${Math.floor(diff / 86_400_000)} 天前`;
-}
-
-interface SessionRowProps {
-  row: SessionListEntry;
-  active: boolean;
-  archived: boolean;
-  menuOpen: boolean;
-  renaming: boolean;
-  archiveConfirm: boolean;
-  onSelect: (id: string) => void;
-  onOpenMenu: (id: string) => void;
-  onCloseMenu: () => void;
-  onStartRename: (id: string) => void;
-  onRenameSubmit: (id: string, title: string) => void;
-  onFork: (id: string) => void;
-  onArchiveClick: (id: string) => void;
-  onArchiveConfirm: (id: string) => void;
-}
-
-/** 会话行 + 「⋯」操作菜单（仅 Active 行；归档行灰态只读无菜单）：重命名行内编辑 / 分叉 / 归档两段确认。 */
-function SessionRowItem(props: SessionRowProps): JSX.Element {
-  const { row, active, archived, menuOpen, renaming, archiveConfirm } = props;
-  if (renaming) {
-    return (
-      <div className="mb-0.5 flex h-8 items-center rounded-md bg-selected px-2">
-        <input
-          autoFocus
-          className="h-6 min-w-0 flex-1 rounded-sm border border-accent-dim bg-raised px-1.5 text-2xs text-hi outline-none"
-          defaultValue={row.title}
-          maxLength={200}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") props.onRenameSubmit(row.id, e.currentTarget.value);
-            if (e.key === "Escape") props.onCloseMenu();
-          }}
-          onBlur={props.onCloseMenu}
-          title="Enter 提交重命名，Esc 取消"
-        />
-      </div>
-    );
-  }
-  return (
-    <div className="relative mb-0.5">
-      <div
-        className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 transition-colors duration-fast ${
-          active ? "bg-selected" : "hover:bg-hover"
-        } ${archived ? "opacity-60" : ""}`}
-      >
-        {active && <span className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-accent" />}
-        <button
-          type="button"
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
-          onClick={() => props.onSelect(row.id)}
-          title={archived ? `${row.title}（已归档，只读）` : row.title}
-        >
-          <span className={`min-w-0 flex-1 truncate text-2xs ${active ? "text-hi" : "text-mid"}`}>{row.title}</span>
-          <span className="shrink-0 text-2xs text-faint">{relativeTime(row.lastActiveAt)}</span>
-        </button>
-        {!archived && (
-          <button
-            type="button"
-            className="shrink-0 rounded-sm px-1 text-2xs text-low transition-colors duration-fast hover:bg-hover hover:text-hi"
-            onClick={() => props.onOpenMenu(row.id)}
-            title="会话操作（重命名 / 分叉 / 归档）"
-          >
-            ⋯
-          </button>
-        )}
-      </div>
-      {menuOpen && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={props.onCloseMenu} title="关闭菜单" />
-          <div className="anim-rise absolute right-1 top-full z-50 w-28 rounded-md border border-border-faint bg-card py-1 shadow-2">
-            <button type="button" className={MENU_ITEM_CLASS} onClick={() => props.onStartRename(row.id)}>
-              重命名
-            </button>
-            <button type="button" className={MENU_ITEM_CLASS} onClick={() => props.onFork(row.id)}>
-              分叉
-            </button>
-            {archiveConfirm ? (
-              <button
-                type="button"
-                className="block w-full px-2.5 py-1 text-left text-2xs text-danger transition-colors duration-fast hover:bg-hover"
-                onClick={() => props.onArchiveConfirm(row.id)}
-              >
-                确认归档？
-              </button>
-            ) : (
-              <button type="button" className={MENU_ITEM_CLASS} onClick={() => props.onArchiveClick(row.id)}>
-                归档
-              </button>
-            )}
-          </div>
-        </>
-      )}
-    </div>
-  );
 }
 
 export function Sidebar(): JSX.Element {
@@ -180,6 +76,8 @@ export function Sidebar(): JSX.Element {
   const [searchDraft, setSearchDraft] = useState("");
   const [focusTick, setFocusTick] = useState(0);
   const searchRef = useRef<HTMLInputElement | null>(null);
+  /** 会话列表键盘高亮序号（容器获焦时 ↑↓ 移动；-1 = 尚无高亮，落到首项）。 */
+  const [highlight, setHighlight] = useState(-1);
 
   useEffect(() => {
     if (focusTick > 0) searchRef.current?.focus();
@@ -200,10 +98,50 @@ export function Sidebar(): JSX.Element {
     setArchiveConfirmFor(null);
   }
 
+  /** 会话列表键位（§8.1）：容器获焦时 ↑↓/Home/End 移动高亮并滚动入视、Enter 选中、Delete 两段归档确认。 */
+  function onSessionListKeyDown(event: React.KeyboardEvent<HTMLElement>): void {
+    const target = event.target as HTMLElement;
+    // 仅容器自身获焦时接管，且不劫持文本输入（行内重命名 / 检索等）
+    if (target !== event.currentTarget || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+    if (orderedSessions.length === 0) return;
+    const next = nextIndexFromKey(event.key, highlight, orderedSessions.length);
+    if (next !== null) {
+      event.preventDefault();
+      setHighlight(next);
+      event.currentTarget.querySelector<HTMLElement>(`[data-session-index="${next}"]`)?.scrollIntoView({ block: "nearest" });
+      return;
+    }
+    const row = orderedSessions[highlight];
+    if (row === undefined) return;
+    if (event.key === "Escape") {
+      if (archiveConfirmFor !== null) {
+        event.preventDefault();
+        closeMenu();
+      }
+      return;
+    }
+    if (event.key !== "Enter" && event.key !== "Delete") return;
+    event.preventDefault();
+    if (archiveConfirmFor === row.id) {
+      closeMenu();
+      void archiveSession(row.id);
+      event.currentTarget.focus(); // 确认后焦点归还列表（§8.1）
+    } else if (event.key === "Delete") {
+      setMenuFor(row.id);
+      setArchiveConfirmFor(row.id); // 第一段：展开既有「确认归档？」两段确认 UI
+    } else {
+      closeMenu();
+      void selectSession(row.id);
+    }
+  }
+
   const badge = CONNECTION_LABEL[connection] ?? CONNECTION_LABEL["connecting"]!;
   // 过滤（归档/子会话显隐）→ 时间分组（组内保持 lastActiveAt 降序）
   const visibleSessions = filterSessionRows(sessions, { showArchived, showSubsessions });
   const groups = groupSessions(visibleSessions, Date.now());
+  // 键盘高亮寻址：展平为「今天 → 昨天 → 更早」渲染序（与分组渲染顺序一致）
+  const orderedSessions = [...groups.today, ...groups.yesterday, ...groups.earlier];
+  const sessionOrder = new Map(orderedSessions.map((row, index) => [row.id, index]));
 
   // -----------------------------------------------------------------
   // 折叠态：56px 图标态（品牌 ✦ / 新建 + / 搜索 ⌕ / 会话色点列 / 面板模块点 / 主题 / 连接 dot）
@@ -351,7 +289,12 @@ export function Sidebar(): JSX.Element {
         />
       </div>
       {/* 会话列表：过滤 → 今天 / 昨天 / 更早 三组（组内保持 lastActiveAt 降序入参顺序） */}
-      <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+      <nav
+        tabIndex={0}
+        onKeyDown={onSessionListKeyDown}
+        aria-label="会话列表（↑↓ 移动，Enter 选中，Delete 归档）"
+        className="min-h-0 flex-1 overflow-y-auto px-2 pb-2"
+      >
         {visibleSessions.length === 0 && <div className="px-2 py-2 text-2xs text-faint">暂无会话</div>}
         {([["今天", groups.today], ["昨天", groups.yesterday], ["更早", groups.earlier]] as const).map(
           ([label, rows]) =>
@@ -363,6 +306,8 @@ export function Sidebar(): JSX.Element {
                     key={row.id}
                     row={row}
                     active={row.id === activeId}
+                    highlighted={highlight === sessionOrder.get(row.id)}
+                    index={sessionOrder.get(row.id) ?? 0}
                     archived={row.state === "Archived"}
                     menuOpen={menuFor === row.id}
                     renaming={renamingFor === row.id}

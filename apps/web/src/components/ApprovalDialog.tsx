@@ -2,7 +2,8 @@
  * 审批弹窗（03 §6.1 第 5 条 / §6.4）：顶部琥珀色带（dsh 审批卡范式）+ 风险徽章 + mono 工具名
  * 与参数预览 + 四级决策；键盘 1-4/Esc。B8：风险徽章中文文案与桌面端同源。
  */
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { focusableWithin, nextFocusIndex } from "../focus-trap.js";
 import { useWeb } from "../state.js";
 
 /** 风险徽章中文文案（B8 缺陷修复：与桌面端同文案，此前直出英文 riskLevel）。 */
@@ -18,10 +19,41 @@ export function ApprovalDialog(): JSX.Element {
   const approvals = useWeb((s) => s.approvals);
   const respondApproval = useWeb((s) => s.respondApproval);
   const pending = approvals[0];
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  /** 弹窗打开前的焦点元素（关闭时归还，§8.1）；null 表示尚未记录。 */
+  const restoreRef = useRef<HTMLElement | null>(null);
+  const open = pending !== undefined;
+  const grantId = pending?.grantId ?? "";
+
+  // 打开：记录触发元素并聚焦弹窗首个可交互元素；关闭：焦点归还触发元素（§8.1）
+  useEffect(() => {
+    if (!open) return;
+    if (restoreRef.current === null) {
+      restoreRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    }
+    const root = dialogRef.current;
+    if (root !== null) (focusableWithin(root)[0] ?? root).focus();
+    return () => {
+      const target = restoreRef.current;
+      restoreRef.current = null;
+      target?.focus();
+    };
+  }, [open, grantId]);
 
   useEffect(() => {
     if (pending === undefined) return;
     const onKey = (e: KeyboardEvent): void => {
+      // Tab/Shift+Tab 在弹窗内循环，不逃逸到背景（§8.1）
+      if (e.key === "Tab") {
+        const root = dialogRef.current;
+        if (root === null) return;
+        const items = focusableWithin(root);
+        if (items.length === 0) return;
+        e.preventDefault();
+        const current = items.indexOf(document.activeElement as HTMLElement);
+        items[nextFocusIndex(current, items.length, e.shiftKey)]?.focus();
+        return;
+      }
       if (e.key === "1") void respondApproval(pending.grantId, "allow", false);
       else if (e.key === "2") void respondApproval(pending.grantId, "allow", true, "session");
       else if (e.key === "3") void respondApproval(pending.grantId, "allow", true, "project");
@@ -38,7 +70,14 @@ export function ApprovalDialog(): JSX.Element {
 
   return (
     <div className="overlay-mask anim-fade absolute inset-0 z-10 flex items-center justify-center">
-      <div className="corner-ticks anim-rise w-[500px] overflow-hidden rounded-xl border border-border-strong bg-popover shadow-3">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="权限审批"
+        tabIndex={-1}
+        className="corner-ticks anim-rise w-[500px] overflow-hidden rounded-xl border border-border-strong bg-popover shadow-3 outline-none"
+      >
         {/* 顶部色带：等待审批语义（warn） */}
         <div className="flex items-center gap-2 bg-warn/10 px-5 py-2.5">
           <span className="dot dot-warn" />

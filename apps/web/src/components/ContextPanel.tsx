@@ -1,21 +1,24 @@
 /**
  * 右侧上下文面板（refine-ui-context-panel 轮；03-ui-design §6.1 右侧上下文面板，双端同构）：
- * 300px 三 Tab「记忆 | MCP | 子代理」，激活 Tab 底部 2px 模块色指示条（记忆=ok / MCP=info /
- * 子代理=violet，§6.5 Tab 规范：不加底色填充）。沙箱无协议域（06 全文无 sandbox.*），
+ * 300px 四 Tab「记忆 | MCP | 子代理 | 后台」，激活 Tab 底部 2px 模块色指示条（记忆=ok / MCP=info /
+ * 子代理=violet / 后台=cyan，§6.5 Tab 规范：不加底色填充）。沙箱无协议域（06 全文无 sandbox.*），
  * 不做假 Tab（真实数据原则）。低频管理面：所有 RPC 拉取 try/catch 静默，主流程不因此报错。
  */
 import { memo, useEffect, useState } from "react";
 import type { McpServerStatusEntry, McpToolDescriptor, MemoryEntry } from "@raincode/shared";
+import { nextIndexFromKey } from "../list-nav.js";
 import { rpcCall, useWeb } from "../state.js";
 import type { SubagentRecord } from "../subagent-view.js";
+import { BackgroundTab } from "./BackgroundTab.js";
 
-type ContextTab = "memory" | "mcp" | "subagent";
+type ContextTab = "memory" | "mcp" | "subagent" | "background";
 
-/** Tab 定义（03 §3.1 模块标识色：记忆=ok / MCP=info / 子代理=violet）。 */
+/** Tab 定义（03 §3.1 模块标识色：记忆=ok / MCP=info / 子代理=violet / 后台=cyan 工具调用）。 */
 const TABS: Array<{ key: ContextTab; label: string; accent: string }> = [
   { key: "memory", label: "记忆", accent: "border-ok" },
   { key: "mcp", label: "MCP", accent: "border-info" },
   { key: "subagent", label: "子代理", accent: "border-violet" },
+  { key: "background", label: "后台", accent: "border-cyan" },
 ];
 
 /** MCP 状态灯映射（对照 ExtensionsPanel 同款：绿常亮 / 青脉冲 / 红常亮 / 灰常亮）。 */
@@ -203,8 +206,16 @@ function MemoryTab(): JSX.Element {
 const ROW_BUTTON_CLASS =
   "h-5 rounded-sm border border-border-strong px-1.5 text-2xs text-mid transition-colors duration-fast hover:bg-hover";
 
-/** MCP 服务器行（memo：列表刷新时未变更行不重渲染，ToolCard 先例）。 */
-function McpServerRowView({ server }: { server: McpServerStatusEntry }): JSX.Element {
+/** MCP 服务器行（memo：列表刷新时未变更行不重渲染，ToolCard 先例）；键盘高亮时以 bg-hover + accent 指示条呈现。 */
+function McpServerRowView({
+  server,
+  highlighted,
+  index,
+}: {
+  server: McpServerStatusEntry;
+  highlighted: boolean;
+  index: number;
+}): JSX.Element {
   const [expanded, setExpanded] = useState(false);
   const [tools, setTools] = useState<McpToolDescriptor[] | null>(null);
 
@@ -222,9 +233,13 @@ function McpServerRowView({ server }: { server: McpServerStatusEntry }): JSX.Ele
   }
 
   return (
-    <div className="rounded-md border border-border-faint bg-card">
+    <div
+      data-server-index={index}
+      className={`relative rounded-md border bg-card ${highlighted ? "border-border-strong bg-hover" : "border-border-faint"}`}
+    >
+      {highlighted && <span className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-accent" />}
       <div className="flex items-center gap-2 px-2 py-1.5">
-        <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={toggle}>
+        <button type="button" data-row-activate className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={toggle}>
           <span className={mcpDotClass(server.status)} title={MCP_STATUS_LABELS[server.status]} />
           <span className="mono truncate text-2xs text-hi">{server.serverKey}</span>
           <span className="shrink-0 rounded-sm border border-border-base bg-raised px-1 text-[10px] text-low">
@@ -276,7 +291,11 @@ function McpServerRowView({ server }: { server: McpServerStatusEntry }): JSX.Ele
       {expanded && (
         <div className="border-t border-border-faint px-2 py-1.5">
           {tools === null ? (
-            <div className="text-2xs text-faint">工具清单加载中…</div>
+            <div className="flex flex-col gap-1" role="status" aria-label="加载中">
+              {[0, 1, 2].map((index) => (
+                <div key={index} className="skeleton h-4 w-full" aria-hidden="true" />
+              ))}
+            </div>
           ) : tools.length === 0 ? (
             <div className="text-2xs text-faint">无工具</div>
           ) : (
@@ -297,6 +316,8 @@ const McpServerRow = memo(McpServerRowView);
 function McpTab(): JSX.Element {
   const extTick = useWeb((s) => s.extTick);
   const [servers, setServers] = useState<McpServerStatusEntry[]>([]);
+  /** 键盘高亮序号（§8.1；-1 = 尚无高亮，落到首行）。 */
+  const [highlight, setHighlight] = useState(-1);
 
   // extTick 变化即重拉全量投影（mcp.server_status_changed → store tick，最终收敛）
   useEffect(() => {
@@ -311,13 +332,38 @@ function McpTab(): JSX.Element {
     };
   }, [extTick]);
 
+  /** 服务器行键位（§8.1）：容器获焦时 ↑↓/Home/End 移动高亮并滚动入视；Enter 触发行展开（既有 toggle）。 */
+  function onRowsKeyDown(event: React.KeyboardEvent<HTMLElement>): void {
+    const target = event.target as HTMLElement;
+    if (target !== event.currentTarget || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+    if (servers.length === 0) return;
+    const next = nextIndexFromKey(event.key, highlight, servers.length);
+    if (next !== null) {
+      event.preventDefault();
+      setHighlight(next);
+      event.currentTarget.querySelector<HTMLElement>(`[data-server-index="${next}"]`)?.scrollIntoView({ block: "nearest" });
+      return;
+    }
+    if (event.key !== "Enter" || highlight < 0) return;
+    event.preventDefault();
+    // 复用行内既有展开行为（点击行主按钮），McpServerRow 保持自包含
+    event.currentTarget.querySelector<HTMLElement>(`[data-server-index="${highlight}"] [data-row-activate]`)?.click();
+  }
+
   if (servers.length === 0) {
-    return <div className="px-1 py-2 text-2xs text-faint">暂无 MCP 服务器</div>;
+    return (
+      <div className="px-1 py-2 text-2xs text-faint">未配置 MCP 服务器：编辑 mcp.json 或经设置页「MCP 服务器」添加</div>
+    );
   }
   return (
-    <div className="flex flex-col gap-1.5">
-      {servers.map((server) => (
-        <McpServerRow key={server.serverKey} server={server} />
+    <div
+      tabIndex={0}
+      onKeyDown={onRowsKeyDown}
+      aria-label="MCP 服务器（↑↓ 移动，Enter 展开）"
+      className="flex flex-col gap-1.5"
+    >
+      {servers.map((server, index) => (
+        <McpServerRow key={server.serverKey} server={server} highlighted={highlight === index} index={index} />
       ))}
     </div>
   );
@@ -421,7 +467,15 @@ export function ContextPanel(): JSX.Element {
         })}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 text-2xs">
-        {tab === "memory" ? <MemoryTab /> : tab === "mcp" ? <McpTab /> : <SubagentTab />}
+        {tab === "memory" ? (
+          <MemoryTab />
+        ) : tab === "mcp" ? (
+          <McpTab />
+        ) : tab === "subagent" ? (
+          <SubagentTab />
+        ) : (
+          <BackgroundTab />
+        )}
       </div>
     </aside>
   );

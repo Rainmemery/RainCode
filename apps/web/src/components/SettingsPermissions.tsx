@@ -7,7 +7,9 @@
 import { memo, useCallback, useEffect, useState } from "react";
 import { RpcCallError } from "@raincode/rpc/web";
 import type { PermissionRule, PermissionRulesListResult, RuleMatchType } from "@raincode/shared";
+import { nextIndexFromKey } from "../list-nav.js";
 import { rpcCall } from "../state.js";
+import { SettingsAudit } from "./SettingsAudit.js";
 
 /** behavior 徽章（allow=ok / ask=warn / deny=danger 色芯片）。 */
 const BEHAVIOR_BADGE: Record<PermissionRule["behavior"], string> = {
@@ -29,18 +31,32 @@ const INPUT_CLASS =
 const ROW_BUTTON_CLASS =
   "h-6 rounded-md border border-border-strong px-2 text-2xs text-mid transition-colors duration-fast hover:bg-hover disabled:opacity-50";
 
-/** 规则行（memo：列表刷新时未变更行不重渲染，与既有组件一致）。 */
+/** 规则行（memo：列表刷新时未变更行不重渲染，与既有组件一致）；删除走两段确认（键盘 Delete 亦可）。 */
 const RuleRow = memo(function RuleRow({
   rule,
   busy,
-  onRemove,
+  highlighted,
+  index,
+  armed,
+  onRemoveClick,
+  onRemoveConfirm,
 }: {
   rule: PermissionRule;
   busy: boolean;
-  onRemove: (id: string) => void;
+  highlighted: boolean;
+  index: number;
+  armed: boolean;
+  onRemoveClick: (id: string) => void;
+  onRemoveConfirm: (id: string) => void;
 }) {
   return (
-    <div className="flex h-8 items-center gap-2 border-b border-border-faint px-3 text-2xs last:border-b-0">
+    <div
+      data-rule-index={index}
+      className={`relative flex h-8 items-center gap-2 border-b border-border-faint px-3 text-2xs last:border-b-0 ${
+        highlighted ? "bg-hover" : ""
+      }`}
+    >
+      {highlighted && <span className="absolute inset-y-0 left-0 w-0.5 bg-accent" />}
       <span className={`shrink-0 rounded-sm border px-1.5 py-0.5 ${BEHAVIOR_BADGE[rule.behavior]}`}>{rule.behavior}</span>
       <span className="mono min-w-0 flex-1 truncate text-hi" title={`${rule.tool}:${rule.pattern ?? "*"}`}>
         {rule.tool}:{rule.pattern ?? "*"}
@@ -51,15 +67,27 @@ const RuleRow = memo(function RuleRow({
       <span className="w-16 shrink-0 truncate text-right text-faint" title={rule.source}>
         {SOURCE_LABEL[rule.source]}
       </span>
-      <button
-        type="button"
-        className={`${ROW_BUTTON_CLASS} shrink-0`}
-        disabled={busy}
-        onClick={() => onRemove(rule.id)}
-        title="删除规则（permission.rules.remove）"
-      >
-        删除
-      </button>
+      {armed ? (
+        <button
+          type="button"
+          className="h-6 shrink-0 rounded-md border border-danger bg-danger/10 px-2 text-2xs text-danger transition-colors duration-fast hover:bg-danger/20 disabled:opacity-40"
+          disabled={busy}
+          onClick={() => onRemoveConfirm(rule.id)}
+          title="再次点击确认删除（permission.rules.remove）"
+        >
+          确认删除？
+        </button>
+      ) : (
+        <button
+          type="button"
+          className={`${ROW_BUTTON_CLASS} shrink-0`}
+          disabled={busy}
+          onClick={() => onRemoveClick(rule.id)}
+          title="删除规则（再次点击确认）"
+        >
+          删除
+        </button>
+      )}
     </div>
   );
 });
@@ -69,6 +97,9 @@ export function SettingsPermissions(): JSX.Element {
   const [unavailable, setUnavailable] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // 删除两段确认（armed = 待确认规则 id）与键盘高亮序号（§8.1）
+  const [removeArmed, setRemoveArmed] = useState<string | null>(null);
+  const [highlight, setHighlight] = useState(-1);
   // 新建规则折叠表单（matchType 空串 = 缺省 wildcard，不随 payload 发送）
   const [formOpen, setFormOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -99,6 +130,7 @@ export function SettingsPermissions(): JSX.Element {
     setBusyId(id);
     try {
       await rpcCall("permission.rules.remove", { id });
+      setRemoveArmed(null);
       await refresh();
     } catch (err) {
       setError(err instanceof RpcCallError ? `${err.code}: ${err.message}` : String(err));
@@ -136,6 +168,38 @@ export function SettingsPermissions(): JSX.Element {
     }
   }
 
+  /** 规则表键位（§8.1）：容器获焦时 ↑↓/Home/End 移动高亮并滚动入视；Enter 无行内动作；Delete 两段删除确认。 */
+  function onRulesKeyDown(event: React.KeyboardEvent<HTMLElement>): void {
+    const target = event.target as HTMLElement;
+    if (target !== event.currentTarget || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+    if (rules.length === 0) return;
+    const next = nextIndexFromKey(event.key, highlight, rules.length);
+    if (next !== null) {
+      event.preventDefault();
+      setHighlight(next);
+      event.currentTarget.querySelector<HTMLElement>(`[data-rule-index="${next}"]`)?.scrollIntoView({ block: "nearest" });
+      return;
+    }
+    const rule = rules[highlight];
+    if (rule === undefined) return;
+    if (event.key === "Escape") {
+      if (removeArmed !== null) {
+        event.preventDefault();
+        setRemoveArmed(null);
+      }
+      return;
+    }
+    if (event.key !== "Delete" && event.key !== "Enter") return;
+    event.preventDefault();
+    if (removeArmed === rule.id) {
+      setRemoveArmed(null);
+      void removeRule(rule.id);
+      event.currentTarget.focus(); // 确认后焦点归还规则表（§8.1）
+    } else if (event.key === "Delete") {
+      setRemoveArmed(rule.id); // 第一段：展开「确认删除？」两段确认
+    }
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-[760px] flex-col gap-4 px-6 py-5">
       <section>
@@ -151,12 +215,26 @@ export function SettingsPermissions(): JSX.Element {
           </div>
         ) : (
           <>
-            <div className="mt-2 rounded-md border border-border-faint bg-card">
+            <div
+              tabIndex={0}
+              onKeyDown={onRulesKeyDown}
+              aria-label="规则表（↑↓ 移动，Delete 删除确认）"
+              className="mt-2 rounded-md border border-border-faint bg-card"
+            >
               {rules.length === 0 ? (
                 <div className="px-3 py-2 text-2xs text-faint">暂无规则（审批「总是允许」与新建规则落库后在此列出）</div>
               ) : (
-                rules.map((rule) => (
-                  <RuleRow key={rule.id} rule={rule} busy={busyId === rule.id} onRemove={(id) => void removeRule(id)} />
+                rules.map((rule, index) => (
+                  <RuleRow
+                    key={rule.id}
+                    rule={rule}
+                    busy={busyId === rule.id}
+                    highlighted={highlight === index}
+                    index={index}
+                    armed={removeArmed === rule.id}
+                    onRemoveClick={setRemoveArmed}
+                    onRemoveConfirm={(id) => void removeRule(id)}
+                  />
                 ))
               )}
             </div>
@@ -231,6 +309,8 @@ export function SettingsPermissions(): JSX.Element {
           </>
         )}
       </section>
+      {/* 决策审计子区（只读；permission.decisions.list 投影） */}
+      <SettingsAudit />
     </div>
   );
 }

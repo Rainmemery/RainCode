@@ -134,6 +134,9 @@ function seedHome(home: string, workspace: string, mockUrl: string): void {
     "export function renderNoteList(container: HTMLElement, notes: Note[]): void {\n" +
     "  container.replaceChildren(...notes.map((n) => renderNote(n)));\n}\n");
   writeFileSync(join(workspace, "src", "index.ts"), "import { NoteStore } from \"./store.js\";\nimport { renderNoteList } from \"./render.js\";\n\nexport { NoteStore, renderNoteList };\n");
+  // 长跑监听脚本（后台任务 Tab 素材：bash + runInBackground 的「运行中」任务持续产出 tail）
+  writeFileSync(join(workspace, "watch.mjs"),
+    "setInterval(() => { console.log(\"[watch] scanning src for changes ... no change\"); }, 400);\n");
   writeFileSync(join(workspace, "package.json"), JSON.stringify({ name: "notes-cli", version: "0.2.0", type: "module" }, null, 2));
   writeFileSync(join(workspace, "README.md"), "# notes-cli\n\n本地速记命令行工具（演示工作区）。\n");
   writeFileSync(join(workspace, ".raincode", "MEMORY.md"),
@@ -216,7 +219,7 @@ async function main(): Promise<number> {
     // MCP 工具与 todo_write / agent 审批自动放行（后台事件守卫；write 审批保留 pending 供截图）
     client.onEvent("permission.requested", (payload) => {
       const record = payload as { grantId?: string; toolName?: string };
-      if (record.grantId !== undefined && (record.toolName === "todo_write" || record.toolName === "agent" || record.toolName?.startsWith("mcp__") === true)) {
+      if (record.grantId !== undefined && (record.toolName === "todo_write" || record.toolName === "agent" || record.toolName === "bash" || record.toolName?.startsWith("mcp__") === true)) {
         void client!.call("permission.respond", { grantId: record.grantId, decision: "allow" }).catch(() => undefined);
       }
     });
@@ -357,7 +360,95 @@ async function main(): Promise<number> {
     await cdp.waitFor(bodyContains("协议版本"), "关于组渲染", 15_000);
     await sleep(250);
     await shot(cdp, "web-settings-about");
+    // 设置页第 7 组「工具」（polish-ui-states-and-runtime 轮 B2）：三源工具目录 + 行展开 JSON Schema 投影
+    await cdp.eval<boolean>(`(() => { const b = [...document.querySelectorAll("nav button")].find(x => x.textContent.trim() === "工具"); if (!b) return false; b.click(); return true; })()`);
+    await cdp.waitFor(bodyContains("只读目录"), "工具组渲染", 15_000);
+    await cdp.waitFor(`${bodyContains("mcp__fixture__echo")} && ${bodyContains("plugin__hello__greet")}`, "工具三源投影（builtin/mcp/plugin）", 15_000);
+    // 展开内置 bash 行（JSON Schema 三参数字段），并滚到组标题保留三源过滤 chips
+    await cdp.eval<boolean>(`(() => { const row = [...document.querySelectorAll("[data-tool-index]")].find(r => r.querySelector(".mono")?.textContent.trim() === "bash"); const b = row?.querySelector("button[data-row-activate]"); if (!b) return false; b.click(); return true; })()`);
+    await cdp.waitFor(bodyContains("参数 schema"), "工具参数 schema 展开", 15_000);
+    await cdp.eval(`(() => { const el = [...document.querySelectorAll("h3")].find(h => h.textContent.trim() === "工具"); if (el) el.scrollIntoView({ block: "start" }); return true; })()`);
+    await sleep(400);
+    await shot(cdp, "web-tools-catalog");
+    // 设置页「命令权限」→「决策审计」子区（B3）：真实决策记录（回合 3 MCP 审批 / 回合 4 agent 审批落库）
+    await cdp.eval<boolean>(clickButtonExpr("命令权限"));
+    await cdp.waitFor(bodyContains("决策审计"), "决策审计子区渲染", 15_000);
+    await cdp.waitFor(bodyContains("mcp__fixture__echo"), "决策记录非空投影", 15_000);
+    await cdp.eval(`(() => { const el = [...document.querySelectorAll("h3")].find(h => h.textContent.trim() === "决策审计"); if (el) el.scrollIntoView({ block: "start" }); return true; })()`);
+    await sleep(400);
+    await shot(cdp, "web-audit");
     await cdp.eval<boolean>(clickButtonExpr("← 返回"));
+
+    // ---- 本轮新增 UI 面（polish-ui-states-and-runtime）：模型快切 / 后台 Tab / 回合失败重试 / 会话键盘高亮 ----
+    // 第二 Provider「离线占位」：供模型快切弹层（列表 + 活跃标记）与「回合失败」确定性错误路径；
+    // baseURL 指向必然拒连的回环端口 → 新建会话绑定后 LLM 请求失败 → error(scope=turn, recoverable=true)
+    await client.call("config.providers.add", { provider: {
+      id: "offline", name: "offline-fixture", baseURL: "http://127.0.0.1:1/v1", model: "offline-model",
+      maxContextTokens: 8192, apiKeyRef: null,
+    } }).catch(() => undefined);
+    // 输入区 ctx 行模型名按钮（C4~C5）：打开快切弹层（providers 列表 + 活跃标记）
+    await cdp.eval<boolean>(`(() => { const b = [...document.querySelectorAll("button")].find(x => x.getAttribute("title") === "活跃 Provider 模型（点击快切）"); if (!b) return false; b.click(); return true; })()`);
+    await cdp.waitFor(`${bodyContains("切换 Provider")} && ${bodyContains("offline-fixture")} && ${bodyContains("活跃")}`, "模型快切弹层", 15_000);
+    await sleep(300);
+    await shot(cdp, "web-model-switch");
+    // 关闭弹层（再次点击模型名按钮）
+    await cdp.eval<boolean>(`(() => { const b = [...document.querySelectorAll("button")].find(x => x.getAttribute("title") === "活跃 Provider 模型（点击快切）"); if (!b) return false; b.click(); return true; })()`);
+    await sleep(250);
+
+    // 后台任务 Tab（B1）：mock 脚本 bash + runInBackground → registry 真实任务行（Running）+ 行展开产出 tail
+    mock.setScript([
+      { frames: [{ choices: [{ index: 0, delta: { role: "assistant" } }] },
+          toolCallFrame("t-bg", "bash", { command: "node watch.mjs", runInBackground: true }, 0)],
+        finish: "tool_calls" },
+      textScript("监听已转入后台，产出可随时在右栏「后台」Tab 查看。"),
+    ]);
+    const tBg = beginTurn(client, s1.sessionId, "把文件监听放到后台跑，别占住这个回合");
+    await cdp.waitFor(bodyContains("监听已转入后台"), "后台任务回合完成", 30_000);
+    await withTimeout(tBg.done, 20_000, "turn background");
+    await sleep(500);
+    // 作用域限右栏上下文面板（聊天流的 bash 工具卡也含同一命令文本，全局选择会误点工具卡）
+    const bgPanel = `[...document.querySelectorAll("aside")].find(a => a.textContent.includes("上下文"))`;
+    await cdp.eval<boolean>(`(() => { const b = [...document.querySelectorAll("button")].find(x => x.textContent.trim() === "后台"); if (!b) return false; b.click(); return true; })()`);
+    await cdp.waitFor(`(() => { const p = ${bgPanel}; return p !== null && p.innerText.includes("node watch.mjs") && p.innerText.includes("运行中"); })()`, "后台任务行投影", 15_000);
+    await cdp.eval<boolean>(`(() => { const b = (${bgPanel})?.querySelector("button[data-row-activate]"); if (!b) return false; b.click(); return true; })()`);
+    await cdp.waitFor(`(() => { const p = ${bgPanel}; return p !== null && p.innerText.includes("[watch] scanning"); })()`, "后台任务产出 tail", 15_000);
+    await sleep(400);
+    await shot(cdp, "web-background");
+    // 终止后台任务（避免游离进程；Killed 态不在截图内）
+    await cdp.eval<boolean>(`(() => { const b = [...(${bgPanel})?.querySelectorAll("button") ?? []].find(x => x.textContent.trim() === "终止"); if (!b) return false; b.click(); return true; })()`);
+    await sleep(400);
+
+    // 回合失败卡（§A2）：切到离线 Provider → 新建会话（绑定离线 LLM 客户端）→ 请求网络失败 →
+    // error 事件 scope=turn + recoverable=true → ChatFlow 失败卡 + 「重试」
+    await client.call("config.providers.switch", { providerId: "offline" }).catch(() => undefined);
+    await cdp.eval<boolean>(clickButtonExpr("+ 新会话"));
+    await cdp.waitFor(`document.querySelector("textarea") !== null`, "失败会话就绪", 15_000);
+    await sleep(600);
+    await cdp.eval(`document.querySelector("textarea").focus()`);
+    await cdp.insertText("总结一下当前的实现方案");
+    await cdp.key("Enter", "Enter", 13);
+    await cdp.waitFor(`${bodyContains("回合失败")} && ${bodyContains("重试")}`, "回合失败卡（重试）", 30_000);
+    await sleep(400);
+    await shot(cdp, "web-turn-failed");
+    // 切回演示 Provider（后续会话 2 审批 / 压缩素材仍走 mock 链路）
+    await client.call("config.providers.switch", { providerId: "demo" }).catch(() => undefined);
+
+    // 会话列表键盘高亮（§8.1）：聚焦列表容器 → ↑↓ 移动高亮到非活跃行（左侧 accent 指示条 + bg-hover）
+    await cdp.eval<boolean>(`(() => { const n = document.querySelector('nav[aria-label^="会话列表"]'); if (!n) return false; n.focus(); return true; })()`);
+    await cdp.waitFor(`document.activeElement === document.querySelector('nav[aria-label^="会话列表"]')`, "会话列表容器获焦", 5_000);
+    await cdp.key("ArrowDown", "ArrowDown", 40);
+    await sleep(200);
+    await cdp.key("ArrowDown", "ArrowDown", 40);
+    // 严格断言：高亮行由 (active || highlighted) 才渲染的 accent 指示条子节点判定（hover:bg-hover 会假命中）
+    await cdp.waitFor(`(() => { const el = document.querySelector('[data-session-index="1"]'); return el !== null && el.querySelector("span.bg-accent") !== null; })()`, "会话列表键盘高亮", 10_000);
+    await sleep(300);
+    await shot(cdp, "web-session-keyboard");
+    // 归档失败会话（一次性素材）：恢复既有截图（web-approval / web-compaction）侧栏无新增行的原状
+    const rowList = (await client.call("session.list", {})) as { items: Array<{ id: string; title: string }> };
+    const throwaway = rowList.items.find((row) => row.title === "新会话");
+    if (throwaway !== undefined) {
+      await client.call("session.archive", { sessionId: throwaway.id }).catch(() => undefined);
+    }
 
     // ---- 会话 2：write 审批弹窗（kbd 芯片素材）----
     // web 端不监听 session.created（他连接建会话不进侧栏）：RPC 建会话后 reload 让 bootstrap 重拉清单

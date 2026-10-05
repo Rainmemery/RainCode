@@ -15,6 +15,7 @@ import type {
   HookSourceInfo,
 } from "@raincode/shared";
 import { rpcCall, useDesktop } from "../store.js";
+import { StatusBanner } from "./StatusBanner.js";
 
 /** 状态灯四态映射（03 §6.5）：绿常亮 / 青脉冲 / 琥珀脉冲 / 红常亮；Disconnected 灰常亮。 */
 function statusDotClass(status: McpServerStatus): string {
@@ -54,6 +55,17 @@ function pluginBadgeClass(status: PluginSummary["status"]): string {
     default:
       return "border-border-strong text-mid";
   }
+}
+
+/** 面板级骨架加载（03 §7）：3 行骨架条，替换纯文本「加载中…」；reduced-motion 下静态可判读。 */
+function SkeletonRows() {
+  return (
+    <div className="flex flex-col gap-2" role="status" aria-label="加载中">
+      {[0, 1, 2].map((index) => (
+        <div key={index} className="skeleton h-10 w-full" aria-hidden="true" />
+      ))}
+    </div>
+  );
 }
 
 /**
@@ -158,6 +170,7 @@ export default function ExtensionsPanel() {
   const activeId = useDesktop((s) => s.activeId);
   const setView = useDesktop((s) => s.setView);
 
+  const [loading, setLoading] = useState(true);
   const [health, setHealth] = useState<Record<string, McpHealthReport>>({});
   const [healthBusy, setHealthBusy] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -203,6 +216,7 @@ export default function ExtensionsPanel() {
     } else {
       setError(reasonText(pluginsResult.reason));
     }
+    setLoading(false); // 首屏加载完成：骨架条交给真实投影（03 §7）
   }, []);
 
   // 挂载与全局状态事件（extensionsTick）时重拉：拉取可能早于域就绪（init 异步受理），
@@ -301,7 +315,9 @@ export default function ExtensionsPanel() {
         </button>
       </header>
       {error !== null && (
-        <div className="border-b border-danger bg-raised px-4 py-1.5 text-2xs text-danger">{error}</div>
+        <div className="border-b border-border-faint px-4 py-2">
+          <StatusBanner tone="danger" text={error} onDismiss={() => setError(null)} />
+        </div>
       )}
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
         <div className="mx-auto flex w-full max-w-[760px] flex-col gap-6">
@@ -331,6 +347,7 @@ export default function ExtensionsPanel() {
               </div>
             )}
             <div className="flex flex-col gap-2">
+              {loading && mcpServers.length === 0 && !mcpUnavailable && <SkeletonRows />}
               {mcpServers.map((server) => {
                 const report = health[server.serverKey];
                 return (
@@ -444,8 +461,8 @@ export default function ExtensionsPanel() {
               </span>
             </div>
             {hooksError !== null && (
-              <div className="mb-2 rounded-md border border-border-base bg-panel px-3 py-2 text-2xs text-danger">
-                {hooksError}
+              <div className="mb-2">
+                <StatusBanner tone="danger" text={hooksError} onDismiss={() => setHooksError(null)} />
               </div>
             )}
             {hookSources.length === 0 ? (

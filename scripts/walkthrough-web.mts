@@ -154,7 +154,20 @@ async function main(): Promise<number> {
   const workspace = join(home, "ws");
   mkdirSync(workspace, { recursive: true });
   // 种子：mcp.json（stdio fixture）+ 示例插件 + 官方示例技能（扩展面板/斜杠面板服务面数据）+
-  // Provider 经 env 注入（resolveProviderConfig 三来源；config.json 不落盘，假 key 只在 env）
+  // Provider 经 env 注入（resolveProviderConfig 三来源；假 key 只在 env 不落文件）；config.json 仅落
+  // Provider 投影（UI 门：未配置 Provider 引导条以 config.providers.list 为准，列表须非空）；
+  // apiKeyRef null = 本地 Provider 无凭据，mock 不校验 auth（与 walkthrough-desktop / product-shots-web 同口径）
+  writeFileSync(
+    join(home, "config.json"),
+    JSON.stringify({
+      configVersion: 1,
+      providers: [
+        { id: "walkthrough", name: "walkthrough-mock", baseURL: mockUrl, model: "mock-model", maxContextTokens: 8192, apiKeyRef: null },
+      ],
+      activeProviderId: "walkthrough",
+    }),
+    "utf8",
+  );
   writeFileSync(
     join(home, "mcp.json"),
     JSON.stringify({

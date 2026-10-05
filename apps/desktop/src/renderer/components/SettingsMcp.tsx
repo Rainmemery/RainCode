@@ -4,11 +4,14 @@
  * （serverKey [a-z0-9_-]+；stdio→command+args+env，http/sse→url；实时 JSON 预览；level 固定 global）
  * + 删除两段确认。运行态启停 / 重试 / 健康检查在右侧上下文面板 MCP Tab（底部说明）。
  * 组内局部错误红字行（勿污染全局 chat 横幅）。
+ * polish-ui-states-and-runtime A5（§8.1）：服务器卡片列表 ↑↓ 移动高亮；Delete 触发删除动作
+ * （两段确认）；高亮行滚动入视。
  */
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import type { FormEvent } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { FormEvent, KeyboardEvent } from "react";
 import { RpcCallError } from "@raincode/rpc/client";
 import type { McpServerStatus, McpServerStatusEntry, McpTransport } from "@raincode/shared";
+import { nextIndexFromKey } from "../list-nav.js";
 import { rpcCall, useDesktop } from "../store.js";
 import { SETTINGS_INPUT_CLASS, SettingsCard, SettingsField, rpcErrorText } from "./SettingsCard.js";
 
@@ -70,14 +73,19 @@ function buildConfig(form: typeof EMPTY_FORM): Record<string, unknown> {
 /** 服务器行（memo）：状态灯 + serverKey + transport + 工具数 + enabled 徽章 + 删除两段确认。 */
 const ServerRow = memo(function ServerRow({
   server,
+  highlighted,
   onRemove,
 }: {
   server: McpServerStatusEntry;
+  highlighted: boolean;
   onRemove: (serverKey: string) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
   return (
-    <div className="rounded-md border border-border-faint bg-panel px-3 py-2">
+    <div
+      data-nav-row
+      className={`rounded-md border border-border-faint px-3 py-2 ${highlighted ? "bg-selected" : "bg-panel"}`}
+    >
       <div className="flex items-center gap-2">
         <span className={statusDotClass(server.status)} title={STATUS_LABELS[server.status]} />
         <span className="mono text-2xs text-hi">{server.serverKey}</span>
@@ -104,6 +112,7 @@ const ServerRow = memo(function ServerRow({
             </button>
             <button
               type="button"
+              data-nav-primary
               onClick={() => {
                 setConfirming(false);
                 onRemove(server.serverKey);
@@ -117,6 +126,7 @@ const ServerRow = memo(function ServerRow({
         ) : (
           <button
             type="button"
+            data-nav-primary
             onClick={() => setConfirming(true)}
             className="h-6 rounded border border-border-strong px-2 text-2xs text-mid transition-colors duration-fast hover:border-danger hover:text-danger"
             title="删除服务器配置"
@@ -140,6 +150,9 @@ export default function SettingsMcp() {
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
+  // 服务器列表键盘导航（A5）：高亮索引
+  const [navIndex, setNavIndex] = useState<number | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
 
   const refresh = useCallback(async (): Promise<void> => {
     try {
@@ -205,14 +218,50 @@ export default function SettingsMcp() {
     }
   }
 
+  /** 键盘导航：高亮行滚动入视（block:nearest，最小滚动）。 */
+  function scrollRowIntoView(index: number): void {
+    listRef.current?.querySelectorAll<HTMLElement>("[data-nav-row]")[index]?.scrollIntoView({ block: "nearest" });
+  }
+
+  /** 服务器列表键盘：↑↓/Home/End 移动高亮；Delete 触发该行删除动作（两段确认）。 */
+  function handleListKey(event: KeyboardEvent<HTMLElement>): void {
+    const target = event.target;
+    // 添加服务器表单控件聚焦时不劫持按键
+    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
+    const next = nextIndexFromKey(event.key, navIndex ?? -1, servers.length);
+    if (next !== null) {
+      event.preventDefault();
+      setNavIndex(next);
+      scrollRowIntoView(next);
+      return;
+    }
+    if (event.key === "Delete" && navIndex !== null) {
+      const row = listRef.current?.querySelectorAll<HTMLElement>("[data-nav-row]")[navIndex];
+      if (row === undefined || row === null) return;
+      event.preventDefault();
+      row.querySelector<HTMLButtonElement>("[data-nav-primary]")?.click();
+    }
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <SettingsCard title="服务器列表">
         {error !== null && <div className="mb-2 text-2xs text-danger">{error}</div>}
-        <div className="flex flex-col gap-2">
+        <div
+          ref={listRef}
+          tabIndex={0}
+          onKeyDown={handleListKey}
+          aria-label="MCP 服务器列表"
+          className="flex flex-col gap-2"
+        >
           {servers.length === 0 && <div className="py-1 text-2xs text-faint">无（mcp.json 配置后自动连接）</div>}
-          {servers.map((server) => (
-            <ServerRow key={server.serverKey} server={server} onRemove={(key) => void handleRemove(key)} />
+          {servers.map((server, index) => (
+            <ServerRow
+              key={server.serverKey}
+              server={server}
+              highlighted={navIndex === index}
+              onRemove={(key) => void handleRemove(key)}
+            />
           ))}
         </div>
       </SettingsCard>
