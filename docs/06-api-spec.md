@@ -374,6 +374,10 @@ sequenceDiagram
 
 ## 3. 数据面事件
 
+> **生成物指针（T5.5）**：事件的生产者/消费者分布由 `scripts/gen-event-matrix.mts` 扫描源码生成
+> [docs/generated/event-matrix.md](generated/event-matrix.md)（声明处 / 派发点 / 监听点 + 防漏登记守卫，
+> `pnpm event-matrix:check` 入 CI 门禁 6）。本节手写章节仍是事件语义、投递行为与时序的唯一权威。
+
 ### 3.1 事件信封与命名对照
 
 所有事件 payload 继承公共信封 `EventBase`：

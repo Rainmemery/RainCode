@@ -465,6 +465,15 @@ export interface RpcServiceBinding {
 | 出网边界 | 出网目标仅限用户显式配置的三类：Provider baseURL、MCP Server、远程执行目标（PRD §6.4 约束）；无遥测上报 |
 | 错误信息 | Provider 错误透传前过滤请求头与 URL 中的凭据片段，避免经 `turn_failed` 事件进入会话流 |
 
+### 5.4 config dump：配置静态归并投影（T5.5）
+
+`raincode config dump`（apps/cli/src/commands/config.ts）是配置体系（§5.1~§5.3）的**只读观测面**：不 boot 服务、不产生配置副作用，按归并链静态列层、逐项标来源（dsh dump-config 同纪律）。
+
+- **归并链**：Provider 启动配置域 = 内置默认 → providers 配置文件（`--provider-config` / `RAINCODE_PROVIDER_CONFIG` / `<cwd>/config/providers.local.json`）→ env（`RAINCODE_PROVIDER_*`）→ CLI 参数；全局配置域 = 内置默认 → `<dataRoot>/config.json`（经 `ConfigStore.read()` 同一读路径——dump 与 `config.get` 看到同一份文档）。
+- **来源标签**：Provider 四要素逐字段标 `CLI 参数 / env / providers 配置文件 / 内置默认 / 未配置`（`resolveProviderConfig` 的 additive `fieldSources` + `configPath`）；config.json 文档逐字段标 `config.json / 内置默认`。`permissions` / `compaction` 节如实标注「schema 已声明，运行时消费方未接线」——dump 输出与实际生效一致是验收标准（07 §11.2 T5.5）。
+- **`--default-only` 损坏诊断**：跳过一切文件读取（config.json / providers 配置文件），只打印内置默认层与环境变量——配置文件损坏时的恢复诊断；正常模式在文件损坏时也尽量打印其余层并输出诊断行（退出码 1）。
+- **安全（§5.3 同源）**：明文 key 与凭据类 env（`RAINCODE_PROVIDER_API_KEY` / `RAINCODE_WEB_TOKEN`）值绝不入输出——只显示「已配置/已设置」状态与来源层；单测锁定明文不入输出断言。
+
 ---
 
 ## 6. 架构治理
@@ -563,6 +572,7 @@ exceptions: []               # 白名单外豁免必须显式登记并附理由�
 - **三门槛并行**：PR 流水线固定跑 `pnpm typecheck`、`pnpm lint`、`pnpm architecture:check --changed`，任一失败阻断合入。
 - **策略即代码**：policy 文件本身的变更必须出现在 PR diff 中并接受评审——放宽依赖白名单、提高行数上限、新增 exceptions 都是有意识的结构决策，不允许「顺手改」。
 - **演进节奏**：每个里程碑（M1/M2/M3）收尾时做一次全量检查与孤儿模块清理；新增包前先回答「是否属于七大模块归属表或五类平台包」，两者皆否则禁止建包（§2.2 的防碎片化约束）。
+- **生成物防漂移（门禁 6，双生成物）**：`pnpm protocol:check`（T4.3 协议目录）+ `pnpm event-matrix:check`（T5.5 事件矩阵，扩展同管线）逐字节比对 `docs/generated/` 两个生成物——源码扫描面演进后必须 `protocol:gen` / `event-matrix:gen` 再生成随代码提交；事件矩阵另设防漏登记守卫（事件域前缀点分字面量未登记即生成器报错）。
 
 ---
 

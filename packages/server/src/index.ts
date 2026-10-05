@@ -33,6 +33,10 @@ export { ToolDomain } from "./tool-domain.js";
 export { resolveProviderConfig, DEFAULT_MAX_CONTEXT_TOKENS } from "./provider-config.js";
 export type {
   ProviderCliArgs,
+  ProviderSourceLayer,
   ResolvedProviderConfig,
   ResolveProviderOptions,
 } from "./provider-config.js";
+
+/** 数据根解析经 server 转发（端层 requires 无 storage，T5.5 config dump 消费；05 §2.1）。 */
+export { resolveDataRoot } from "@raincode/storage";

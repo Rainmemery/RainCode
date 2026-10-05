@@ -21,6 +21,9 @@ export interface ProviderCliArgs {
   name?: string;
 }
 
+/** 单字段来源层（T5.5 config dump 逐项标来源；"default" = 内置缺省，"unset" = 未配置）。 */
+export type ProviderSourceLayer = "cli" | "env" | "config" | "default" | "unset";
+
 export interface ResolvedProviderConfig {
   name: string;
   baseURL: string;
@@ -29,6 +32,19 @@ export interface ResolvedProviderConfig {
   maxContextTokens: number;
   /** baseURL 实际命中的最高优先级来源（诊断用，不含凭据）。 */
   source: "cli" | "env" | "config";
+  /**
+   * 字段级来源（T5.5 config dump 用，additive；只标来源不含凭据值）。
+   * name 缺省 = model（标 "default"）；apiKey 未配置标 "unset"。
+   */
+  fieldSources: {
+    baseURL: ProviderSourceLayer;
+    model: ProviderSourceLayer;
+    name: ProviderSourceLayer;
+    apiKey: ProviderSourceLayer;
+    maxContextTokens: ProviderSourceLayer;
+  };
+  /** 实际读取的 providers 配置文件路径（config 层来源诊断；缺省 <cwd>/config/providers.local.json）。 */
+  configPath: string;
 }
 
 export interface ResolveProviderOptions {
@@ -83,7 +99,36 @@ export function resolveProviderConfig(options: ResolveProviderOptions = {}): Res
   // api key：CLI > env（明文注入）> 配置文件（apiKey 明文或 apiKeyRef file: 引用，normalizeLayer 已展开）
   const apiKey = argsLayer.apiKey ?? envLayer.apiKey ?? configLayer.apiKey ?? null;
 
-  return { name, baseURL, model, apiKey, maxContextTokens, source };
+  // 字段级来源（T5.5 dump）：逐字段沿合并链取首个命中层；name 缺省 = model、tokens 缺省 = 内置默认
+  const fieldSources: ResolvedProviderConfig["fieldSources"] = {
+    baseURL: source,
+    model:
+      argsLayer.model !== undefined ? "cli" : envLayer.model !== undefined ? "env" : "config",
+    name:
+      argsLayer.name !== undefined
+        ? "cli"
+        : envLayer.name !== undefined
+          ? "env"
+          : configLayer.name !== undefined
+            ? "config"
+            : "default",
+    apiKey:
+      argsLayer.apiKey !== undefined
+        ? "cli"
+        : envLayer.apiKey !== undefined
+          ? "env"
+          : configLayer.apiKey !== undefined
+            ? "config"
+            : "unset",
+    maxContextTokens:
+      envLayer.maxContextTokens !== undefined
+        ? "env"
+        : configLayer.maxContextTokens !== undefined
+          ? "config"
+          : "default",
+  };
+
+  return { name, baseURL, model, apiKey, maxContextTokens, source, fieldSources, configPath };
 }
 
 function defaultConfigPath(): string {

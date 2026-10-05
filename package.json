@@ -12,6 +12,8 @@
     "lint": "oxlint packages apps scripts",
     "protocol:gen": "tsx scripts/gen-protocol-catalog.mts",
     "protocol:check": "tsx scripts/gen-protocol-catalog.mts --check",
+    "event-matrix:gen": "tsx scripts/gen-event-matrix.mts",
+    "event-matrix:check": "tsx scripts/gen-event-matrix.mts --check",
     "architecture:check": "node scripts/architecture-check.mjs",
     "bench:start": "tsx scripts/bench.mts start",
     "bench:send": "tsx scripts/bench.mts send",

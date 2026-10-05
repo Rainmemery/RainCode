@@ -21,6 +21,8 @@ export interface ParsedCliArgs {
   title?: string;
   /** run 非交互模式自动 allow（等价临时 session 规则，不落库）。 */
   yes?: boolean;
+  /** config dump 损坏诊断模式：跳过配置文件读取，只打印内置默认层（T5.5）。 */
+  defaultOnly?: boolean;
 }
 
 export function parseCliArgs(argv: string[]): ParsedCliArgs {
@@ -36,6 +38,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       workspace: { type: "string" },
       title: { type: "string" },
       yes: { type: "boolean" },
+      "default-only": { type: "boolean" },
     },
   });
   const stringOrUndefined = (value: string | undefined): string | undefined =>
@@ -52,6 +55,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     workspace: stringOrUndefined(values.workspace),
     title: stringOrUndefined(values.title),
     yes: values.yes === true,
+    defaultOnly: values["default-only"] === true,
   };
 }
 
