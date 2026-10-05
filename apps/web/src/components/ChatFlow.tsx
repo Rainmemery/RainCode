@@ -1,7 +1,7 @@
 /**
  * 会话流（UI-5；UI 重构轮消息渲染抽出至 MessageBubble/Markdown 并 memo 化；refine-ui-context-panel
- * 轮增子代理进度卡）：消息气泡、ToolCard 五状态、hook 执行行、子代理 violet 进度卡、
- * 空态 ASCII 引导、审批中琥珀横条、自动滚动。
+ * 轮增子代理进度卡；ui-panel-deepening 轮增压缩提示条）：消息气泡、ToolCard 五状态、hook 执行行、
+ * 子代理 violet 进度卡、压缩生命周期单行提示条、空态 ASCII 引导、审批中琥珀横条、自动滚动。
  */
 import { memo, useEffect, useRef, useState } from "react";
 import { useWeb } from "../state.js";
@@ -9,6 +9,7 @@ import { MessageBubble } from "./MessageBubble.js";
 import { ToolCard } from "./ToolCard.js";
 import type { HookItem } from "../session-view.js";
 import type { SubagentRecord } from "../subagent-view.js";
+import type { CompactionBanner } from "../compact-view.js";
 
 const ASCII_BOX_WIDTH = 29;
 const EMPTY_ASCII = [
@@ -19,6 +20,23 @@ const EMPTY_ASCII = [
   "│" + " ".repeat(ASCII_BOX_WIDTH) + "│",
   "└" + "─".repeat(ASCII_BOX_WIDTH) + "┘",
 ].join("\n");
+
+/** token 数 k 缩写（与侧栏用量行口径一致：1234 → 1.2k）。 */
+function fmtK(count: number): string {
+  return count < 1000 ? String(count) : `${(count / 1000).toFixed(1)}k`;
+}
+
+/** 压缩提示条容器色（running=info / ok=绿左边线 / failed=红左边线）。 */
+function compactionBannerClass(phase: CompactionBanner["phase"]): string {
+  switch (phase) {
+    case "running":
+      return "border border-info/40 bg-info/5";
+    case "ok":
+      return "border border-ok/40 border-l-2 border-l-ok bg-ok/5";
+    default:
+      return "border border-danger/40 border-l-2 border-l-danger bg-danger/5";
+  }
+}
 
 const HOOK_OUTCOME_LABEL: Record<HookItem["outcome"], string> = {
   running: "执行中",
@@ -118,9 +136,13 @@ export function ChatFlow(): JSX.Element {
   const streaming = useWeb((s) => s.streaming);
   const error = useWeb((s) => s.error);
   const dismissError = useWeb((s) => s.dismissError);
+  const compaction = useWeb((s) => s.compaction);
+  const dismissCompaction = useWeb((s) => s.dismissCompaction);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   // 子代理进度卡（03 §6.1 第 4 条）：归属=spawned 事件到达时的活跃会话；空则不渲染
   const cards = subagents.filter((r) => r.sessionId === activeId);
+  // 压缩提示条：仅活跃会话的归并投影渲染（切会话已由 selectSession 重置瞬态）
+  const banner = compaction !== null && compaction.sessionId === activeId ? compaction : null;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -141,6 +163,40 @@ export function ChatFlow(): JSX.Element {
         </div>
       ) : (
         <div className="corner-ticks mx-auto flex w-full max-w-[760px] flex-col gap-3 px-6 py-5">
+          {banner !== null && (
+            <div className={`flex h-7 items-center gap-2 rounded-md px-3 text-2xs ${compactionBannerClass(banner.phase)}`}>
+              {banner.phase === "running" ? (
+                <>
+                  <span className="dot dot-run" />
+                  <span className="shimmer-text">⌃ 上下文压缩中…</span>
+                </>
+              ) : banner.phase === "ok" ? (
+                <span className="text-mid">
+                  <span className="mr-1.5 text-ok">⌃</span>
+                  上下文已压缩 · 第 {banner.epoch} 代 · {banner.trigger === "manual" ? "手动" : "自动"}
+                  {banner.tokensBefore !== undefined && banner.tokensAfter !== undefined && (
+                    <span className="mono ml-2 text-ok">
+                      tokens {fmtK(banner.tokensBefore)}→{fmtK(banner.tokensAfter)}
+                    </span>
+                  )}
+                </span>
+              ) : (
+                <span className="text-mid">
+                  <span className="mr-1.5 text-danger">⌃</span>
+                  <span className="text-danger">压缩失败{banner.reason !== undefined ? `：${banner.reason}` : ""}</span>
+                </span>
+              )}
+              <span className="min-w-0 flex-1" />
+              <button
+                type="button"
+                className="shrink-0 text-2xs text-low transition-colors duration-fast hover:text-hi"
+                onClick={dismissCompaction}
+                title="关闭提示"
+              >
+                ✕
+              </button>
+            </div>
+          )}
           {view.items.map((item) =>
             item.kind === "message" ? (
               <MessageBubble key={item.id} item={item} />

@@ -99,6 +99,12 @@ export async function startServiceNode(args: ParsedCliArgs): Promise<CliContext>
     ...(args.workspace !== undefined
       ? { memory: { workspaceRoot: resolve(args.workspace) } }
       : { memory: {} }),
+    // hooks 域启用（T5.1；ui-panel-deepening 轮装配缺口修复——B2 同款：此前仅 smoke 自建节点手装，
+    // 真实入口 hooks.list METHOD_NOT_FOUND；user 层 <dataRoot>/hooks.json + project 层按会话工作区解析）（06 §2.12）
+    hooks: {},
+    // 压缩域启用（ui-panel-deepening 轮装配缺口修复——B2 同款：此前仅 smoke 自建节点手装选项，
+    // 真实入口 auto-compact/microcompact/session.compact 全部失效；{} = 全缺省，窗口取活跃 Provider maxContextTokens）（02 §1.2.5）
+    compaction: {},
   });
   const client = createRpcClient({ transport: transports[0] });
   return { client, node, transports, providerSource: resolved ? resolved.source : "none" };

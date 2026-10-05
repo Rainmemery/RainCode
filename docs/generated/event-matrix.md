@@ -34,8 +34,8 @@
 
 | 事件 | 级别 | 声明于 | 派发点 | 监听点 | 备注 |
 | --- | --- | --- | --- | --- | --- |
-| `compact.completed` | 协议（RPC 数据面） | `packages/shared/src/index.ts` | packages/agent-core/src/compact/service.ts、packages/agent-core/src/compact/wiring.ts | —（无） |  |
-| `compact.started` | 协议（RPC 数据面） | `packages/shared/src/index.ts` | packages/agent-core/src/compact/service.ts、packages/agent-core/src/compact/wiring.ts | —（无） |  |
+| `compact.completed` | 协议（RPC 数据面） | `packages/shared/src/index.ts` | packages/agent-core/src/compact/service.ts、packages/agent-core/src/compact/wiring.ts | apps/desktop/src/renderer/compact-view.ts、apps/desktop/src/renderer/store.ts、apps/web/src/state.ts |  |
+| `compact.started` | 协议（RPC 数据面） | `packages/shared/src/index.ts` | packages/agent-core/src/compact/service.ts、packages/agent-core/src/compact/wiring.ts | apps/desktop/src/renderer/compact-view.ts、apps/desktop/src/renderer/store.ts、apps/web/src/compact-view.ts、apps/web/src/state.ts |  |
 | `compaction.applied` | 存储级（仅落盘） | `packages/storage/src/jsonl-lines.ts` | packages/agent-core/src/compact/service.ts | packages/storage/src/jsonl-resume.ts | auto/manual compact 摘要落盘（epoch+1，05 §4.2）；经多行 appendEvent 调用写入（COMPACTION_EVENT_NAME 常量独立行，行级正则不可达） |
 | `compaction.pruned` | 存储级（仅落盘） | `packages/storage/src/jsonl-lines.ts` | packages/agent-core/src/compact/microcompact.ts | packages/storage/src/jsonl-resume.ts | microcompact 预剪枝落盘（T5.4；不取压缩锁、不 bump epoch） |
 | `done` | 协议（RPC 数据面） | `packages/shared/src/index.ts` | packages/agent-core/src/turn/loop-events.ts | apps/cli/src/stream.ts、apps/desktop/src/renderer/session-view.ts、apps/desktop/src/renderer/store.ts、apps/web/src/session-view.ts、apps/web/src/state.ts | 单词事件名（无域前缀）：llm 流结束与 turn 收束共用 done 字面量，矩阵只认 emit/case/注册键形态命中；已剔除假阳性：packages/agent-core/src/subagent/mirror.ts（stage:"done" 为 subagent.progress 载荷阶段值（this.emit 对象键），非协议 done 事件） |

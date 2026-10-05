@@ -3,6 +3,7 @@
  * 空态引导（03 §6.5 页面级空态）、审批中琥珀横条、自动滚动，底部输入区。
  * 子代理进度卡（refine-ui-context-panel 轮 §6.1 第 4 条）：violet 标识卡片挂在 items 流之后，
  * 按 spawned 事件归属的活跃会话过滤（subagent.* 不带 sessionId）。
+ * 压缩提示条（UI 管理面板深化轮）：挂会话流顶部，compact.* 事件投影（compact-view.ts）。
  */
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useDesktop } from "../store.js";
@@ -10,6 +11,7 @@ import MessageBubble from "./MessageBubble.js";
 import ToolCard from "./ToolCard.js";
 import InputArea from "./InputArea.js";
 import type { HookItem } from "../session-view.js";
+import type { CompactionBanner } from "../compact-view.js";
 import type { SubagentRecord } from "../subagent-view.js";
 
 const HOOK_OUTCOME_LABEL: Record<HookItem["outcome"], string> = {
@@ -56,6 +58,59 @@ function PendingBanner() {
     </div>
   );
 }
+
+/**
+ * 压缩提示条（UI 管理面板深化轮）：单行 h-7 圆角 border，仅 compaction.sessionId === 活跃会话时渲染。
+ * running shimmer + info；ok 绿左边线（epoch 代次 + 手动/自动 + tokens 变化）；
+ * failed 红左边线 + 失败原因；右侧「✕」dismiss（切会话由 selectSession 重置）。
+ */
+const CompactionStrip = memo(function CompactionStrip({
+  banner,
+  onDismiss,
+}: {
+  banner: CompactionBanner;
+  onDismiss: () => void;
+}) {
+  const running = banner.phase === "running";
+  const failed = banner.phase === "failed";
+  const label =
+    banner.phase === "ok"
+      ? `⌃ 上下文已压缩 · 第 ${String(banner.epoch)} 代 · ${banner.trigger === "manual" ? "手动" : "自动"}${
+          banner.tokensBefore !== undefined && banner.tokensAfter !== undefined
+            ? ` · tokens ${String(banner.tokensBefore)}→${String(banner.tokensAfter)}`
+            : ""
+        }`
+      : failed
+        ? `压缩失败：${banner.reason ?? "未知原因"}`
+        : "⌃ 上下文压缩中…";
+  return (
+    <div className="px-6 pt-3">
+      <div
+        className={`mx-auto flex h-7 w-full max-w-[760px] items-center gap-2 rounded-md border px-3 text-2xs ${
+          running
+            ? "border-info bg-[color-mix(in_srgb,var(--info)_8%,transparent)]"
+            : `border-border-faint border-l-2 bg-card ${failed ? "border-l-danger" : "border-l-ok"}`
+        }`}
+      >
+        {running && <span className="dot dot-run" />}
+        <span
+          className={`min-w-0 flex-1 truncate ${running ? "shimmer-text" : failed ? "text-danger" : "text-mid"}`}
+          title={label}
+        >
+          {label}
+        </span>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="shrink-0 text-2xs text-faint transition-colors duration-fast hover:text-hi"
+          title="关闭提示"
+        >
+          ✕
+        </button>
+      </div>
+    </div>
+  );
+});
 
 /** hook 执行行（T5.1）：单行紧凑投影，拦截/失败态用警示色强调。 */
 function HookRow({ item }: { item: HookItem }) {
@@ -144,6 +199,8 @@ export default function ChatFlow() {
   const hasApprovals = useDesktop((s) => s.approvals.length > 0);
   const activeId = useDesktop((s) => s.activeId);
   const subagents = useDesktop((s) => s.subagents);
+  const compaction = useDesktop((s) => s.compaction);
+  const dismissCompaction = useDesktop((s) => s.dismissCompaction);
   // spawned 事件归属的活跃会话过滤（subagent.* 不带 sessionId，归属=事件到达时 activeId）
   const sessionSubagents = useMemo(
     () => subagents.filter((record) => record.sessionId === activeId),
@@ -157,10 +214,13 @@ export default function ChatFlow() {
   }, [view]);
 
   const items = view?.items ?? [];
+  const stripVisible = compaction !== null && compaction.sessionId === activeId;
 
   return (
     <main className="flex min-w-0 flex-1 flex-col bg-base">
       {hasApprovals && <PendingBanner />}
+      {/* 压缩提示条（items 之前；单行条与审批横条同层，随会话归属过滤） */}
+      {stripVisible && compaction !== null && <CompactionStrip banner={compaction} onDismiss={dismissCompaction} />}
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
         {items.length === 0 ? (
           <EmptyState />

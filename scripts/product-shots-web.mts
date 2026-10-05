@@ -142,6 +142,12 @@ function seedHome(home: string, workspace: string, mockUrl: string): void {
     "- 渲染入口在 src/render.ts（renderNoteList），存储在 src/store.ts（NoteStore）\n\n" +
     "<!-- agent: 约定 -->\n- 命名：文件用 kebab-case，符号用 camelCase\n" +
     "- 测试：node:test，与仓库主工程一致\n\n<!-- user -->\n（用户章节，仅手动修改）\n");
+  // hooks 双源种子（Hooks 分区素材；matcher __never__ 不命中任何工具——零真实执行）
+  const hookFile = JSON.stringify({ hooks: { PreToolUse: [
+    { matcher: "__never__", hooks: [{ type: "command", command: "node -e \"\"", timeoutMs: 5000 }] },
+  ] } });
+  writeFileSync(join(home, "hooks.json"), hookFile);
+  writeFileSync(join(workspace, ".raincode", "hooks.json"), hookFile);
 }
 
 function startWebHost(home: string, port: number): ReturnType<typeof spawn> {
@@ -232,6 +238,14 @@ async function main(): Promise<number> {
     const t3 = beginTurn(client, s1.sessionId, "用 MCP 的 echo 工具做个连通性自检");
     await withTimeout(t3.done, 20_000, "turn 3");
     await sleep(1200);
+    // 权限规则种子（命令权限设置页素材；global 层不涉本轮工具路径，RPC 直种）
+    for (const rule of [
+      { scope: "global", tool: "bash", pattern: "rm -rf*", behavior: "deny" },
+      { scope: "global", tool: "bash", pattern: "git push*", behavior: "ask" },
+      { scope: "global", tool: "web_fetch", behavior: "allow" },
+    ]) {
+      await client.call("permission.rules.add", rule).catch(() => undefined);
+    }
 
     // ---- 浏览器接入（bootstrap 自动选最近活跃会话 = 会话 1）----
     const browser = spawn(browserExe, [
@@ -317,11 +331,32 @@ async function main(): Promise<number> {
     await cdp.waitFor(`${bodyContains("fixture")} && ${bodyContains("已连接")}`, "扩展面板 MCP 投影", 20_000);
     await sleep(250);
     await shot(cdp, "web-extensions");
+    // Hooks 分区（T5.1 UI 缺口收口）：project 源未授信 + user 源已授信对照
+    await cdp.waitFor(bodyContains("未授信"), "Hooks 分区投影（project 未授信）", 15_000);
+    await cdp.eval(`(() => { const el = [...document.querySelectorAll("h3,span,div")].find(d => d.textContent === "Hooks"); if (el) el.scrollIntoView({ block: "start" }); return true; })()`);
+    await sleep(400);
+    await shot(cdp, "web-extensions-hooks");
     await cdp.eval<boolean>(clickButtonExpr("← 返回"));
+    // 设置页六组导航（ui-panel-deepening 轮）：命令权限 / MCP / Provider / 关于
     await cdp.eval<boolean>(clickButtonExpr("Provider 设置"));
+    await cdp.waitFor(bodyContains("设定"), "设置页渲染", 15_000);
+    await cdp.eval<boolean>(clickButtonExpr("命令权限"));
+    await cdp.waitFor(bodyContains("高危命令"), "命令权限组渲染", 15_000);
+    await cdp.waitFor(bodyContains("bash:rm -rf*"), "权限规则种子投影", 15_000);
+    await sleep(300);
+    await shot(cdp, "web-settings-permissions");
+    await cdp.eval<boolean>(clickButtonExpr("MCP 服务器"));
+    await cdp.waitFor(bodyContains("fixture"), "MCP 服务器组渲染", 15_000);
+    await sleep(300);
+    await shot(cdp, "web-settings-mcp");
+    await cdp.eval<boolean>(clickButtonExpr("Provider 与模型"));
     await cdp.waitFor(bodyContains("walkthrough-mock"), "Provider 设置渲染");
     await sleep(250);
     await shot(cdp, "web-settings");
+    await cdp.eval<boolean>(clickButtonExpr("关于"));
+    await cdp.waitFor(bodyContains("协议版本"), "关于组渲染", 15_000);
+    await sleep(250);
+    await shot(cdp, "web-settings-about");
     await cdp.eval<boolean>(clickButtonExpr("← 返回"));
 
     // ---- 会话 2：write 审批弹窗（kbd 芯片素材）----
@@ -340,6 +375,18 @@ async function main(): Promise<number> {
     await waitFor(() => tw.requested.length > 0, 10_000, "write grantId");
     await client.call("permission.respond", { grantId: (tw.requested[0] as { grantId: string }).grantId, decision: "allow" });
     await withTimeout(tw.done, 20_000, "write turn");
+    // 压缩可视化（本轮）：先补足会话历史（cutIndex = length − keepRecent(20)，历史未超出保留区
+    // 时 session.compact 无前缀可摘要不产生事件），再手动压缩 → 顶部提示条 + 用量条联动回落
+    mock.setScript([textScript("收到，已记录。")]);
+    for (let i = 0; i < 10; i += 1) {
+      const t = beginTurn(client, s2.sessionId, `补录记录 ${String(i + 1)}`);
+      await withTimeout(t.done, 20_000, `补录回合 ${String(i + 1)}`);
+    }
+    await client.call("session.compact", { sessionId: s2.sessionId }).catch(() => undefined);
+    await cdp.waitFor(bodyContains("上下文已压缩"), "压缩提示条（manual 完成态）", 30_000);
+    await cdp.eval<boolean>(scrollTop());
+    await sleep(400);
+    await shot(cdp, "web-compaction");
     cdp.close();
     browser?.kill();
     spawnSync("taskkill", ["/PID", String(browserPid), "/T", "/F"], { stdio: "ignore" });

@@ -29,6 +29,7 @@ export default function InputArea() {
   const invokeSkill = useDesktop((s) => s.invokeSkill);
   const cancel = useDesktop((s) => s.cancel);
   const setView = useDesktop((s) => s.setView);
+  const compactSession = useDesktop((s) => s.compactSession);
   const [text, setText] = useState("");
   const [skills, setSkills] = useState<SkillSummary[]>([]);
   const [paletteDismissed, setPaletteDismissed] = useState(false);
@@ -201,9 +202,9 @@ export default function InputArea() {
           )}
         </div>
       </div>
-      <div className="px-1 pt-1 text-2xs">
+      <div className="flex items-center px-1 pt-1 text-2xs">
         {provider !== null ? (
-          <span className="text-faint">
+          <span className="min-w-0 flex-1 truncate text-faint">
             {provider.name} · {provider.model}
             {ctxPct !== null && contextUsage !== undefined && (
               <span
@@ -223,6 +224,18 @@ export default function InputArea() {
         ) : (
           <button type="button" onClick={() => setView("settings")} className="text-warn hover:underline">
             先配置模型 Provider →
+          </button>
+        )}
+        {/* 压缩入口（UI 管理面板深化轮）：ctx 用量行右侧幽灵按钮；流式中禁用 */}
+        {provider !== null && activeId !== null && (
+          <button
+            type="button"
+            onClick={() => void compactSession()}
+            disabled={streaming}
+            className="shrink-0 text-2xs text-low transition-colors duration-fast hover:text-hi disabled:cursor-not-allowed disabled:opacity-40"
+            title="压缩上下文（总结历史释放窗口）"
+          >
+            压缩
           </button>
         )}
       </div>

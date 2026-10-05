@@ -1,5 +1,6 @@
 /**
- * Web 会话工作台（T3.8 / UI-5；T4.5 管理面板对齐；refine-ui-context-panel 轮三栏装配）：
+ * Web 会话工作台（T3.8 / UI-5；T4.5 管理面板对齐；refine-ui-context-panel 轮三栏装配；
+ * ui-panel-deepening 轮设置页六组导航 + 全局快捷键 Ctrl+N / Ctrl+J）：
  * 侧栏（可折叠）+ 主区（chat/settings/memory/extensions 视图切换）+ 右侧上下文面板
  * （03 §6.1：仅 chat 视图常驻 300px，可折叠为右缘竖条；fatal 态不渲染右栏）。
  * 服务能力与桌面端同源（同一 AgentService 方法表，06 §6.3）；面板按端最小实现，
@@ -11,7 +12,7 @@ import { Sidebar } from "./components/Sidebar.js";
 import { ChatFlow } from "./components/ChatFlow.js";
 import { InputArea } from "./components/InputArea.js";
 import { ApprovalDialog } from "./components/ApprovalDialog.js";
-import { ProviderSettings } from "./components/ProviderSettings.js";
+import { SettingsView } from "./components/SettingsView.js";
 import { MemoryManager } from "./components/MemoryManager.js";
 import { ExtensionsPanel } from "./components/ExtensionsPanel.js";
 import { ContextPanel } from "./components/ContextPanel.js";
@@ -39,6 +40,8 @@ function ContextRail(): JSX.Element {
 
 export function App(): JSX.Element {
   const bootstrap = useWeb((s) => s.bootstrap);
+  const createSession = useWeb((s) => s.createSession);
+  const toggleContextPanel = useWeb((s) => s.toggleContextPanel);
   const view = useWeb((s) => s.view);
   const connection = useWeb((s) => s.connection);
   const fatal = useWeb((s) => s.fatal);
@@ -48,6 +51,25 @@ export function App(): JSX.Element {
   useEffect(() => {
     void bootstrap();
   }, [bootstrap]);
+
+  // 全局快捷键（ui-panel-deepening 轮）：Ctrl/Cmd+N 新建会话、Ctrl/Cmd+J 右侧上下文面板。
+  // 不加其它守卫（审批 1–4 / Esc 走各自分支互不影响）；zustand 动作引用稳定，一次注册。
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent): void {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
+        const key = e.key.toLowerCase();
+        if (key === "n") {
+          e.preventDefault();
+          void createSession();
+        } else if (key === "j") {
+          e.preventDefault();
+          toggleContextPanel();
+        }
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [createSession, toggleContextPanel]);
 
   return (
     <div className="flex h-full bg-base text-hi">
@@ -66,7 +88,7 @@ export function App(): JSX.Element {
           </div>
         ) : view === "settings" ? (
           <div className="anim-fade flex min-h-0 flex-1 flex-col">
-            <ProviderSettings />
+            <SettingsView />
           </div>
         ) : view === "memory" ? (
           <div className="anim-fade flex min-h-0 flex-1 flex-col">

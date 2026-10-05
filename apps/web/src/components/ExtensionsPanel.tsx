@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 import { RpcCallError } from "@raincode/rpc/web";
 import type { McpHealthReport, McpServerStatus, McpServerStatusEntry, PluginSummary } from "@raincode/shared";
 import { rpcCall, useWeb } from "../state.js";
+import { HooksSection } from "./ExtensionsHooks.js";
 
 /** 状态灯映射（03 §6.5）：绿常亮 / 琥珀脉冲 / 红常亮；Disconnected 灰常亮。 */
 function statusDotClass(status: McpServerStatus): string {
@@ -302,6 +303,9 @@ export function ExtensionsPanel(): JSX.Element {
               ))}
             </div>
           </section>
+
+          {/* Hooks（ui-panel-deepening 轮：置于 MCP 与插件区之后） */}
+          <HooksSection />
         </div>
       </div>
     </div>

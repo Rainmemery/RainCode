@@ -1,17 +1,14 @@
 /**
- * zustand 全局 store（T3.8 Web 工作台）：ReconnectingRpcClient 装配 + 快照补偿接线。
- *
- * 断线恢复路径（06 §6.3 第 4 条，验收项）：
- * - onRestored → 恢复活跃会话（session.resume 全量重建 + pendingApprovals 补推）；
- * - onSeqGap → 恢复该会话（resume）后 setSeqBaseline 回填 snapshot.lastSeq（resync 期间
- *   该会话事件由客户端丢弃，防与补推重复应用）。
+ * zustand 全局 store（T3.8 Web 工作台）：ReconnectingRpcClient 装配 + 快照补偿接线
+ * （onRestored/onSeqGap → session.resume 补偿 + setSeqBaseline 基线回填，06 §6.3 第 4 条）。
  */
 import { create } from "zustand";
 import { createReconnectingRpcClient, RpcCallError } from "@raincode/rpc/web";
 import type { ReconnectingRpcClient } from "@raincode/rpc/web";
 import { applySessionEvent, initialWebState, rebuildItemsFromHistory } from "./session-view.js";
-import { applySubagentEvent } from "./subagent-view.js";
 import type { SessionListEntry, SessionView, WebState } from "./session-view.js";
+import { applySubagentEvent } from "./subagent-view.js";
+import { applyCompactEvent } from "./compact-view.js";
 import { applyTheme, loadThemePref, saveThemePref } from "./theme.js";
 import type { ThemePref } from "./theme.js";
 
@@ -31,8 +28,9 @@ type SessionListRow = SessionListEntry;
 
 interface WebStore extends WebState {
   bootstrap(): Promise<void>;
-  /** 就绪/重连后的列表刷新与会话对齐（connection 状态机驱动）。 */
-  refreshLists(): Promise<void>;
+  /** 就绪/重连后的列表刷新与会话对齐（connection 状态机驱动）；keyword 非空时带 filter 检索。 */
+  refreshLists(keyword?: string): Promise<void>;
+  refreshSessions(keyword?: string): Promise<void>;
   setView(view: "chat" | "settings" | "memory" | "extensions"): void;
   setWorkspace(root: string): void;
   createSession(title?: string): Promise<void>;
@@ -42,6 +40,16 @@ interface WebStore extends WebState {
   respondApproval(grantId: string, decision: "allow" | "deny", always: boolean, scope?: "session" | "project" | "global"): Promise<void>;
   addProvider(input: { name: string; baseURL: string; model: string; apiKey?: string; maxContextTokens: number }): Promise<void>;
   switchProvider(providerId: string): Promise<void>;
+  /** 会话操作（AC-9）：重命名 trim 后 1~200 / 分叉复制历史 / 归档（域错误落 error 横条）/ 手动压缩（事件归并投影）。 */
+  renameSession(sessionId: string, title: string): Promise<void>;
+  forkSession(sessionId: string): Promise<void>;
+  archiveSession(sessionId: string): Promise<void>;
+  compactSession(): Promise<void>;
+  dismissCompaction(): void;
+  setSidebarSearch(keyword: string): void;
+  /** 侧栏过滤开关（localStorage raincode.showArchived / raincode.showSubsessions 持久化回写）。 */
+  setShowArchived(value: boolean): void;
+  setShowSubsessions(value: boolean): void;
   /** 活跃会话用量刷新（session.usage；done 后与切会话时调用，UI-4 用量统计 T4.5 对齐）。 */
   refreshUsage(): Promise<void>;
   /** 斜杠命令调用（skills.invoke，展开在 server 侧；与 CLI/桌面端同语义）。 */
@@ -80,6 +88,22 @@ function rpc(): ReconnectingRpcClient {
   return client;
 }
 
+/** 会话行投影统一映射（session.list → 侧栏行；state 归档态透传，contextUsage 条件展开）。 */
+function mapSessionRows(items: SessionListRow[]): SessionListEntry[] {
+  return items.map((row) => ({
+    id: row.id,
+    title: row.title,
+    lastActiveAt: row.lastActiveAt,
+    state: row.state,
+    ...(row.contextUsage !== undefined && { contextUsage: row.contextUsage }),
+  }));
+}
+
+/** 域动作错误文案（RpcCallError → "code: message"，与既有 error 横幅口径一致）。 */
+function errText(err: unknown): string {
+  return err instanceof RpcCallError ? `${err.code}: ${err.message}` : String(err);
+}
+
 export const useWeb = create<WebStore>((set, get) => {
   function setState(patch: Partial<WebState>): void {
     set(patch);
@@ -95,8 +119,20 @@ export const useWeb = create<WebStore>((set, get) => {
     return rpc().call<T>(method, params ?? {});
   }
 
-  /** resume → snapshot 重建视图（端层状态全量重建，06 §3.4；seq 缺口补偿与重连恢复同一入口）。
-   * 冷重建取 history（全量）；messages 是 checkpoint 后尾部增量口径（NFR-5），仅作兼容回退。 */
+  /** 会话列表拉取：showArchived 开启时并行追加 Archived 态拉取（Active 行前置、归档行按 id 去重追加）。 */
+  async function fetchSessionRows(keyword?: string): Promise<SessionListRow[]> {
+    const kw = keyword !== undefined && keyword.length > 0 ? { keyword } : undefined;
+    const params = kw !== undefined ? { filter: kw } : {};
+    if (!get().showArchived) return (await call<{ items: SessionListRow[] }>("session.list", params)).items;
+    const [active, archived] = await Promise.all([
+      call<{ items: SessionListRow[] }>("session.list", params),
+      call<{ items: SessionListRow[] }>("session.list", { filter: { state: "Archived", ...kw } }),
+    ]);
+    const seen = new Set(active.items.map((row) => row.id));
+    return [...active.items, ...archived.items.filter((row) => !seen.has(row.id))];
+  }
+
+  /** resume → snapshot 重建视图（06 §3.4）：冷重建取 history 全量，messages 尾部增量仅兼容回退。 */
   async function restoreSession(sessionId: string): Promise<SessionView> {
     const result = await call<{ snapshot: SnapshotPayload }>("session.resume", { sessionId });
     const snapshot = result.snapshot;
@@ -114,7 +150,6 @@ export const useWeb = create<WebStore>((set, get) => {
       };
     });
     set({ approvals, streaming: false });
-    // 快照携带 context 用量（服务端 session-support 已算好）：回填 sessions 对应行（找不到行忽略）
     if (snapshot.contextUsage !== undefined) {
       set((state) => ({
         sessions: state.sessions.map((row) =>
@@ -122,7 +157,7 @@ export const useWeb = create<WebStore>((set, get) => {
         ),
       }));
     }
-    // 补偿完成回填：seq 缺口检测基线对齐服务端（06 §6.3 第 4 条）
+    // 补偿完成回填 seq 基线（06 §6.3 第 4 条）
     rpc().setSeqBaseline(sessionId, snapshot.lastSeq);
     return { sessionId, title: sessionId, items };
   }
@@ -152,6 +187,12 @@ export const useWeb = create<WebStore>((set, get) => {
         set(applySubagentEvent(get(), name, record));
         return;
       }
+      // 压缩域事件（06 §3.5 C 组）：先归并提示条（同 subagent 分支模式），completed 时用量条回落
+      if (name === "compact.started" || name === "compact.completed") {
+        set(applyCompactEvent(get(), name, record));
+        if (name === "compact.completed") void get().refreshUsage();
+        return;
+      }
       set(applySessionEvent(get(), name, record));
       if (name === "done") void get().refreshUsage(); // 回合收束即刷新用量行
     });
@@ -159,6 +200,8 @@ export const useWeb = create<WebStore>((set, get) => {
 
   return {
     ...initialWebState(loadThemePref(localStorage)),
+    showArchived: localStorage.getItem("raincode.showArchived") === "1", // "1" 为真，setter 持久化回写
+    showSubsessions: localStorage.getItem("raincode.showSubsessions") === "1",
 
     async bootstrap(): Promise<void> {
       for (const name of [
@@ -178,6 +221,8 @@ export const useWeb = create<WebStore>((set, get) => {
         "subagent.spawned",
         "subagent.progress",
         "subagent.completed",
+        "compact.started",
+        "compact.completed",
       ]) {
         onEvent(name);
       }
@@ -193,7 +238,6 @@ export const useWeb = create<WebStore>((set, get) => {
         void resumeActive(); // 重连恢复：活跃会话快照补偿（验收项）
       });
       rpc().onSeqGap((info) => {
-        // seq 缺口 → resume 补偿（06 §6.3 第 4 条；setSeqBaseline 在 restoreSession 内回填）
         void restoreSession(info.sessionId).then((view) => {
           set((state) => ({ views: { ...state.views, [info.sessionId]: view } }));
         });
@@ -204,17 +248,11 @@ export const useWeb = create<WebStore>((set, get) => {
       await get().refreshLists();
     },
 
-    async refreshLists(): Promise<void> {
+    async refreshLists(keyword?: string): Promise<void> {
       try {
-        const list = await call<{ items: SessionListRow[] }>("session.list", {});
+        const list = await fetchSessionRows(keyword);
         setState({
-          sessions: list.items.map((row) => ({
-            id: row.id,
-            title: row.title,
-            lastActiveAt: row.lastActiveAt,
-            // contextUsage 透传（服务端 session-support 已算好；row 缺省时不写字段）
-            ...(row.contextUsage !== undefined && { contextUsage: row.contextUsage }),
-          })),
+          sessions: mapSessionRows(list),
           connection: "ready",
         });
         const providers = await call<{
@@ -223,8 +261,9 @@ export const useWeb = create<WebStore>((set, get) => {
         }>("config.providers.list", {});
         setState({ providers: providers.providers, activeProviderId: providers.activeProviderId ?? null });
         const activeId = get().activeId;
-        if (activeId === null && list.items.length > 0) {
-          await get().selectSession(list.items[0]!.id);
+        const firstSelectable = list.find((row) => row.state !== "Archived"); // 归档行只读，不自动选中
+        if (activeId === null && firstSelectable !== undefined) {
+          await get().selectSession(firstSelectable.id);
         } else if (activeId !== null) {
           await resumeActive(); // 就绪/恢复即对齐活跃会话
         }
@@ -270,29 +309,95 @@ export const useWeb = create<WebStore>((set, get) => {
         views: { ...state.views, [sessionId]: view },
         activeId: sessionId,
         turnPhase: null,
+        compaction: null, // 切会话重置瞬态（压缩提示条不跨会话驻留；resume 补偿不清）
       }));
       await get().refreshUsage();
+    },
+
+    async refreshSessions(keyword?: string): Promise<void> {
+      setState({ sidebarSearch: keyword ?? "" });
+      try {
+        const list = await fetchSessionRows(keyword);
+        setState({ sessions: mapSessionRows(list) });
+      } catch {
+        // 侧栏检索失败静默（附加信息；ready 后 refreshLists 收敛全量）
+      }
+    },
+
+    async renameSession(sessionId, title): Promise<void> {
+      const trimmed = title.trim();
+      if (trimmed.length === 0 || trimmed.length > 200) return; // 与 session.rename schema 同校验
+      try {
+        await call("session.rename", { sessionId, title: trimmed });
+        set((state) => ({
+          sessions: state.sessions.map((row) => (row.id === sessionId ? { ...row, title: trimmed } : row)),
+        }));
+        await get().refreshSessions(get().sidebarSearch);
+      } catch (err) {
+        setState({ error: errText(err) });
+      }
+    },
+
+    async forkSession(sessionId): Promise<void> {
+      try {
+        await call("session.fork", { sessionId });
+        await get().refreshSessions(get().sidebarSearch);
+      } catch (err) {
+        setState({ error: errText(err) });
+      }
+    },
+
+    async archiveSession(sessionId): Promise<void> {
+      try {
+        await call("session.archive", { sessionId });
+        await get().refreshSessions(get().sidebarSearch);
+      } catch (err) {
+        // SESSION_BACKGROUND_TASKS 等域错误如实展示（error 横条）
+        setState({ error: errText(err) });
+      }
+    },
+
+    async compactSession(): Promise<void> {
+      const sessionId = get().activeId;
+      if (sessionId === null) return;
+      try {
+        await call("session.compact", { sessionId });
+      } catch (err) {
+        setState({ error: errText(err) });
+      }
+    },
+
+    dismissCompaction(): void {
+      setState({ compaction: null });
+    },
+
+    setSidebarSearch(keyword): void {
+      setState({ sidebarSearch: keyword });
+    },
+
+    setShowArchived(value): void {
+      localStorage.setItem("raincode.showArchived", value ? "1" : "0");
+      setState({ showArchived: value });
+      void get().refreshSessions(get().sidebarSearch); // 切换即重拉（开：并行拉归档行；关：回落纯 Active）
+    },
+
+    setShowSubsessions(value): void {
+      localStorage.setItem("raincode.showSubsessions", value ? "1" : "0");
+      setState({ showSubsessions: value });
     },
 
     async refreshUsage(): Promise<void> {
       const sessionId = get().activeId;
       if (sessionId === null) return;
       try {
-        // 并行拉取用量与会话列表：list 重建顺带刷新各行 contextUsage（回合结束 ctx 条同步）
-        const [usage, list] = await Promise.all([
+        // 并行拉取用量与会话列表（list 重建顺带刷新各行 contextUsage，回合结束 ctx 条同步）
+        const [usage, rows] = await Promise.all([
           call<NonNullable<WebState["usage"]>>("session.usage", { sessionId }),
-          call<{ items: SessionListRow[] }>("session.list", {}),
+          fetchSessionRows(),
         ]);
         // 会话可能已切换：只写回仍是活跃会话的用量
         if (get().activeId === sessionId) set({ usage });
-        setState({
-          sessions: list.items.map((row) => ({
-            id: row.id,
-            title: row.title,
-            lastActiveAt: row.lastActiveAt,
-            ...(row.contextUsage !== undefined && { contextUsage: row.contextUsage }),
-          })),
-        });
+        setState({ sessions: mapSessionRows(rows) });
       } catch {
         // 用量展示为附加信息：失败静默（条目缺失/旧服务端不影响主流程）
       }

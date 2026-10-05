@@ -116,6 +116,12 @@ function seedHome(home: string, workspace: string, mockUrl: string): void {
     "- 渲染入口在 src/render.ts（renderNoteList），存储在 src/store.ts（NoteStore）\n\n" +
     "<!-- agent: 约定 -->\n- 命名：文件用 kebab-case，符号用 camelCase\n" +
     "- 测试：node:test，与仓库主工程一致\n\n<!-- user -->\n（用户章节，仅手动修改）\n");
+  // hooks 双源种子（Hooks 分区素材；matcher __never__ 不命中任何工具——零真实执行）
+  const hookFile = JSON.stringify({ hooks: { PreToolUse: [
+    { matcher: "__never__", hooks: [{ type: "command", command: "node -e \"\"", timeoutMs: 5000 }] },
+  ] } });
+  writeFileSync(join(home, "hooks.json"), hookFile);
+  writeFileSync(join(workspace, ".raincode", "hooks.json"), hookFile);
 }
 
 async function shot(cdp: Cdp, name: string): Promise<void> {
@@ -252,6 +258,58 @@ async function main(): Promise<number> {
     await cdp.eval<boolean>(clickButtonExpr("仅本次允许"));
     await cdp.waitFor(bodyContains("附了最小示例"), "回合 3 完成", 30_000);
 
+    // 压缩可视化（本轮）：先补足会话历史（cutIndex = length − keepRecent(20)，历史未超出保留区
+    // 时 session.compact 无前缀可摘要不产生事件），再 DOM 真实点击「压缩」走 session.compact 全链路
+    for (const line of ["补录记录甲", "补录记录乙", "补录记录丙", "补录记录丁"]) {
+      mock.setScript([textScript(`收到（${line}）`)]);
+      await sendTurn(cdp, line);
+      await cdp.waitFor(bodyContains(`收到（${line}）`), `补录 ${line} 完成`, 20_000);
+    }
+    await cdp.eval<boolean>(clickButtonExpr("压缩"));
+    await cdp.waitFor(bodyContains("上下文已压缩"), "压缩提示条（manual 完成态）", 30_000);
+    await cdp.eval<boolean>(scrollTop());
+    await sleep(400);
+    await shot(cdp, "desktop-compaction");
+
+    // 设置页六组导航（ui-panel-deepening 轮）：命令权限（真实表单加规则）/ MCP / Provider / 关于
+    await cdp.eval<boolean>(clickButtonExpr("设置"));
+    await cdp.waitFor(bodyContains("设定"), "设置页渲染", 15_000);
+    await cdp.eval<boolean>(clickButtonExpr("命令权限"));
+    await cdp.waitFor(bodyContains("高危命令"), "命令权限组渲染", 15_000);
+    await cdp.eval<boolean>(clickButtonExpr("新建规则"));
+    await cdp.eval<boolean>(`(() => {
+      const setVal = (ctor, el, v, ev) => { Object.getOwnPropertyDescriptor(ctor.prototype, "value").set.call(el, v); el.dispatchEvent(new Event(ev, { bubbles: true })); };
+      const tool = [...document.querySelectorAll("input")].find(i => i.placeholder === "例如 bash");
+      const pattern = [...document.querySelectorAll("input")].find(i => i.placeholder === "例如 rm -rf *");
+      if (!tool || !pattern) return false;
+      setVal(window.HTMLInputElement, tool, "bash", "input");
+      setVal(window.HTMLInputElement, pattern, "rm -rf*", "input");
+      const selects = [...document.querySelectorAll("select")];
+      const scope = selects.find(s => [...s.options].some(o => o.value === "global"));
+      const behavior = selects.find(s => [...s.options].some(o => o.value === "deny"));
+      if (scope !== undefined) setVal(window.HTMLSelectElement, scope, "global", "change");
+      if (behavior !== undefined) setVal(window.HTMLSelectElement, behavior, "deny", "change");
+      return true;
+    })()`);
+    await sleep(200);
+    await cdp.eval<boolean>(clickButtonExpr("创建规则"));
+    await cdp.waitFor(bodyContains("bash:rm -rf*"), "权限规则新建投影", 15_000);
+    await sleep(300);
+    await shot(cdp, "desktop-settings-permissions");
+    await cdp.eval<boolean>(clickButtonExpr("MCP 服务器"));
+    await cdp.waitFor(bodyContains("fixture"), "MCP 服务器组渲染", 15_000);
+    await sleep(300);
+    await shot(cdp, "desktop-settings-mcp");
+    await cdp.eval<boolean>(clickButtonExpr("Provider 与模型"));
+    await cdp.waitFor(bodyContains("walkthrough-mock"), "Provider 设置渲染", 15_000);
+    await sleep(250);
+    await shot(cdp, "desktop-settings");
+    await cdp.eval<boolean>(clickButtonExpr("关于"));
+    await cdp.waitFor(bodyContains("协议版本"), "关于组渲染", 15_000);
+    await sleep(250);
+    await shot(cdp, "desktop-settings-about");
+    await cdp.eval<boolean>(clickButtonExpr("← 返回"));
+
     // 记忆管理器 + 扩展面板
     await cdp.eval<boolean>(clickButtonExpr("记忆管理器"));
     await cdp.waitFor(bodyContains("MEMORY.md"), "记忆管理器渲染");
@@ -262,6 +320,11 @@ async function main(): Promise<number> {
     await cdp.waitFor(`${bodyContains("fixture")} && ${bodyContains("已连接")}`, "扩展面板 MCP 投影", 20_000);
     await sleep(250);
     await shot(cdp, "desktop-extensions");
+    // Hooks 分区（T5.1 UI 缺口收口）：project 源未授信 + user 源已授信对照
+    await cdp.waitFor(bodyContains("未授信"), "Hooks 分区投影（project 未授信）", 15_000);
+    await cdp.eval(`(() => { const el = [...document.querySelectorAll("h3,span,div")].find(d => d.textContent === "Hooks"); if (el) el.scrollIntoView({ block: "start" }); return true; })()`);
+    await sleep(400);
+    await shot(cdp, "desktop-extensions-hooks");
     console.log("桌面端截图完成");
     return 0;
   } catch (err) {

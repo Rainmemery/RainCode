@@ -5,6 +5,7 @@
 import type { McpServerStatusEntry, McpServerStatus, PluginStatus, PluginSummary } from "@raincode/shared";
 import type { ThemePref } from "./theme.js";
 import type { SubagentRecord } from "./subagent-view.js";
+import type { CompactionBanner } from "./compact-view.js";
 
 export interface ChatItem {
   kind: "message";
@@ -73,13 +74,25 @@ export interface ProviderRow {
  * SubagentRecord/applySubagentEvent/groupSessions/ctxLevel 由该模块导出。
  */
 
+/**
+ * 会话列表行（session.list 投影；state 为归档态投影，UI 管理面板深化轮新增——
+ * 旧服务端缺省省略，按未归档处理）。
+ */
+export interface SessionListEntry {
+  id: string;
+  title: string;
+  lastActiveAt: number;
+  state?: "Active" | "Archived";
+  contextUsage?: { tokens: number; maxTokens: number };
+}
+
 export interface DesktopState {
   connection: "connecting" | "ready" | "agent-down";
   runMode: string;
   /** extensions = MCP / 插件面板（UI-4，T3.9）。 */
   view: "chat" | "settings" | "memory" | "extensions";
   workspace: string | null;
-  sessions: Array<{ id: string; title: string; lastActiveAt: number; contextUsage?: { tokens: number; maxTokens: number } }>;
+  sessions: SessionListEntry[];
   activeId: string | null;
   views: Record<string, SessionView>;
   approvals: ApprovalItem[];
@@ -102,6 +115,14 @@ export interface DesktopState {
   contextPanelCollapsed: boolean;
   /** 主题偏好（03 §3.2）：dark / light / system，localStorage 持久化（theme.ts）。 */
   theme: ThemePref;
+  /** 侧栏会话检索关键词（UI 管理面板深化轮；非空经 session.list {filter:{keyword}} 服务端过滤）。 */
+  sidebarSearch: string;
+  /** 侧栏「已归档」过滤开关（localStorage 持久化）。 */
+  showArchived: boolean;
+  /** 侧栏「子会话」过滤开关（localStorage 持久化）。 */
+  showSubsessions: boolean;
+  /** 活跃会话压缩提示条（compact.started/completed 事件投影，compact-view.ts）。 */
+  compaction: CompactionBanner | null;
 }
 
 export function initialDesktopState(themePref: ThemePref = "dark"): DesktopState {
@@ -126,6 +147,10 @@ export function initialDesktopState(themePref: ThemePref = "dark"): DesktopState
     subagents: [],
     contextPanelCollapsed: false,
     theme: themePref,
+    sidebarSearch: "",
+    showArchived: false,
+    showSubsessions: false,
+    compaction: null,
   };
 }
 

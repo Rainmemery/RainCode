@@ -1,6 +1,6 @@
 # RainCode UI 设计规范
 
-> 版本 v1.5 · 2026-10-04（v1.0 · 2026-09-24 初稿；v1.1 双端统一；v1.2 思考块与工具卡深化；v1.3 组件化重构与冷重建；v1.4 浅色主题落地；v1.5 变更见文末「15. v1.5 变更记录」）
+> 版本 v1.6 · 2026-10-05（v1.0 · 2026-09-24 初稿；v1.1 双端统一；v1.2 思考块与工具卡深化；v1.3 组件化重构与冷重建；v1.4 浅色主题落地；v1.5 三栏布局演进；v1.6 变更见文末「16. v1.6 变更记录」）
 > 适用范围：RainCode 个人代码智能助手——Windows 桌面端（Electron + React 18 + Zustand + Tailwind CSS，shadcn/ui 风格组件）、Web 工作台（React 18 + Zustand + Tailwind CSS）与 CLI 端（readline REPL + ANSI）。
 > 配套高保真设计稿见文末「设计稿索引」，四张稿件与本文档 tokens 严格一致。
 
@@ -255,7 +255,7 @@ flowchart TD
 
 三栏布局：左侧栏 264px 固定（可折叠至 56px 图标态）· 中部会话流自适应 · 右侧上下文面板 300px（可折叠）。
 
-**左侧栏**：顶部工作区切换器（当前项目名 + 路径）；「新建会话」主按钮；会话列表（时间分组：今天/昨天/更早），每项含标题、相对时间、消息数徽章，当前会话用 `--accent-bg` 底 + 左侧 2px 橙色指示条；底部为模型选择器与 token/context 用量条。
+**左侧栏**：顶部工作区切换器（当前项目名 + 路径）；「新建会话」主按钮；会话搜索框（300ms 防抖，服务端 title/preview 过滤）；会话列表（时间分组：今天/昨天/更早），每项含标题、相对时间、消息数徽章，当前会话用 `--accent-bg` 底 + 左侧 2px 橙色指示条；**v1.6 实现注记**：会话项增「⋯」操作菜单（重命名 inline 编辑 / 分叉 / 归档两段确认，归档失败域错误落横条）；列表基线 = Active + 非子会话过滤投影，「显示已归档」「显示子会话」开关默认关（localStorage `raincode.showArchived`/`raincode.showSubsessions` 持久化，L-23 核销；归档行灰态只读；已归档行经 `session.list {filter:{state:"Archived"}}` 追加拉取）；折叠 56px 图标态增补搜索图标（唤起展开态并聚焦搜索框）。底部为模型选择器与 token/context 用量条。
 
 **中部会话流**（核心，带四角取景框角标）：从上到下依次为——
 
@@ -276,7 +276,7 @@ flowchart TD
 
 ### 6.2 设置页（稿件 02）
 
-左侧垂直导航（6 组）：通用 / Provider 与模型 / 命令权限 / MCP 服务器 / 快捷键 / 关于。右侧内容区每块均为「区块标题 + 卡片」结构，改动即时保存并显示「已保存」弱化提示。
+左侧垂直导航（6 组）：通用 / Provider 与模型 / 命令权限 / MCP 服务器 / 快捷键 / 关于。右侧内容区每块均为「区块标题 + 卡片」结构，改动即时保存并显示「已保存」弱化提示。**v1.6 实现注记（双端落地）**：新组件 `SettingsView.tsx`（顶行「← 返回」+ 标题「设定」+ 左导航 200px——激活项 text-hi + 2px accent 指示条 + 32px 行高；超限分区拆 `SettingsPermissions.tsx`/`SettingsMcp.tsx`，desktop 另有共享 `SettingsCard.tsx`）——通用（主题三态显式选择与侧栏「◐」同状态源 + 工作区路径只读行 + 语言 zh-CN 静态行）；Provider 与模型（既有 ProviderSettings 原样迁入，行为零变更）；命令权限（`permission.rules.list/add/remove`：behavior 徽章 allow=ok/ask=warn/deny=danger + 等宽 `tool:pattern ?? "*"` + 作用域 + 来源 手动/会话决策/导入 + 删除；「新建规则」表单 scope 仅 project/global——session 驻内存不入库；危险示例提示置顶）；MCP 服务器（`mcp.servers.add/remove`：卡片列表 + 添加表单 serverKey/transport/command/args/env/url + 实时 JSON 预览 + 删除两段确认；运行态启停/重试/健康仍在右栏 MCP Tab，不重复）；快捷键（静态 `.kbd` 键位表 + 浏览器保留键附注）；关于（`system.version` 四行 + docs 指引）。
 
 - **Provider 与模型**：当前 Provider 卡片（名称、状态灯、默认模型徽章）；表单：API Key（掩码显示 + 显示切换 + 测试连接按钮）、Base URL、模型选择下拉、上下文窗口读数、温度与最大输出滑杆；「添加自定义 Provider」次按钮。
 - **命令权限**：规则表（模式 allow/ask/deny 彩色徽章 + 等宽规则表达式 + 作用域 + 来源[手动/会话决策] + 删除）；顶部「新建规则」与模式说明；危险示例（`rm -rf` deny）必须置顶展示。
@@ -355,7 +355,7 @@ flowchart TD
 | MCP 连接失败 | 服务器行状态灯红 + 「重连中…」琥珀文案 + 重试按钮；相关工具调用卡片提示「服务器不可用」 |
 | 未配置 Provider | 输入区置灰 + 引导条「先配置模型 Provider →」跳设置页 |
 | 审批超时 | 审批弹窗保持等待不自动关闭；CLI 中超过 10 分钟提示「仍在等待，Ctrl+C 可中断」；中断后工具卡标记为「已取消」灰态 |
-| token/context 超限 | context 条超过 80% 变琥珀、95% 变红；触顶时 Agent 自动总结压缩上下文并在消息流顶部提示「上下文已压缩」 |
+| token/context 超限 | context 条超过 80% 变琥珀、95% 变红；触顶时 Agent 自动总结压缩上下文并在消息流顶部提示「上下文已压缩」（**v1.6 已实现**：双端 `compact-view.ts` 消费 `compact.started/completed` 为会话级瞬态提示条——running shimmer / ok「⌃ 上下文已压缩 · 第 N 代 · 手动/自动 · tokens X→Y」/ failed danger 色 + reason，可 dismiss；输入区 ctx 行「压缩」按钮触发 `session.compact`，完成后用量条联动回落；microcompact 为存储级事件不经 RPC 不呈现；历史未超出保留区时压缩请求落域错误横条） |
 | 会话恢复失败 | 启动时显示「会话文件损坏，已隔离至 sessions/orphan/」+ 可跳转目录；不阻塞新建会话 |
 | Provider 限流（429） | 会话流顶部蓝色横条「模型限流中，将于 Ns 后自动重试」+ 手动重试按钮；子代理块内则逐个暂停再恢复 |
 | 磁盘空间不足 | 标题栏持久琥珀徽章「本地空间不足」，禁止新的会话写入但可只读浏览 |
@@ -376,7 +376,7 @@ flowchart TD
 键盘是开发者的第一交互路径，与 CLI 的纯键盘操作保持同等地位：
 
 - 审批弹窗打开即获得焦点环，`1–4` 直选、`Esc` 拒绝、`Tab` 在按钮组间循环；焦点环使用 `--border-strong` + 1px 外扩，不隐藏。
-- 主工作区核心路径全程无鼠标可达：`Ctrl+N` 新会话 → 输入 → `Enter` 发送 → `1–4` 审批 → `Ctrl+J` 展开上下文面板。
+- 主工作区核心路径全程无鼠标可达：`Ctrl+N` 新会话 → 输入 → `Enter` 发送 → `1–4` 审批 → `Ctrl+J` 展开上下文面板。**v1.6 实现注记**：`Ctrl+N`/`Ctrl+J` 双端全局 keydown 已落地（(Ctrl|Cmd)+N/J，非 alt/shift，preventDefault）；浏览器保留键口径——Web 端 Ctrl+N/Ctrl+J 可能被浏览器截获（Electron 桌面端完整可用），设置页快捷键组附注说明，按钮入口始终存在。
 - 列表（会话、记忆条目、规则表）支持 `↑↓` 移动 + `Enter` 进入，`Delete` 触发删除确认。
 - 状态不得仅用颜色表达：状态灯旁始终伴随文字或符号（`✓ ⋯ ✗ ⚠`），满足色觉障碍可判读。
 
@@ -475,3 +475,19 @@ flowchart TD
 6. **产品截图 +6（双端 20 张）**：web/desktop 各增右栏 MCP Tab、右栏子代理 Tab、侧栏折叠图标态三张（`*-context-mcp.png` / `*-context-subagent.png` / `*-sidebar-collapsed.png`）；shots 脚本补 agent 回合素材（builtin researcher 子代理端到端真实 spawn——web 端修正「页面后开错过瞬态全局事件」时序，回合 4 改为页面在线后驱动）；桌面端电脑控制（UI Automation）真机验收：三栏布局 / Tab 切换 / 右栏折叠唤起 / 侧栏折叠 / 浅色主题右栏渲染逐项通过。
 7. **验收留存**：门禁 typecheck 14 项目 / lint 12 warning 基线 0 error / architecture 259 文件 0 违规（双端 session-view 拆分 subagent-view 后达标）/ 单测 305（+15：双端 applySubagentEvent 5+4、groupSessions 2+2、ctxLevel 1+1）；walkthrough-web 19/19 + walkthrough-desktop 14/14（装配改动后复跑全绿）；双端构建通过；截图人工核对（三栏密度 / 状态灯映射 / violet 进度卡 / ctx 条阈值配色 / 深浅两主题）。
 8. **已知口径登记**：子会话（`[subagent:<profile>]` 前缀）随 `session.list` 进入侧栏会话列表（真实投影、前缀可辨识，过滤留待后续轮）；`mcp.json` 缺失时宿主落一条「INTERNAL: internal error」错误横幅（域装配降级既有行为，电脑控制验收发现，legacy-items 登记）。设置页 6 组导航（§6.2）与消息数徽章维持未实现（无数据源 / 独立轮次）。
+
+---
+
+## 16. v1.6 变更记录（2026-10-05 · UI 管理面板深化轮：设置页 6 组导航 + 会话操作检索 + 压缩可视化 + Hooks 分区 + 键盘可达）
+
+本轮把 v1.5 后剩余的「已设计未实现」缺口一次收口，全部基于既有协议面（58 方法/21 事件**零变更**），无假 UI；token 色值零变更（深浅两主题经既有语义 token 自动重映射）：
+
+1. **设置页 6 组导航双端落地（§6.2，本轮主项）**：新组件 `SettingsView.tsx`（web/desktop 同构；web 拆 `SettingsPermissions.tsx`/`SettingsMcp.tsx`，desktop 另有共享 `SettingsCard.tsx`）——顶行「← 返回」+「设定」标题保留走查契约；左导航 200px 六组（激活项 text-hi + 2px accent 指示条 + 32px 行高）。通用（主题三态显式选择与侧栏「◐」同状态源 + 工作区只读行 + 语言 zh-CN 静态行）；Provider 与模型（ProviderSettings 原样迁入，行为零变更）；命令权限（`permission.rules.list/add/remove` 全闭环：behavior 三色徽章 + 等宽 `tool:pattern ?? "*"` + 作用域 + 来源 中文口径 + 删除；「新建规则」折叠表单 scope 仅 project/global；危险示例提示置顶）；MCP 服务器（`mcp.servers.add/remove`：卡片 + 添加表单 serverKey 正则校验/stdio command+args+env/http url + 实时 JSON 预览 + 删除两段确认；运行态操作不与右栏 MCP Tab 重复）；快捷键（静态 `.kbd` 键位表）；关于（`system.version` 四行 + docs 指引）。
+2. **会话操作与检索补全（§6.1，L-23 核销）**：新纯函数模块 `session-filters.ts`（双端同构）——`isSubsessionSession`（`[subagent:` 前缀）+ `filterSessionRows`（Active + 非子会话默认基线，两开关叠加）；侧栏搜索框（300ms 防抖 → `session.list {filter:{keyword}}` 服务端 title/preview 过滤，折叠态 56px 增补搜索图标唤起聚焦）；会话项「⋯」菜单（重命名 inline 编辑 → `session.rename` 本地即时更新 / 分叉 → `session.fork` 后重拉 / 归档两段确认 → `session.archive`，域错误落横条）；「显示已归档」「显示子会话」开关默认关 + localStorage `raincode.` 前缀持久化，归档行灰态只读；**已归档行经 `session.list {filter:{state:"Archived"}}` 追加拉取**（服务端默认仅返回 Active，开关驱动双拉合并——电脑控制验收发现后修复）。消息数徽章维持未实现（session.list 无该字段，协议 additive 留后续轮）。
+3. **压缩可视化（§7 触顶提示落地）**：新纯函数模块 `compact-view.ts`（双端同构，仿 subagent-view 模式）——`CompactionBanner` + `applyCompactEvent`（`compact.started/completed` 会话级瞬态归并：仅活跃会话应用、字段类型守卫、completed 沿用 started 的 trigger、ok/failed 分相）；ChatFlow 顶部提示条三态（running shimmer / ok「⌃ 上下文已压缩 · 第 N 代 · 手动/自动 · tokens X→Y」/ failed danger + reason，可 dismiss，切会话重置、resume 补偿不清）；InputArea ctx 行「压缩」按钮 → `session.compact` → completed 联动 `refreshUsage` 回落。microcompact（`compaction.pruned`）为存储级事件不经 RPC，不呈现。
+4. **扩展面板 Hooks 分区（T5.1 UI 缺口收口）**：web `ExtensionsHooks.tsx` / desktop ExtensionsPanel 内置 Hooks 区——`hooks.list` 源投影（user=全局 cyan / project=项目 violet 徽章 + path + loaded 状态灯 + `N 事件 · M hooks` + 事件芯片）；project 行授信闭环（未授信 warn +「授信」→ `hooks.trust.grant` / 已授信 ok +「撤销」→ `hooks.trust.revoke`，绑定活跃会话，无会话禁用）；空态一行说明（未配置 hooks.json 不显示假数据）。
+5. **键盘可达性（§8.1 落地）**：`Ctrl+N` 新建会话 / `Ctrl+J` 右侧上下文面板双端全局 keydown（(Ctrl|Cmd)+N/J，非 alt/shift，preventDefault，不干扰审批 1–4/Esc 与斜杠面板键位）；浏览器保留键口径注记（Web 端可能被浏览器截获，Electron 完整可用）。
+6. **产品缺陷修复 ×2（截图/验收反哺，B2 同款盲区第三、四次复发）**：① **hooks 域四入口未装配**——`hooks: {}` 此前仅 smoke-hooks 自建节点手装，CLI in-process / stdio host / web 宿主 / 桌面 agent entry 四真实入口 `hooks.list` METHOD_NOT_FOUND（扩展面板 Hooks 区全挂）→ 四入口补 `hooks: {}`；② **compaction 域四入口未装配**——`compaction` 选项此前仅 smoke-compact/smoke-kernel 显式传入，真实入口 `buildCompactionOptions(undefined) → 双 null`：auto-compact（NFR-6）/ microcompact（T5.4）/ `session.compact` 全部从未生效 → 四入口补 `compaction: {}`（全缺省，窗口取活跃 Provider maxContextTokens）。协议零变更；CLI 端对用户表现为压缩能力与 hooks 工具面真实可用（非 UI 改动）。
+7. **产品截图 +11（双端 31 张：web 16 + desktop 15）**：web 增 Hooks 分区 / 设置页命令权限（规则种子）/ MCP 服务器 / 关于 / 压缩提示条五张，desktop 增设置页命令权限（真实表单加规则）/ MCP 服务器 / Provider（此前无设置页截图）/ 关于 / 压缩提示条 / Hooks 分区六张；shots 脚本补 hooks.json 双源种子（matcher `__never__` 零真实执行）、权限规则 RPC 种子（web）/真实表单驱动（desktop）、压缩前置历史补足（`cutIndex = length − keepRecent(20)`，历史未超出保留区时 `session.compact` 无事件——首跑修出）。
+8. **验收留存**：电脑控制真机验收 14 项（会话回合 / 重命名 / 搜索 / 归档两段确认 / 过滤开关 / 设置页导航 / 权限增删 / MCP 卡片 / 快捷键与关于 / 主题三态 / Hooks 授信闭环 / Ctrl+J / Ctrl+N / 压缩按钮域错误路径）全过（首跑「已归档开关」缺陷 → 双端修复 → 复验通过）；门禁 typecheck 14 项目 / lint 0 error（11 warning 旧存留）/ architecture 289 文件 0 违规 / 单测 374（+19：双端 applyCompactEvent 5+4、session-filters 5+5）/ protocol:check 58 方法 21 事件 + event-matrix:check 25 事件（双生成物门禁绿；event-matrix 因新增端层 compact.* 消费者登记再生成）/ 双端构建 + walkthrough-web 19/19 + walkthrough-desktop 14/14（装配与修复改动后复跑全绿）。
+9. **已知口径登记**：沙箱 Tab 维持协议缺口（06 无 `sandbox.*` RPC 域）；消息数徽章维持未实现（无数据源）；「已归档」开关开启时的归档行仅灰态展示（协议无取消归档方法，单向只读）；i18n 仅静态展示（en-US 资源未装载）。

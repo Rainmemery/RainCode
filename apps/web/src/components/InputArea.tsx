@@ -19,6 +19,7 @@ export function InputArea(): JSX.Element {
   const invokeSkill = useWeb((s) => s.invokeSkill);
   const streaming = useWeb((s) => s.streaming);
   const activeId = useWeb((s) => s.activeId);
+  const compactSession = useWeb((s) => s.compactSession);
   // ctx 用量条数据源（refine-ui-context-panel 轮，03 §7）：sessions 行 contextUsage + 活跃 Provider 模型名
   const contextUsage = useWeb((s) => (s.activeId !== null ? s.sessions.find((row) => row.id === s.activeId)?.contextUsage : undefined));
   const model = useWeb((s) => s.providers.find((p) => p.id === s.activeProviderId)?.model);
@@ -209,6 +210,16 @@ export function InputArea(): JSX.Element {
               </span>
             </>
           )}
+          <span className="min-w-0 flex-1" />
+          <button
+            type="button"
+            className="shrink-0 text-2xs text-low transition-colors duration-fast hover:text-hi disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={streaming}
+            onClick={() => void compactSession()}
+            title="压缩上下文（总结历史释放窗口）"
+          >
+            压缩
+          </button>
         </div>
       ) : null}
     </div>

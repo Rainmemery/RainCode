@@ -1,13 +1,19 @@
 /**
  * 扩展面板（UI-4，T3.9）：MCP 服务器管理（T3.7 域：状态投影 / 启停 / 健康检查 / 重试）
- * + 插件管理（T3.5 域：状态 / 启停 / 工具清单）。
+ * + 插件管理（T3.5 域：状态 / 启停 / 工具清单）+ Hooks 配置源（T5.1 域：来源 / 授信，UI 管理面板深化轮）。
  * 低频管理面与记忆管理器同口径：进入视图与每次处置后全量刷新；
  * 连接/生命周期变化由全局事件（mcp.server_status_changed / plugin.status_changed）活更，
  * reducer 落 store（session-view.ts），本组件只读渲染 + 动作触发。
  */
-import { useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import { RpcCallError } from "@raincode/rpc/client";
-import type { McpServerStatus, McpServerStatusEntry, McpHealthReport, PluginSummary } from "@raincode/shared";
+import type {
+  McpServerStatus,
+  McpServerStatusEntry,
+  McpHealthReport,
+  PluginSummary,
+  HookSourceInfo,
+} from "@raincode/shared";
 import { rpcCall, useDesktop } from "../store.js";
 
 /** 状态灯四态映射（03 §6.5）：绿常亮 / 青脉冲 / 琥珀脉冲 / 红常亮；Disconnected 灰常亮。 */
@@ -50,10 +56,106 @@ function pluginBadgeClass(status: PluginSummary["status"]): string {
   }
 }
 
+/**
+ * Hooks 配置源卡（memo，UI 管理面板深化轮）：来源徽章（user=全局 / project=项目）+ path
+ * + 加载状态灯 + 事件/hook 计数 + events 芯片；project 行尾授信态与授信/撤销
+ * （hooks.trust.grant/revoke，需活跃会话——按会话工作区绑定 digest）。
+ */
+const HookSourceCard = memo(function HookSourceCard({
+  row,
+  activeId,
+  onChanged,
+}: {
+  row: HookSourceInfo;
+  activeId: string | null;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const trusted = row.trusted === true;
+
+  async function toggleTrust(): Promise<void> {
+    if (activeId === null) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await rpcCall(trusted ? "hooks.trust.revoke" : "hooks.trust.grant", { sessionId: activeId });
+      onChanged();
+    } catch (err) {
+      setError(err instanceof RpcCallError ? `${err.code}: ${err.message}` : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-md border border-border-base bg-panel px-3 py-2">
+      <div className="flex items-center gap-2">
+        <span
+          className={`shrink-0 rounded border px-1 text-2xs ${row.source === "user" ? "border-border-strong text-mid" : "border-info text-info"}`}
+        >
+          {row.source === "user" ? "全局" : "项目"}
+        </span>
+        <span className={`dot ${row.loaded ? "dot-ok" : "dot-err"}`} title={row.loaded ? "已加载" : "加载失败"} />
+        <span className="mono min-w-0 flex-1 truncate text-2xs text-mid" title={row.path}>
+          {row.path}
+        </span>
+        <span className="shrink-0 text-2xs text-faint" title="已登记事件数 · hook 总数">
+          {row.events.length} 事件 · {row.hookCount} hooks
+        </span>
+        {row.source === "project" && (
+          <>
+            {trusted ? (
+              <span className="shrink-0 text-2xs text-ok" title="已授信（绑定 hooks 配置 digest，改动后失效）">
+                已授信
+              </span>
+            ) : (
+              <span className="shrink-0 text-2xs text-warn" title="未授信：project hooks 跳过执行（skipped_untrusted）">
+                未授信
+              </span>
+            )}
+            <button
+              type="button"
+              disabled={busy || activeId === null}
+              onClick={() => void toggleTrust()}
+              className="h-6 shrink-0 rounded border border-border-strong px-2 text-2xs text-mid transition-colors duration-fast hover:bg-hover disabled:cursor-not-allowed disabled:opacity-50"
+              title={
+                activeId === null
+                  ? "需先选中会话"
+                  : trusted
+                    ? "撤销工作区授信（project hooks 停止执行）"
+                    : "授信当前会话工作区（按 hooks 配置 digest 绑定）"
+              }
+            >
+              {trusted ? "撤销" : "授信"}
+            </button>
+          </>
+        )}
+      </div>
+      {row.events.length > 0 && (
+        <div className="mt-1 flex flex-wrap items-center gap-1">
+          {row.events.map((event) => (
+            <span key={event} className="rounded border border-border-faint bg-raised px-1 text-[10px] text-low">
+              {event}
+            </span>
+          ))}
+        </div>
+      )}
+      {!row.loaded && typeof row.error === "string" && (
+        <div className="mt-1 truncate text-2xs text-danger" title={row.error}>
+          {row.error}
+        </div>
+      )}
+      {error !== null && <div className="mt-1 truncate text-2xs text-danger">{error}</div>}
+    </div>
+  );
+});
+
 export default function ExtensionsPanel() {
   const mcpServers = useDesktop((s) => s.mcpServers);
   const plugins = useDesktop((s) => s.plugins);
   const extensionsTick = useDesktop((s) => s.extensionsTick);
+  const activeId = useDesktop((s) => s.activeId);
   const setView = useDesktop((s) => s.setView);
 
   const [health, setHealth] = useState<Record<string, McpHealthReport>>({});
@@ -62,6 +164,8 @@ export default function ExtensionsPanel() {
   const [error, setError] = useState<string | null>(null);
   const [mcpUnavailable, setMcpUnavailable] = useState(false);
   const [pluginsUnavailable, setPluginsUnavailable] = useState(false);
+  const [hookSources, setHookSources] = useState<HookSourceInfo[]>([]);
+  const [hooksError, setHooksError] = useState<string | null>(null);
 
   const refresh = useCallback(async (): Promise<void> => {
     setError(null);
@@ -106,6 +210,29 @@ export default function ExtensionsPanel() {
   useEffect(() => {
     void refresh();
   }, [refresh, extensionsTick]);
+
+  // hooks.list（UI 管理面板深化轮）：挂载与 extTick 变化重拉；有活跃会话带 {sessionId}
+  // （project 源按会话工作区解析），否则 {}；activeId 变化（refreshHooks 依赖）随之重拉
+  const refreshHooks = useCallback(async (): Promise<void> => {
+    setHooksError(null);
+    try {
+      const result = await rpcCall<{ items: HookSourceInfo[] }>(
+        "hooks.list",
+        activeId !== null ? { sessionId: activeId } : {},
+      );
+      setHookSources(result.items);
+    } catch (err) {
+      setHooksError(err instanceof RpcCallError ? `${err.code}: ${err.message}` : String(err));
+    }
+  }, [activeId]);
+
+  useEffect(() => {
+    void refreshHooks();
+  }, [refreshHooks, extensionsTick]);
+
+  const onHooksChanged = useCallback((): void => {
+    void refreshHooks();
+  }, [refreshHooks]);
 
   async function runHealth(serverKey?: string): Promise<void> {
     setHealthBusy(true);
@@ -299,13 +426,39 @@ export default function ExtensionsPanel() {
                     </div>
                   )}
                   {plugin.lastError !== null && (
-                    <div className="mt-1 truncate text-2xs text-danger" title={plugin.lastError}>
-                      {plugin.lastError}
-                    </div>
-                  )}
-                </div>
-              ))}
+                      <div className="mt-1 truncate text-2xs text-danger" title={plugin.lastError}>
+                        {plugin.lastError}
+                      </div>
+                    )}
+                  </div>
+                ))}
             </div>
+          </section>
+
+          {/* Hooks（T5.1 域，UI 管理面板深化轮）：配置源只读投影 + project 授信管理 */}
+          <section>
+            <div className="flex items-center gap-2 pb-2">
+              <span className="text-2xs text-hi">Hooks</span>
+              <span className="text-2xs text-faint">
+                {hookSources.length === 0 ? "未配置" : `${hookSources.length} 个配置源`}
+              </span>
+            </div>
+            {hooksError !== null && (
+              <div className="mb-2 rounded-md border border-border-base bg-panel px-3 py-2 text-2xs text-danger">
+                {hooksError}
+              </div>
+            )}
+            {hookSources.length === 0 ? (
+              <div className="rounded-md border border-border-base bg-panel px-3 py-2 text-2xs text-faint">
+                {"未配置 hooks ——在 <dataRoot>/hooks.json 或 <workspace>/.raincode/hooks.json 添加"}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {hookSources.map((row) => (
+                  <HookSourceCard key={`${row.source}:${row.path}`} row={row} activeId={activeId} onChanged={onHooksChanged} />
+                ))}
+              </div>
+            )}
           </section>
         </div>
       </div>

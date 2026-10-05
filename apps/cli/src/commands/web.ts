@@ -62,6 +62,8 @@ export async function webCommand(rest: string[]): Promise<number> {
     mcp: {}, // mcp 域启用（T3.9 全量对齐补装配）：Web 宿主无装配期工作区，全局层 mcp.json 生效（06 §2.5）
     memory: {}, // memory 域启用（B2 缺陷修复：Web 宿主无装配期工作区，MEMORY.md 按会话工作区逐会话解析）（06 §2.6）
     subagent: {}, // subagent 域启用（refine-ui-context-panel 轮缺陷修复：B2 同款——三端真实入口此前均未装配，agent 工具与 subagent.* 全不可达且被 smoke 自建节点手装掩盖；无装配期工作区，profile 解析 global+builtin 层）（06 §2.5）
+    hooks: {}, // hooks 域启用（T5.1；ui-panel-deepening 轮装配缺口修复——B2 同款：此前仅 smoke 自建节点手装，真实入口 hooks.list METHOD_NOT_FOUND；user 层 <dataRoot>/hooks.json + project 层按会话工作区解析）（06 §2.12）
+    compaction: {}, // 压缩域启用（ui-panel-deepening 轮装配缺口修复——B2 同款：此前仅 smoke 自建节点手装选项，真实入口 auto-compact/microcompact/session.compact 全部失效；{} = 全缺省，窗口取活跃 Provider maxContextTokens）（02 §1.2.5）
   });
   const tokenArg = stringOrUndefined(values.token);
   const token = tokenArg ?? process.env["RAINCODE_WEB_TOKEN"] ?? randomBytes(24).toString("hex");

@@ -5,6 +5,7 @@
  */
 import type { ThemePref } from "./theme.js";
 import type { SubagentRecord } from "./subagent-view.js";
+import type { CompactionBanner } from "./compact-view.js";
 
 export interface ChatItem {
   kind: "message";
@@ -54,6 +55,8 @@ export interface SessionListEntry {
   id: string;
   title: string;
   lastActiveAt: number;
+  /** 归档态（06 §2.1；旧服务端缺省时按 Active 处理，session-filters 消费）。 */
+  state?: "Active" | "Archived";
   contextUsage?: { tokens: number; maxTokens: number };
 }
 
@@ -103,6 +106,14 @@ export interface WebState {
   contextPanelCollapsed: boolean;
   /** 主题偏好（03 §3.2）：dark / light / system，localStorage 持久化（theme.ts）。 */
   theme: ThemePref;
+  /** 侧栏检索关键字（refreshSessions 存放；session.list filter.keyword 服务端过滤口径）。 */
+  sidebarSearch: string;
+  /** 侧栏过滤：已归档会话显隐（localStorage raincode.showArchived，"1" 为真）。 */
+  showArchived: boolean;
+  /** 侧栏过滤：子会话（[subagent: 前缀）显隐（localStorage raincode.showSubsessions，"1" 为真）。 */
+  showSubsessions: boolean;
+  /** 压缩提示条（compact.started/completed 归并投影；selectSession 切会话重置瞬态）。 */
+  compaction: CompactionBanner | null;
 }
 
 export function initialWebState(themePref: ThemePref = "dark"): WebState {
@@ -125,6 +136,10 @@ export function initialWebState(themePref: ThemePref = "dark"): WebState {
     subagents: [],
     contextPanelCollapsed: false,
     theme: themePref,
+    sidebarSearch: "",
+    showArchived: false,
+    showSubsessions: false,
+    compaction: null,
   };
 }
 
