@@ -45,7 +45,8 @@
     "shots:web": "tsx scripts/product-shots-web.mts",
     "shots:desktop": "tsx scripts/product-shots-desktop.mts",
     "build:cli": "pnpm --filter @raincode/cli build",
-    "smoke:bundle": "tsx scripts/smoke-cli-bundle.mts"
+    "smoke:bundle": "tsx scripts/smoke-cli-bundle.mts",
+    "check:manager": "node scripts/check-pinned-manager.mjs"
   },
   "devDependencies": {
     "@types/ssh2": "^1.15.6",

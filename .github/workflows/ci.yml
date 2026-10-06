@@ -1,8 +1,13 @@
-# RainCode CI（07-dev-plan §10.2 T4.1 / legacy-items L-07；T4.3 增补门禁 6；T5.5 门禁 6 扩展为双生成物）
+# RainCode CI（07-dev-plan §10.2 T4.1 / legacy-items L-07；T4.3 增补门禁 6；T5.5 门禁 6 扩展为双生成物；
+# T5.7 门禁升级轮：pinned 包管理器校验入 gates + CLI bundle 构建冒烟独立 job）
 #
-# 门禁集与本地完全一致（docs/testing.md §2.4）：typecheck / lint / architecture:check / test / smoke:p0
-# / protocol:check + event-matrix:check（生成物防漂移：T4.3 协议目录 + T5.5 事件矩阵）。
-# windows-latest 为验收基准平台（01-PRD §6.1：开发机即验收基准机）。
+# gates job：门禁集与本地完全一致（docs/testing.md §2.4）：pinned manager 校验 / typecheck / lint /
+# architecture:check / test / smoke:p0 / protocol:check + event-matrix:check（生成物防漂移：T4.3 协议
+# 目录 + T5.5 事件矩阵）。windows-latest 为验收基准平台（01-PRD §6.1：开发机即验收基准机）。
+#
+# cli-bundle job（T5.7 L-16）：esbuild 前置编译产物（apps/cli/dist/raincode.mjs）随门禁回归——
+# pnpm build:cli（三件套：原生模块外置 / metafile 重复依赖校验 / alias 逐条精确声明）+
+# pnpm smoke:bundle（产物命令集与协议断言 8 项），防「源码绿、产物坏」。
 #
 # electron 二进制按需跳过：desktop 单测与 smoke 全程走 node/tsx agent 路径，
 # 不依赖 electron 运行时（apps/desktop/test/agent-host.test.ts 头注同证）；electron@33 的
@@ -44,6 +49,9 @@ jobs:
           node-version: 24
           cache: pnpm
 
+      - name: Preflight Pinned package manager（T5.7，MiMo pinned 教训）
+        run: node scripts/check-pinned-manager.mjs
+
       - name: Install（frozen lockfile）
         run: pnpm install --frozen-lockfile
 
@@ -66,3 +74,31 @@ jobs:
         run: |
           pnpm protocol:check
           pnpm event-matrix:check
+
+  cli-bundle:
+    name: CLI bundle 构建 + 产物冒烟（T5.7，windows-latest）
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install（frozen lockfile）
+        run: pnpm install --frozen-lockfile
+
+      - name: Build（esbuild 单文件 bundle + 三件套：外置清单 / metafile 重复依赖校验 / alias 逐条精确声明）
+        run: pnpm build:cli
+
+      - name: Smoke bundle（产物命令集与协议断言）
+        run: pnpm smoke:bundle

@@ -15,7 +15,6 @@ import {
   resolveSandboxExecutor,
   type ExecutorTransport,
   type ExecRequest,
-  type SpawnHandle,
 } from "../src/index.js";
 
 /** 记录型替身 transport：exec 请求全量留存供命令串断言；立即收敛。 */

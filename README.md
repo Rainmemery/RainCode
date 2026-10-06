@@ -480,7 +480,8 @@ bash 与后台任务的执行环境经 `Executor` 抽象投递（02 §5.3 扩展
 ## 开发与测试
 
 ```bash
-# 工程门禁（四命令，提交前必须全绿）
+# 工程门禁（四命令 + pinned 校验，提交前必须全绿）
+pnpm check:manager        # pinned 包管理器校验（packageManager 精确 pinned + lockfile 在位 + 实测版本一致；CI gates 前置步骤）
 pnpm typecheck            # 全仓类型检查（strict）
 pnpm lint                 # oxlint
 pnpm architecture:check   # 架构门禁：依赖白名单 / 循环依赖 / 500 行上限 / 深导入 / managedOnly

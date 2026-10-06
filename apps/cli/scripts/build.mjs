@@ -26,6 +26,7 @@ import { build } from "esbuild";
 import { cpSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertNoDuplicateDependencies } from "./lib/metafile-check.mjs";
 
 const cliRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = join(cliRoot, "..", "..");
@@ -76,8 +77,9 @@ const result = await build({
   },
 });
 
-// 三件套 2：metafile 重复依赖校验（同一包多 .pnpm 实例即失败）
-checkNoDuplicateDependencies(result.metafile);
+// 三件套 2：metafile 重复依赖校验（同一包多 .pnpm 实例即失败；纯函数在 lib/metafile-check.mjs 供单测）
+const thirdPartyCount = assertNoDuplicateDependencies(result.metafile);
+console.log(`metafile 重复依赖校验通过：${String(thirdPartyCount)} 个第三方包，无重复实例`);
 
 // migrations 随包复制（dist/migrations/*.sql；banner 指向此处）
 const migrationsTarget = join(cliRoot, "dist", "migrations");
@@ -87,38 +89,6 @@ for (const file of readdirSync(migrationsSource)) {
   if (file.endsWith(".sql")) {
     cpSync(join(migrationsSource, file), join(migrationsTarget, file));
   }
-}
-
-/**
- * 重复依赖校验：metafile.inputs 键为参与打包的每个文件路径。pnpm 实例路径形如
- * `node_modules/.pnpm/<name>@<version>[_<peer…>]/node_modules/<pkg>/…`（scoped 包名 + → /）；
- * workspace 源码经 alias 直接以各包 src/ 目录进入。按包名分组，>1 个物理实例即失败。
- */
-function checkNoDuplicateDependencies(metafile) {
-  const byPackage = new Map();
-  for (const key of Object.keys(metafile.inputs)) {
-    const normalized = key.replaceAll("\\", "/");
-    if (!normalized.includes("node_modules/.pnpm/")) {
-      continue; // workspace 源码 / 入口文件非第三方依赖
-    }
-    const spec = normalized.split("node_modules/.pnpm/")[1].split("/")[0]; // <name>@<version>[_peer…]
-    const withoutPeers = spec.split("_")[0];
-    const at = withoutPeers.lastIndexOf("@");
-    const name = withoutPeers.slice(0, at).replaceAll("+", "/");
-    const instance = withoutPeers; // 同版本不同 peer 哈希 = 不同物理实例，一并拦截
-    if (!byPackage.has(name)) byPackage.set(name, new Set());
-    byPackage.get(name).add(instance);
-  }
-  const duplicates = [...byPackage.entries()].filter(([, instances]) => instances.size > 1);
-  if (duplicates.length > 0) {
-    const detail = duplicates
-      .map(([name, instances]) => `  ${name}: ${[...instances].join(", ")}`)
-      .join("\n");
-    throw new Error(
-      `metafile 重复依赖校验失败（同一包存在多个物理实例，schema/instanceof 跨实例失效风险）:\n${detail}`,
-    );
-  }
-  console.log(`metafile 重复依赖校验通过：${String(byPackage.size)} 个第三方包，无重复实例`);
 }
 
 // 产物可执行性自检：单文件 + migrations + sourcemap 三件齐备
