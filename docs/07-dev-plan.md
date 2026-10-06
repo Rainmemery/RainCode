@@ -530,3 +530,86 @@ M5 小计：**23~35 人日**；**里程碑门槛 = T5.1~T5.5（17~26 人日）**
 - **内核强化**：Goal/Stop 判定 judge（MiMo，防乐观早停）；Max Mode best-of-N + 评审（MiMo）；工具 FIFO 闸门 + fail-cascade（MiMo gate.ts，子代理并行编排强化前置）；last-match-wins 权限语义 + hardPermission 不可放宽层 + forced-ask 超时（MiMo 对照补用例）；`session.delete` 物理删除（tombstone+vacuum 自设计）；事件版本化 + 序号落库（MiMo sync）；持久化 shell 会话工具（dsh pwsh persistent，Windows 长驻终端）；rewind checkpoint 工件（ZCode，与 git stash 方案二选一）。
 - **形态扩展**：ACP server 包装层（Zed 等 IDE 生态，3~5 人日，2 人日 spike 先行）；serve 长驻守护 + cron 调度四件套（MiMo jitter/lock/sentinel）；jobs 后台任务 + 完成通知注入原会话（dsh，约 3 人日）；动态工作流子系统（ZCode，subagent 之上的可编程编排层）。
 - **工程**：架构治理升级（ZCode architecture-policy 声明式依赖方向 + `--changed` 增量 + maxFileLines）；knip 未用导出检测；CI path-hash 分片（MiMo）；per-file 覆盖率渐进圈（dsh 豁免 membership contract 作入口）。
+
+**2026-10-06 M6 排期轮处置**（✅ 纳入 M6；⏸ 缓议 M7+；证据与理由见 [M6 排期调研报告](research/2026-10-06-m6-schedule-research.md)，任务分解见 §12.2）：
+
+| 族 | 候选项 | 处置 | 去向 |
+| --- | --- | --- | --- |
+| 扩展生态 | 插件 marketplace 分发 | ✅ 排期 | §12 T6.1（path 源先行；ZCode marketplace.json/注册表/缓存+seed 布局实证为设计输入） |
+| 扩展生态 | PermissionRequest 动态权限规则 / experimental 钩子区 / MCP OAuth 与进程树管控 | ⏸ | §12.5 |
+| 上下文与记忆 | 会话录制回放测试 lane | ✅ 排期 | §12 T6.2（§10.5 对应 ⏸ 行销账） |
+| 上下文与记忆 | spill 溢出家族 | ✅ 排期 | §12 T6.3（locator 落盘单件先行） |
+| 上下文与记忆 | checkpoint 模板晋升 / Dream/Distill / compaction-image-offload | ⏸ | §12.5 |
+| 内核强化 | Goal/Stop 判定 judge | ✅ 排期 | §12 T6.5（MVP：三态 verdict + 防早停续跑；ACMHelper 三态 checkReport + ZCode visual-judge 范式） |
+| 内核强化 | `session.delete` 物理删除 | ✅ 排期 | §12 T6.4（§10.5 对应 ⏸ 行销账；tombstone+vacuum 自设计） |
+| 内核强化 | Max Mode / FIFO 闸门 / last-match-wins 用例 / 事件版本化 / 持久化 shell / rewind checkpoint | ⏸ | §12.5 |
+| 形态扩展 | ACP server 包装层 | ⏸ 降级 | §12.5（**定论**：ZCode v3.14.4 已退役 ACP 迁自有协议——多生态兼容做在插件格式层而非协议层；如未来启用，前置 = DB 预留外部会话 ID 列 + 迁移钩子） |
+| 形态扩展 | serve 长驻守护 + cron 四件套 / jobs 后台任务 / 动态工作流 | ⏸ | §12.5（ZCode 无系统 daemon 实证：utilityProcess 子进程 + automations 调度态落库） |
+| 工程 | knip 未用导出检测 / 架构治理 `--changed` 增量 | ✅ 排期 | §12 T6.6（并入收尾） |
+| 工程 | CI path-hash 分片 / per-file 覆盖率渐进圈 | ⏸ | §12.5（CI 已双 job 且无时长压力） |
+
+---
+
+## 12. M6 增补排期：生态分发与治理收线（2026-10-06 登记）
+
+### 12.1 背景与定位
+
+本节为 M5 收官后的**增补排期**，不改变 §1~§11 的历史计划事实。定位：M5 补齐扩展机制（hooks / 记忆检索 / MCP 目录化）后，M6 沿两条线收线——**生态分发线**（marketplace 基座：插件与技能从「手工复制进目录」升级为「来源注册 → 清单发现 → 校验安装 → 可卸载」）与**治理收线**（回放 lane 把 T5.5 事件矩阵变成回归设施、spill 把上下文治理从压缩扩展到溢出落盘、`session.delete` 兑现 AC-8 注记、Goal judge 给 Stop 判定装上裁判）。
+
+证据基座：四路子代理同盘调研（[2026-10-06 M6 排期调研报告](research/2026-10-06-m6-schedule-research.md)）——ZCode 安装包解包（marketplace 全套真实文件格式 / ACP 退役实证 / 无系统 daemon 实证）、ACMHelper（三态 checkReport 门禁 / 双程序对拍证据化判定 / 任务表+状态机+token 计量）、zhixue-engine（daemon 生命周期样板）、smart-term（回放数据维度反向参考）。**01-PRD v1.2 §1.5/§1.7 已修订登记**（§6 风险 7 纪律前置条件满足）；§10.5 三条 ⏸ M6+ 行处置：回放 lane → T6.2 ✅、session.delete → T6.4 ✅、IDE 插件/后台守护/更多端 → ⏸ M7+（§12.5）。
+
+执行顺序建议：T6.1 → T6.2 → T6.3 → T6.4（依赖 T6.3 的 spill 目录布局）→ T6.5 → T6.6；T6.1 / T6.2 / T6.5 相互独立可穿插。
+
+### 12.2 任务分解表
+
+| 任务 | 产出物 | 依赖 | 预估人日 | 验收方式 |
+| --- | --- | --- | --- | --- |
+| T6.1 插件 marketplace 分发基座 | 市场清单格式（marketplace.json 字段子集：name/version/source/description/displayName/category；呈现层 i18n/icon 不做）+ 已知市场注册表（source=path 本地目录源先行，url/github 形态预留不实现）+ 安装布局（cache/<marketplace>/<plugin>/<version>/ + 内容寻址 seed 校验，ZCode「源/市场缓存副本/安装副本」三分离形态）+ symlink/junction 逃逸防护（realpath 解析后必须落在插件根内，越界拒绝并审计）+ 技能随插件分发（skill-runtime 第三源发现）+ plugins 域 RPC additive（marketplace.list / install / uninstall）+ 双端最小安装入口（可选） | 无（plugin system T2.x + skill-runtime T3.4 在位） | 3 | 单测（清单解析 / 注册表 / 安装校验 / seed 不匹配拒绝 / 逃逸防护拒绝）+ smoke:marketplace（本地 path 市场 → 安装示例插件 → 插件技能可 invoke → 卸载复原）+ 06 §7.5 协议登记 + protocol:check 绿 |
+| T6.2 会话录制回放测试 lane | 录制工具（真实/种子会话 events.jsonl → 测试 fixture 归档）+ 重放断言 harness（jsonl-resume 重放确定性：同一事件序列重放产出与原会话一致的 snapshot/投影）+ 可选 `raincode replay` 调试子命令 | events.jsonl / jsonl-resume / T5.5 事件矩阵在位 | 2 | ≥3 个录制 fixture 重放全绿且逐字段一致；harness 入常规测试与 CI；录制内容不含任何凭据（04 §5.3 口径） |
+| T6.3 spill 溢出家族 | 工具结果超阈值落盘（workspaces/<hash>/spills/ locator 文件）+ 消息内引用替换（locator 路径 + 摘要行）+ read 路径直读回看指引 + spill 目录清理口径（与 T6.4 vacuum 联动） | truncate.ts / T4.4 落盘-引用模式 | 2 | 单测（阈值触发 / locator 格式 / 引用替换 / 清理）+ smoke 用例（超大 bash 输出 → 落盘 → 消息含 locator → read 回读与原输出一致）+ compact 协同（microcompact prune 后 locator 不丢） |
+| T6.4 `session.delete` 物理删除 | tombstone 方案定案（会话行 deleted 标记或墓碑表，自设计入 05-database）+ vacuum（手动触发先行：清 events.jsonl 等会话文件与 SQLite 行，联动 spill 目录）+ 协议 additive session.delete + 双端确认交互 | T6.3（spill 目录布局） | 1.5 | 单测（删除后列表/详情/搜索不可见 / vacuum 后文件与行回收且其余会话无损 / 运行中会话拒绝删除）+ 双端冒烟 |
+| T6.5 Goal/Stop 判定 judge MVP | 目标登记（session.goal additive 或斜杠命令，objective + revision）+ Stop 判定独立 judge 调用（独立上下文只读评审，三态 verdict achieved/not_achieved/continue + evidence 摘要）+ not_achieved 注入 continue 指引续跑（次数有界）+ verdict 与证据审计落盘 + 判定证据化口径（可执行证据优先于纯 LLM 自评） | hooks Stop 事件（T5.1）/ 审批闭环 | 3 | 单测 mock LLM 四流程（达标收敛 / 未达标续跑 / 超限停机 / verdict 解析容错）+ 审计落盘断言 + 真实 LLM smoke 环境门控（smoke:remote 同口径，不计门槛）+ 06 §7.5 协议登记 |
+| T6.6 工程收尾与遗留批次 D | knip 未用导出检测（一次性报告 + 处置）+ 架构检查 `--changed` 增量模式（可选，超支即申报）+ 遗留批次 D 复查（L-01/L-14/L-17/L-18/L-19/L-20 处置复核）+ NFR 复跑留存 + M6 基准报告 docs/benchmarks/m6-*.md | 全部任务收口后 | 1.5 | 基准报告留存 + legacy-items 台账核对 + 门禁全绿（typecheck / lint / architecture / 单测 / protocol:check / event-matrix:check / smoke:p0） |
+
+（实施注记与偏差申报在任务完成后逐行回填本表，同 §11.2 惯例。）
+
+### 12.3 裁剪次序与关键路径
+
+超支时依次裁（对应 §6 风险 7 预定义裁剪纪律；质量门禁一律不裁）：
+
+1. **T6.5 Goal judge 降为设计 spike**（0.5 人日：协议草案 + 判定流程设计稿入 02-module-design，实现列 M7+）——判定依赖真实 LLM 验证闭环，是全表最重的不确定项；
+2. **T6.1 marketplace 缩为「本地 path 源最小分发」**（技能第三源与双端安装入口顺延，仅插件包安装/卸载/校验）；
+3. **T6.2 回放 lane 缩为纯内部 harness**（`raincode replay` 子命令顺延）。
+
+不可裁：T6.3 spill、T6.4 session.delete（治理主线，AC-8 注记兑现承诺）、T6.6 收尾（台账与基准留存纪律）。
+
+关键路径：T6.3 → T6.4（spill 目录布局被 vacuum 消费）；其余任务相互独立。
+
+### 12.4 验收清单
+
+**工程门槛**：
+1. 单测全绿（T6.x 新增用例）且 smoke:p0 全回归；T6.1/T6.5 若新增协议方法/事件，protocol:check + event-matrix:check 双生成物绿且 06 §7.5 已登记（additive）。
+2. architecture:check 0 违规；typecheck 14 项目全绿；lint 0 error。
+3. knip 报告产出并处置（或如实申报保留项）。
+
+**功能验收场景**：
+1. marketplace：本地 path 市场注册 → 安装示例插件（seed 校验通过）→ 插件技能经第三源可见且可 invoke → 卸载复原；junction 指向插件根外的安装被拒绝且审计可见。
+2. 回放 lane：≥3 个录制 fixture 重放与原会话 snapshot 逐字段一致。
+3. spill：超大工具结果落盘 locator、消息引用替换、read 回读一致；microcompact prune 后 locator 不丢。
+4. session.delete：删除后列表/详情/搜索均不可见 → vacuum 后文件与行回收、其余会话无损 → 运行中会话拒绝删除。
+5. Goal judge：mock 四流程（达标收敛/未达标续跑/超限停机/容错）绿；真实 LLM 场景环境门控申报。
+
+**台账核对**：legacy-items 待收口保持 0；§10.5/§11.5 处置记录与本节一致；PROGRESS §1 计数刷新（申报性保留计数校准）。
+
+**性能抽查**：NFR-1 / NFR-2 / NFR-6 复跑不劣化（T6.3 spill 触及工具结果热路径、T6.5 触及 Stop 热路径）。
+
+### 12.5 M7+ 候选沉淀（2026-10-06 更新）
+
+承接 §11.5 未排期项 + 本轮调研新证据，仅列方向不做承诺（排期前仍须先修订 01-PRD）：
+
+- **形态扩展**：serve 长驻守护 + cron 调度四件套（jitter/lock/sentinel；设计参照 zhixue-engine systemd unit/healthcheck/优雅停机样板 + ZCode「调度态落库 automations 表（含 budget 字段）+ utilityProcess 子进程承载、不做系统 daemon」形态）；jobs 后台任务 + 完成通知注入原会话（任务表 + token_usage 计量参照 ACMHelper generation_tasks）；动态工作流子系统（ZCode workflow_run 表 budget/phase 字段参照）；ACP 复议（前置 = DB 预留外部会话 ID 列 + 迁移钩子；ZCode 退役实证见调研报告 §1.3）。
+- **扩展生态**：marketplace url/github 远端源与呈现层（i18n/icon/examplePrompts）；PermissionRequest hook 与 permissionUpdates 动态权限规则；experimental 钩子区（chat.messages.transform / session.compacting，MiMo 分层纪律）；MCP OAuth 与进程树管控。
+- **上下文与记忆**：checkpoint 结构化模板 + 候选晋升（MiMo 10 节模板）；Dream/Distill 自动记忆固化；compaction-image-offload；spill 家族扩展（归档压缩 / 跨会话 locator 复用）。
+- **内核强化**：Max Mode best-of-N + 评审；工具 FIFO 闸门 + fail-cascade（子代理并行编排强化前置）；last-match-wins 权限语义 + hardPermission 不可放宽层 + forced-ask 超时（对照补用例）；事件版本化 + 序号落库；持久化 shell 会话工具（Windows 长驻终端）；rewind checkpoint 工件（与 git stash 方案二选一）；Goal judge 强化（与 Max Mode/子代理 verdict 联动、判定证据面扩展）。
+- **工程**：CI path-hash 分片；per-file 覆盖率渐进圈（dsh 豁免 membership contract 作入口）；架构声明式依赖方向（ZCode architecture-policy）。
+- **升格候选（legacy-items 申报项，升格仍须先修订 PRD）**：L-18 ask_user_question awaiting_user 全状态机、L-20 会话列表工作区过滤、L-24 附件入口。

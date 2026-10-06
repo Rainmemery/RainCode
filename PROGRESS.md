@@ -13,7 +13,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 当前里程碑 | **M3 全量完成 ✅**（T3.1~T3.9 全绿 + NFR-1~7 全量重测 + 4.2 对比矩阵核对，见 docs/benchmarks/m3-2026-10-02.md）· **M4 全量完成 ✅**（工程加固与遗留收口：07-dev-plan §10，T4.1 CI ✅ · T4.2 竞态修复 ✅ · T4.3 协议目录 ✅ · T4.4 技能模型侧可发现性 ✅ · T4.5 Web 管理面板对齐 ✅ · T4.6 防御式模式文档 ✅ · T4.7 遗留收口批次 A ✅ · T4.8 遗留收口批次 B ✅（环境门控批次：L-02/03/15 执行收口 + L-14 矩阵自动化，L-01/三 Provider 密钥保留口径申报）· T4.9 可视化测试缺陷修复批次 ✅（B1~B13）；验收清单核对见 docs/benchmarks/m4-2026-10-04.md §7）· **M5 全量完成 ✅**（扩展机制与上下文治理：07-dev-plan §11，T5.1 hooks v1 ✅ / T5.2 沙箱 enforcement 上报 ✅ / T5.3 记忆与历史检索增强 ✅ / T5.4 compact 预剪枝 ✅ / T5.5 可观测性（config dump + 事件矩阵）✅ / T5.6 MCP 工具目录化 ✅ / T5.7 工程收尾+遗留批次 C ✅（CLI esbuild 前置编译三件套 L-16 核销 + SSH base64 加固 T4.8 残差核销 + pinned 包管理器校验与 bundle 冒烟入 CI + L-14/L-01 复查 + NFR 抽查）；参照 [docs/research/2026-10-04-m5-reference-repos.md]，01-PRD v1.1 已登记） |
+| 当前里程碑 | **M3 全量完成 ✅**（T3.1~T3.9 全绿 + NFR-1~7 全量重测 + 4.2 对比矩阵核对，见 docs/benchmarks/m3-2026-10-02.md）· **M4 全量完成 ✅**（工程加固与遗留收口：07-dev-plan §10，T4.1 CI ✅ · T4.2 竞态修复 ✅ · T4.3 协议目录 ✅ · T4.4 技能模型侧可发现性 ✅ · T4.5 Web 管理面板对齐 ✅ · T4.6 防御式模式文档 ✅ · T4.7 遗留收口批次 A ✅ · T4.8 遗留收口批次 B ✅（环境门控批次：L-02/03/15 执行收口 + L-14 矩阵自动化，L-01/三 Provider 密钥保留口径申报）· T4.9 可视化测试缺陷修复批次 ✅（B1~B13）；验收清单核对见 docs/benchmarks/m4-2026-10-04.md §7）· **M5 全量完成 ✅**（扩展机制与上下文治理：07-dev-plan §11，T5.1 hooks v1 ✅ / T5.2 沙箱 enforcement 上报 ✅ / T5.3 记忆与历史检索增强 ✅ / T5.4 compact 预剪枝 ✅ / T5.5 可观测性（config dump + 事件矩阵）✅ / T5.6 MCP 工具目录化 ✅ / T5.7 工程收尾+遗留批次 C ✅（CLI esbuild 前置编译三件套 L-16 核销 + SSH base64 加固 T4.8 残差核销 + pinned 包管理器校验与 bundle 冒烟入 CI + L-14/L-01 复查 + NFR 抽查）；参照 [docs/research/2026-10-04-m5-reference-repos.md]，01-PRD v1.1 已登记）· **M6 已排期 📅**（生态分发与治理收线：07-dev-plan §12，T6.1~T6.6 共 13 人日，2026-10-06 登记；01-PRD v1.2 §1.7 已登记；证据基座 = 同盘四路子代理调研 [docs/research/2026-10-06-m6-schedule-research.md]） |
 | 已完成任务 | M1 全量 ✅ · M2 全量（T2.1~T2.10）✅ · M3 全量（T3.1~T3.9）✅ · M4 全量 ✅（T4.1~T4.9）· M5 全量 ✅（T5.1 hooks v1 / T5.2 enforcement / T5.3 记忆与历史检索 / T5.4 compact 预剪枝 / T5.5 可观测性 / T5.6 MCP 工具目录化 / T5.7 工程收尾+遗留批次 C）· UI 重设计轮（双端统一赤陶磷光 v1.1）✅ · UI 重设计二轮（思考块 + 工具卡 v2 生产级深化，03 v1.2）✅ · UI 重构轮（组件化 + 冷重建补全 + 产品截图管线，03 v1.3 / 协议 v1.13）✅ · UI 浅色主题落地轮（§3.2 预留 → 双端实现 + 三态切换，03 v1.4）✅ · UI 三栏演进轮（右侧上下文面板 + 子代理呈现 + 侧栏折叠，03 v1.5）✅ · UI 管理面板深化轮（设置页六组导航 + 会话操作检索 + 压缩可视化 + Hooks 分区 + 键盘可达，03 v1.6）✅ · UI 异常态与运行时面板收口轮（§7 异常态与加载态收口 + §8.1 键盘可达与焦点管理 + 后台任务 Tab + 工具目录 + 决策审计 + 记忆检索服务端化与命中高亮 + 输入区模型快切与未配置引导 + L-22 核销，03 v1.7）✅ |
 | 最新提交 | 见 `git log -1` |
 | 工作区状态 | clean（`.trae/` spec 文档为工作区过程资产，不入库） |
@@ -32,12 +32,17 @@
 | M3 | P2 | 七模块全量对齐 | ✅ 完成（2026-10-03，T3.1~T3.9 + NFR 全量重测 + 4.2 矩阵核对；环境不可得人工项见 m3 报告 §8） |
 | M4 | —（增补） | 工程加固与遗留收口（CI 落地 / 内核收尾竞态 / 生成式协议目录 / 技能模型侧可发现性 / Web 管理面板 / 防御式模式文档 / 遗留收口两批次 / 可视化缺陷修复批次） | ✅ 完成（2026-10-04，T4.1~T4.9；验收核对见 docs/benchmarks/m4-2026-10-04.md §7；L-01/L-14 环境门控保留口径） |
 | M5 | —（增补） | 扩展机制与上下文治理（hooks 生命周期 v1 / 沙箱 enforcement 上报 / 记忆与历史检索增强 / compact 预剪枝 / config dump+事件矩阵 / MCP 工具目录化 / 工程收尾+遗留批次 C） | ✅ 完成（2026-10-04 起 ~ 2026-10-06，07-dev-plan §11：T5.1 hooks v1 ✅ 2026-10-04；T5.2 enforcement ✅ / T5.3 记忆与历史检索 ✅ / T5.4 compact 预剪枝 ✅ / T5.5 可观测性 ✅ 2026-10-05（门槛 T5.1~T5.5 全部达成）；T5.6 MCP 工具目录化 ✅ 2026-10-06（协议零变更，58 方法/21 事件）；T5.7 工程收尾 ✅ 2026-10-06（L-16 核销 + T4.8 SSH 残差核销 + CI 门禁升级）；L-01/L-14 环境门控保留口径复查申报；参照三仓调研 docs/research/2026-10-04-m5-reference-repos.md，01-PRD v1.1 已登记） |
+| M6 | —（增补） | 生态分发与治理收线（插件 marketplace 分发基座 / 会话录制回放测试 lane / spill 溢出家族 / session.delete 物理删除 / Goal judge MVP / 工程收尾+遗留批次 D） | 📅 已排期（2026-10-06，07-dev-plan §12：T6.1~T6.6 共 13 人日，裁剪次序 §12.3；01-PRD v1.2 §1.7 已登记——风险 7 纪律前置条件满足；证据基座 docs/research/2026-10-06-m6-schedule-research.md） |
 
 ---
 
 ## 3. 已完成任务日志（倒序追加）
 
 > 格式：`[日期] 任务 — 结果`（含关键产出物与提交号）。**新条目插在本节最上方。**
+
+### 规划轮（M5 收官后）
+
+- [2026-10-06] M6 排期轮（用户指令：子代理调研目录下其余项目与当前进展 → 详细调研分析 → M6 排期；协议零变更）——a) **四路子代理只读调研**：① RainCode 自身进展与 M6 候选锚点复核（07 §11.5 五族 + §10.5 三条 ⏸ 行 + 代码侧钩子：events.jsonl/jsonl-resume 回放前提半成立、compact 三件套在位、Goal judge 零代码、plugin/skill 系统在位缺分发、rpc transport 扩展点）；② D:\ACMHelper（ICPC 出题 Agent 系统：三态 checkReport 门禁 + 双程序对拍证据化判定 + generation_tasks 任务表/状态机/token 计量 + 失败不回滚手动重试；后端未实现仅文档+mock 如实申报）；③ D:\ZCODE 安装包解包（v3.14.4：marketplace.json / known_marketplaces.json / 缓存+seed 内容寻址布局 / plugin.json 组件字段 / SKILL.md 契约全套真实格式；**ACP 已退役迁自有协议**（退役目录清单 + acp_session_id 迁移器 + legacy 恢复插件）；**无系统 daemon**（utilityProcess 子进程 + automations 调度态落库）；compact trigger 枚举与 model-io 分层录制参照）；④ zhixue-engine（systemd unit/healthcheck/优雅停机/JudgeWorker 轮询线程池样板）+ smart-term（无回放——命令级三元组反向定义回放数据维度）+ 其余同盘项目排除记录。b) **调研报告落盘** docs/research/2026-10-06-m6-schedule-research.md（各源发现 + 五族证据映射 + 取舍结论）。c) **M6 定案「生态分发与治理收线」**（07 §12，13 人日）：纳入 T6.1 marketplace 分发基座（path 源先行 + 逃逸防护 + seed 校验 + 技能第三源）/ T6.2 回放测试 lane / T6.3 spill 溢出家族 / T6.4 session.delete（tombstone+vacuum）/ T6.5 Goal judge MVP（三态 verdict + 防早停续跑）/ T6.6 工程收尾+遗留批次 D（knip / --changed / NFR 复跑）；明确不做：ACP（ZCode 退役实证降级，如未来启用前置 = DB 预留外部会话 ID 列 + 迁移钩子）、系统级守护（ZCode 无系统 daemon 实证）、市场远端源与呈现层、逐帧终端回放；裁剪次序 T6.5 降 spike → T6.1 缩水 → T6.2 缩水，不可裁 T6.3/T6.4/T6.6；§10.5 三条 ⏸ M6+ 行全部销账。d) **01-PRD v1.2**（风险 7 纪律前置条件）：头部升版 + §1.5 M6 行 + §1.7 M6 增补范围三段式 + §5 新功能点 AC-13（Goal/Stop 判定 judge）/ TL-8（marketplace 分发基座）/ TL-9（spill 溢出治理）+ AC-8 注记更新（物理删除登记入 M6）。e) **07 §12**：§11.5 追加处置记录表（五族 12 行）+ §12.1~§12.5（背景定位 / 任务分解表 / 裁剪次序与关键路径 / 验收清单 / M7+ 候选沉淀含本轮调研新证据）。f) PROGRESS §1/§2/§3/§5 刷新；申报性保留计数校准 4→5（legacy-items 实有 L-09/18/19/20/24 五项，§5 注记漏 L-24 溯源于 UI 收口轮申报后未同步）。（本轮提交）
 
 ### UI 异常态与运行时面板收口轮（spec 驱动，03-ui-design v1.6 → v1.7）
 
@@ -182,21 +187,22 @@
 
 ---
 
-## 5. 下一步队列（M5 全量完成 ✅：07-dev-plan §11，T5.1~T5.7 全部收口）
+## 5. 下一步队列（M6 已排期 📅：07-dev-plan §12「生态分发与治理收线」，2026-10-06 登记）
 
-> 取任务时**必须**回读 `docs/07-dev-plan.md` 对应任务行获取完整验收标准；遗留项全景见 `docs/legacy-items.md`（当前：待收口 0 · 环境门控保留 2 · 申报性保留 4 · 运维保留 1——L-16 已于 T5.7 核销）。
+> 取任务时**必须**回读 `docs/07-dev-plan.md` §12.2 对应任务行获取完整验收标准；遗留项全景见 `docs/legacy-items.md`（当前：待收口 0 · 环境门控保留 2 · 申报性保留 5 · 运维保留 1——L-16 已于 T5.7 核销；申报性保留计数 2026-10-06 校准 4→5）。
 
-M5「扩展机制与上下文治理」执行顺序（07 §11.2/§11.3，23~35 人日，门槛 T5.1~T5.5）：
+M6「生态分发与治理收线」执行顺序（07 §12.2/§12.3，13 人日；T6.1/T6.2/T6.5 相互独立可穿插，T6.4 依赖 T6.3）：
 
-1. ~~T5.1 hooks 生命周期 v1~~ ✅（2026-10-04，见 §3：协议 v1.12 / smoke:hooks 五用例入 p0 回归 / trust 授信闭环）。
-2. ~~T5.2 沙箱 enforcement 上报~~ ✅（2026-10-05，见 §3：四执行域自报 local=partial / docker=full / wsl=partial 偏差申报 / ssh 远端探针缺省 partial + bash 结果 data 持续携带 + PATH_ESCAPED 模型可见拒绝标记；协议零变更）。
-3. ~~T5.3 记忆与历史检索增强~~ ✅（2026-10-05，见 §3：history FTS part 级索引 versioned 增量迁移 + 相对分数地板/3x 过取样/LIKE 兜底/排除当前会话 + 全局记忆 RAINCODE_HOME/MEMORY.md 双层注入 + L2 scope 列预留 + `session_search` 模型工具 + 02 §7 检索一致性不变量注记；不做 embeddings；协议零变更）。
-4. ~~T5.4 compact 预剪枝~~ ✅（2026-10-05，见 §3：micro 线 0.9×full compact 线 + 白名单/保留 5/最小节省 256 + head+marker+tail 按码点单过收敛 + `compaction.pruned` storage 级事件 sourceMessageId 回指 prunedContent 内联 + 不取压缩锁不 bump epoch + 节省回落 usage 估算 full compact 让位；协议零变更）。
-5. ~~T5.5 可观测性：config dump + 事件矩阵~~ ✅（2026-10-05，见 §3：`raincode config dump` 两域归并链逐项标来源 + permissions/compaction 未接线诚实标注 + `--default-only` 损坏诊断 + 明文密钥不入输出；事件矩阵 25 事件（协议 21 + 存储级 4）声明/派发/监听 + 登记式排除/覆盖/豁免 + 防漏登记守卫 + `event-matrix:check` 入双生成物门禁 6 + 手改变红实测；协议零变更）。**M5 门槛（T5.1~T5.5）全部达成**。
-6. ~~T5.6 MCP 工具目录化~~ ✅（2026-10-06，见 §3：协议零变更 58 方法/21 事件 + 新增数据级 TOOL_MCP_NOT_LOADED——目录模式 mcp 域默认启用（toolSearch:false 关闭），MCP schema 不再全量进模型载荷：目录摘要（预算 10% 窗口封顶 20000，富→名称→前缀+省略三级降级）+ BM25 K1=1.2 检索（相对分数地板、上限 32）+ 请求域激活（下一轮生效/round1 重置/累计有界/确定性重导出）+ 调度守卫未加载直调拒绝 + digest 热变更重发布；多 server fixture token 对比断言 + search mock e2e + 热变更重发布三验收全过；偏差申报：MiMo 上下文压力降级不做、子代理循环维持全量 schema）。
-7. ~~T5.7 工程收尾 + 遗留批次 C~~ ✅（2026-10-06，见 §3：CLI esbuild 前置编译三件套 L-16 核销（单文件 ESM bundle + 原生模块外置 + metafile 重复依赖校验 + alias 逐条精确声明 + banner 自举 migrations/appVersion/require 绑定）+ smoke:bundle 产物冒烟 8 断言 + SSH base64 加固（T4.8 双引号残差核销，smoke:ssh 双引号保真场景转绿）+ pinned 包管理器校验与 CLI bundle 冒烟入 CI（MiMo pinned 教训）+ L-14 复查 1/2（ollama 本机模型缺失如实申报）/ L-01 复测不可得口径不变 / NFR 抽查 NFR-1/2/7 全达标）。
+1. **T6.1 插件 marketplace 分发基座**（3 人日）——市场清单（marketplace.json 字段子集）+ 已知市场注册表（path 源先行）+ 安装布局（cache/<marketplace>/<plugin>/<version>/ + 内容寻址 seed 校验）+ symlink/junction 逃逸防护 + 技能随插件分发第三源 + plugins 域 RPC additive。验收：smoke:marketplace 安装 → 插件技能 invoke → 卸载复原 + 逃逸防护拒绝用例。
+2. **T6.2 会话录制回放测试 lane**（2 人日）——录制 → fixture 归档 → jsonl-resume 重放确定性 harness（回放格式 = 事件日志格式本身，T5.5 基座兑现）。验收：≥3 录制 fixture 逐字段一致 + harness 入 CI。
+3. **T6.3 spill 溢出家族**（2 人日）——超大工具结果落盘 locator + 消息引用替换 + read 回看 + 清理口径。验收：smoke 超大输出 → locator → read 回读一致 + microcompact 协同。
+4. **T6.4 `session.delete` 物理删除**（1.5 人日，依赖 T6.3）——tombstone + vacuum 自设计（05-database 定案）+ 双端确认交互。验收：删除后不可见 / vacuum 回收无损 / 运行中拒绝。
+5. **T6.5 Goal/Stop 判定 judge MVP**（3 人日）——目标登记 + 独立 judge 三态 verdict（achieved/not_achieved/continue + evidence）+ 防早停续跑（有界）+ 审计落盘 + 判定证据化优先。验收：mock 四流程 + 真实 LLM 环境门控申报（不计门槛）。
+6. **T6.6 工程收尾与遗留批次 D**（1.5 人日）——knip 未用导出检测 / 架构 `--changed` 增量 / L 批次复查（L-01/14/17/18/19/20）/ NFR 复跑 / M6 基准报告。
 
-**M5 全量收官。下一里程碑 M6+ 未排期**：候选五族见 07 §11.5（marketplace / ACP / 守护进程 / 回放 lane / spill / Goal judge 等）与 §10.5 处置表——**排期前必须先修订 01-PRD**（07 风险 7 纪律）。环境门控项（L-01 Docker/WSL、L-14 其余 Provider 密钥与 ollama 模型、真 OpenSSH/Linux 远端）就绪即执行不计门槛：Provider 密钥到位 → 写入本地 `config/remote-providers.local.json` 跑 `pnpm smoke:remote`。开放 UI 线小项（未排期）：沙箱 Tab（无 sandbox.* RPC 域，禁假 UI）、消息数徽章（session.list 无字段）、附件入口（L-24）、限流 429 横条。
+裁剪次序（07 §12.3）：超支依次 T6.5 降设计 spike → T6.1 缩为最小分发 → T6.2 缩为纯 harness；**不可裁 T6.3/T6.4/T6.6**（治理主线与收尾纪律）；质量门禁一律不裁。
+
+**M6 之后**：M7+ 候选已沉淀 07 §12.5（守护/cron 四件套、jobs 后台任务、ACP 复议、动态工作流、PermissionRequest 动态权限、experimental 钩子区、MCP OAuth、checkpoint 晋升、Dream/Distill、Max Mode、FIFO 闸门、事件版本化、持久化 shell、rewind checkpoint 等）——排期前仍须先修订 01-PRD（07 风险 7 纪律）。环境门控项（L-01 Docker/WSL、L-14 其余 Provider 密钥与 ollama 模型、真 OpenSSH/Linux 远端）就绪即执行不计门槛：Provider 密钥到位 → 写入本地 `config/remote-providers.local.json` 跑 `pnpm smoke:remote`。开放 UI 线小项（未排期）：沙箱 Tab（无 sandbox.* RPC 域，禁假 UI）、消息数徽章（session.list 无字段）、附件入口（L-24）、限流 429 横条。
 
 ---
 

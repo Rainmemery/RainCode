@@ -3,9 +3,9 @@
 | 项目 | 内容 |
 | --- | --- |
 | 产品代号 | RainCode（个人 AI 编程工作台） |
-| 文档版本 | v1.1 |
-| 发布日期 | 2026-09-24（v1.1 修订 2026-10-04） |
-| 文档状态 | 正式定稿；v1.1 增补 M5 里程碑登记（M4 收官后三仓调研修订，见 §1.5/§1.6 与 [07 §11](07-dev-plan.md)） |
+| 文档版本 | v1.2 |
+| 发布日期 | 2026-09-24（v1.1 修订 2026-10-04；v1.2 修订 2026-10-06） |
+| 文档状态 | 正式定稿；v1.2 增补 M6 里程碑登记（M5 收官后同盘调研修订，见 §1.5/§1.7 与 [07 §12](07-dev-plan.md)）；v1.1 增补 M5 里程碑登记（见 §1.5/§1.6 与 [07 §11](07-dev-plan.md)） |
 | 关联文档 | 02-module-design（模块详设）· 03-ui-design（双端 UI 规范）· 04-architecture（技术架构）· 05-database（存储设计）· 06-api-spec（协议全集）· 07-dev-plan（开发计划）· [legacy-items](legacy-items.md)（遗留项台账） |
 
 > 本文档是 RainCode 的顶层产品需求文档，为后续架构与模块文档提供术语与范围基线。文中七大功能模块命名、P0/P1/P2 优先级划分与性能指标为强约束基线，后续文档必须与本文档保持一致。
@@ -49,6 +49,7 @@ RainCode 是一个面向个人开发者的本地优先 AI 编程工作台：由 
 | M2 | P1 | 上下文压缩、MCP 接入、子代理、项目记忆 + 桌面端 Alpha |
 | M3 | P2 | 沙箱容器（Docker/WSL）、技能与斜杠命令扩展、插件化、远程执行、Web 界面，七大模块全量对齐行业水平 |
 | M5（2026-10-04 增补） | —（增补） | 扩展机制与上下文治理：hooks 生命周期、沙箱 enforcement 上报、记忆/历史检索增强、compact 预剪枝、config dump 与事件矩阵可观测性、MCP 工具目录化（范围登记见 §1.6，任务分解见 [07 §11](07-dev-plan.md)） |
+| M6（2026-10-06 增补） | —（增补） | 生态分发与治理收线：插件 marketplace 分发基座、会话录制回放测试 lane、spill 溢出治理、session.delete 物理删除、Goal/Stop 判定 judge MVP、工程收尾（范围登记见 §1.7，任务分解见 [07 §12](07-dev-plan.md)） |
 
 ### 1.6 M5 增补范围（2026-10-04 修订登记）
 
@@ -57,6 +58,14 @@ M1~M3 已完成本 PRD 全量范围（P0/P1/P2），M4 完成工程加固与遗�
 - **纳入（T5.1~T5.7，07 §11）**：hooks 生命周期 v1（PreToolUse/PostToolUse/UserPromptSubmit/Stop + project 级信任授信 + JSON 输出契约）；沙箱 enforcement 上报（full/partial）；记忆与历史检索增强（history FTS + 全局记忆，**不做 embeddings**）；compact 预剪枝（旧工具结果先行清理，剪枝可回指原文）；`raincode config dump` 与事件生产者/消费者矩阵；MCP 工具目录化（按需加载治 token 膨胀）；工程收尾（CLI esbuild 编译 / SSH base64 加固 / 遗留批次 C）。
 - **明确不做（调研定论）**：embeddings 向量检索与代码语义索引（三参照仓均未实现，FTS+BM25 路线已够用）、会话录制回放 lane（先做事件矩阵与导出基座）、IDE 插件（以 ACP 标准协议评估为前置，M6+ spike）、后台守护进程、插件 marketplace、per-file 覆盖率 100% 门禁。
 - **M6+ 候选**（marketplace / ACP / 守护进程 / 回放 lane / spill 溢出 / Goal 判定等）：沉淀于 [07 §11.5](07-dev-plan.md)，排期前同样必须先修订本文档登记。
+
+### 1.7 M6 增补范围（2026-10-06 修订登记）
+
+M5 收官后经同盘调研（本地其余项目 [ACMHelper / ZCode 安装包 / zhixue-engine / smart-term 调研报告](research/2026-10-06-m6-schedule-research.md)，四路子代理）确定的**增补里程碑**，不改变 §1~§9 的历史基线：
+
+- **纳入（T6.1~T6.6，07 §12）**：插件 marketplace 分发基座（本地 path 源先行 + symlink/junction 逃逸防护 + 内容寻址校验 + 技能随插件分发第三源，功能点 TL-8）；会话录制回放测试 lane（回放格式 = 事件日志格式本身，工程设施不设功能点）；spill 溢出治理（超大工具结果落盘 locator + 消息引用替换，功能点 TL-9）；`session.delete` 物理删除（tombstone + vacuum 自设计，兑现 AC-8 注记）；Goal/Stop 判定 judge MVP（目标登记 + 独立 judge 三态 verdict + 防乐观早停续跑，功能点 AC-13）；工程收尾与遗留批次 D（knip 未用导出检测 / 架构检查 --changed / NFR 复跑与 M6 基准留存）。
+- **明确不做（本轮调研定论）**：ACP server 包装层（ZCode v3.14.4 已退役 ACP 迁自有协议的实证——其多生态兼容做在插件格式层而非协议层；若未来启用，前置条件 = DB 预留外部会话 ID 列 + 迁移钩子）；系统级守护进程（ZCode 无系统 daemon，utilityProcess 子进程 + 调度态落库形态足够，serve 长驻 + cron 四件套列 M7+）；插件市场远端源（url/github）与呈现层（i18n/icon/示例 prompt）；逐帧终端回放（回放 lane 限定事件日志重放）。
+- **M7+ 候选**（守护/cron 四件套、jobs 后台任务、ACP 复议、PermissionRequest 动态权限、experimental 钩子区、MCP OAuth、checkpoint 晋升、Dream/Distill、Max Mode、工具 FIFO 闸门、事件版本化、持久化 shell、rewind checkpoint、动态工作流等）：沉淀于 [07 §12.5](07-dev-plan.md)。
 
 ---
 
@@ -278,11 +287,12 @@ RainCode 面向**个人开发者**，不设团队协作与组织管理能力。�
 | AC-5 | 会话持久化 | P0 | SQLite 存会话元数据 + JSONL 追加写消息流，任意崩溃后 100% 可恢复 |
 | AC-6 | 上下文组装 | P0 | 按系统提示词、项目记忆、历史消息、工具定义组装上下文，依据 maxContextTokens 截断 |
 | AC-7 | 上下文压缩 auto-compact | P1 | 接近上下文上限时后台异步摘要压缩历史消息，不阻塞用户交互 |
-| AC-8 | 会话生命周期 | P0 | 会话创建、列表、恢复、删除（实现注记 2026-10-03：「删除」语义由 `session.archive` 归档承载——归档只读、保留全部数据，见 06 §2.1 与 legacy-items L-11；物理删除未提供，列 M5+ 候选） |
+| AC-8 | 会话生命周期 | P0 | 会话创建、列表、恢复、删除（实现注记 2026-10-03：「删除」语义由 `session.archive` 归档承载——归档只读、保留全部数据，见 06 §2.1 与 legacy-items L-11；物理删除未提供，列 M5+ 候选。**2026-10-06 v1.2 增补**：物理删除 `session.delete`（tombstone + vacuum 自设计）登记入 M6，见 §1.7 与 07 §12 T6.4） |
 | AC-9 | 会话管理增强 | P1 | 会话重命名、归档、分叉 |
 | AC-10 | Token 用量与成本统计 | P1 | 逐请求统计 token 用量并按 Provider 单价估算费用，会话内汇总展示 |
 | AC-11 | 模型运行时切换 | P1 | 设置页/命令行快速切换 Provider 与模型，切换后当前会话可继续 |
 | AC-12 | 结构化输出校验 | P1 | 模型输出与工具参数统一经 zod schema 校验，非法输出触发受限重试 |
+| AC-13 | Goal/Stop 判定 judge | P1（M6 增补） | 会话目标登记（objective + revision）；Stop 判定时独立 judge 评审产出三态 verdict（achieved / not_achieved / continue + evidence 摘要），未达标注入 continue 指引续跑防乐观早停（续跑次数有界）；verdict 与证据审计落盘；判定证据化优先（可执行证据优于纯 LLM 自评） |
 
 ### 5.2 工具调用系统 Tool System
 
@@ -295,6 +305,8 @@ RainCode 面向**个人开发者**，不设团队协作与组织管理能力。�
 | TL-5 | 并行工具调用 | P1 | 相互独立的只读工具（glob/grep/read）并行执行，缩短 turn 时长 |
 | TL-6 | 技能与斜杠命令扩展体系 | P2 | 用户自定义技能包与 / 命令，扩展 Agent 的可复用工作流（实现注记：M3 T3.4 落地清单/斜杠命令与 `skills.list`/`skills.invoke`；M4 T4.4 补模型侧可发现性——系统提示技能目录逐 turn digest 重发布 + `skill` 内置工具复用展开链路 + frontmatter `modelInvocable` 开关） |
 | TL-7 | 插件化 | P2 | 第三方插件加载、启停与生命周期管理 |
+| TL-8 | 插件 marketplace 分发基座 | P1（M6 增补） | 市场清单（marketplace.json 字段子集）+ 已知市场注册表（本地 path 源先行，url/github 预留不实现）+ 安装布局（缓存副本 + 内容寻址种子校验）+ symlink/junction 逃逸防护（路径解析约束插件根内）+ 技能随插件分发（skill-runtime 第三源）；市场呈现层（i18n/icon/示例 prompt）不做 |
+| TL-9 | 工具结果 spill 溢出治理 | P1（M6 增补） | 超大工具结果超阈值落盘（spill 目录 locator 文件），消息内替换为 locator 引用（路径 + 摘要行），read 工具路径直读回看，会话删除/清理联动回收 |
 
 ### 5.3 MCP 调用 MCP Integration
 
