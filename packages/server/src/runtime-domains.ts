@@ -10,6 +10,7 @@ import type { Storage } from "@raincode/storage";
 import type { SectionEditHooks } from "@raincode/memory";
 import { McpRuntime } from "./mcp-runtime.js";
 import { PluginRuntime } from "./plugin-runtime.js";
+import { MarketplaceRuntime } from "./marketplace-runtime.js";
 import { SubagentRuntime } from "./subagent-runtime.js";
 import { SkillRuntime } from "./skill-runtime.js";
 import { MemoryRuntime } from "./memory-runtime.js";
@@ -21,6 +22,8 @@ export interface RuntimeDomainInputs {
   /** toolSearch = false 显式关闭 MCP 工具目录化（T5.6；缺省启用）。 */
   mcp?: { workspaceRoot?: string; toolSearch?: boolean };
   plugins?: Record<string, never>;
+  /** marketplace 域装配（T6.1 / 06 §2.10 v1.14；要求 plugins 域在位——缺位不装配并诊断）。 */
+  marketplace?: Record<string, never>;
   subagent?: { workspaceRoot?: string };
   memory?: { workspaceRoot?: string; sectionEditHooks?: SectionEditHooks };
   skills?: Record<string, never>;
@@ -49,6 +52,8 @@ export interface RuntimeDomainDeps {
 export interface RuntimeDomains {
   mcp: McpRuntime | null;
   plugins: PluginRuntime | null;
+  /** marketplace 域（T6.1；plugins 域缺位时连带不装配）。 */
+  marketplace: MarketplaceRuntime | null;
   subagent: SubagentRuntime | null;
   memory: MemoryRuntime | null;
   skills: SkillRuntime | null;
@@ -75,11 +80,29 @@ export function buildRuntimeDomains(inputs: RuntimeDomainInputs, deps: RuntimeDo
     console.error("[raincode/server] mcp domain degraded: init failed", err);
   });
   // 插件域（06 §2.10 v1.8）：目录扫描 + 激活异步进行，单插件故障隔离为 failed 状态
-  // （bootstrap 于构造期启动；控制面方法经就绪门等待初次扫描完成）
+  // （bootstrap 于构造期启动；控制面方法经就绪门等待初次扫描完成）。
+  // T6.1 postBootstrap 钩子：初扫完成后、ready 放行前由 marketplace 域执行台账重 attach
+  //（保证重启后首次 plugins.list 已含市场安装插件；marketplace 缺位时钩子空转）。
+  let marketplaceRuntime: MarketplaceRuntime | null = null;
   const plugins =
     inputs.plugins === undefined
       ? null
-      : new PluginRuntime({ registry: deps.registry, dataRoot: deps.storage.dataRoot, publish: deps.publish });
+      : new PluginRuntime({
+          registry: deps.registry,
+          dataRoot: deps.storage.dataRoot,
+          publish: deps.publish,
+          ...(inputs.marketplace !== undefined && {
+            postBootstrap: async () => {
+              await marketplaceRuntime?.bootstrap();
+            },
+          }),
+        });
+  // marketplace 域（T6.1 / 06 §2.10 v1.14）：安装/卸载/注册表/台账 + 技能第三源供给；
+  // 要求 plugins 域在位（激活/注销单点归 PluginRuntime），缺位连带不装配（诊断不抛）。
+  const marketplace =
+    inputs.marketplace === undefined || plugins === null
+      ? null
+      : (marketplaceRuntime = new MarketplaceRuntime({ dataRoot: deps.storage.dataRoot, plugins }));
   // 子代理域（02 §4）：agent 工具进同一 registry；子会话宿主经 SubagentLoopHost 注入（ADR-06）
   const subagent =
     inputs.subagent === undefined
@@ -102,7 +125,8 @@ export function buildRuntimeDomains(inputs: RuntimeDomainInputs, deps: RuntimeDo
           ...(inputs.memory.workspaceRoot !== undefined && { workspaceRoot: inputs.memory.workspaceRoot }),
           ...(inputs.memory.sectionEditHooks !== undefined && { sectionEditHooks: inputs.memory.sectionEditHooks }),
         });
-  // skills 域（T3.4 / 06 §2.9）：提交链注入（session.send / skills.invoke 共用）
+  // skills 域（T3.4 / 06 §2.9）：提交链注入（session.send / skills.invoke 共用）；
+  // T6.1 第三源：marketplace 已安装插件随附技能（workspace > global > plugin 优先级）。
   const skills =
     inputs.skills === undefined
       ? null
@@ -110,6 +134,7 @@ export function buildRuntimeDomains(inputs: RuntimeDomainInputs, deps: RuntimeDo
           dataRoot: deps.storage.dataRoot,
           workspaceRootOf: (sessionId) => deps.storage.workspaceRootOf(sessionId),
           submitTurn: deps.submitTurn,
+          ...(marketplace !== null && { pluginSkillRoots: () => marketplace.installedPluginDirs() }),
         });
   // 模型侧工具通道接线集中此处（tool-phase ToolPhaseDeps；缺省字段缺失 → 工具以 TOOL_UNAVAILABLE 收敛）
   if (skills !== null) {
@@ -129,5 +154,5 @@ export function buildRuntimeDomains(inputs: RuntimeDomainInputs, deps: RuntimeDo
   if (mcpCatalog !== null) {
     deps.toolDeps.searchMcpTools = (request) => mcpCatalog.search(request.query, request.limit);
   }
-  return { mcp, plugins, subagent, memory, skills, mcpCatalog };
+  return { mcp, plugins, marketplace, subagent, memory, skills, mcpCatalog };
 }

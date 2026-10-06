@@ -59,6 +59,7 @@ export async function webCommand(rest: string[]): Promise<number> {
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
     skills: {}, // skills 域启用（T3.4）：与 CLI in-process 同语义（06 §2.9）
     plugins: {}, // plugins 域启用（T3.5）：与 CLI in-process 同语义（06 §2.10）
+    marketplace: {}, // marketplace 域启用（T6.1）：与 CLI in-process 同语义
     mcp: {}, // mcp 域启用（T3.9 全量对齐补装配）：Web 宿主无装配期工作区，全局层 mcp.json 生效（06 §2.5）
     memory: {}, // memory 域启用（B2 缺陷修复：Web 宿主无装配期工作区，MEMORY.md 按会话工作区逐会话解析）（06 §2.6）
     subagent: {}, // subagent 域启用（refine-ui-context-panel 轮缺陷修复：B2 同款——三端真实入口此前均未装配，agent 工具与 subagent.* 全不可达且被 smoke 自建节点手装掩盖；无装配期工作区，profile 解析 global+builtin 层）（06 §2.5）

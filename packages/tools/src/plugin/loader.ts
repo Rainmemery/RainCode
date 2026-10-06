@@ -73,8 +73,12 @@ export interface PluginActivateContext {
   pluginDir: string;
 }
 
-/** 扫描单个插件目录清单：读 plugin.json → zod 校验 → 目录名与 name 一致性。 */
-export async function readPluginManifest(dir: string): Promise<PluginManifest> {
+/** 扫描单个插件目录清单：读 plugin.json → zod 校验 → 目录名与 name 一致性（可放宽，见参数）。 */
+export async function readPluginManifest(
+  dir: string,
+  options?: { /** false = 放宽目录名比对（T6.1 marketplace 安装副本：<...>/<plugin>/<version>/ 尾段是版本号，身份由市场清单+台账背书，安装前已做 manifest 一致性校验）；缺省严格。 */ dirNameMustMatch?: boolean },
+): Promise<PluginManifest> {
+  const dirNameMustMatch = options?.dirNameMustMatch ?? true;
   let raw: string;
   try {
     raw = await readFile(join(dir, PLUGIN_MANIFEST_FILE), "utf8");
@@ -92,7 +96,7 @@ export async function readPluginManifest(dir: string): Promise<PluginManifest> {
     const detail = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
     throw new PluginError("PLUGIN_MANIFEST_INVALID", `plugin manifest invalid at ${dir}: ${detail}`);
   }
-  if (result.data.name !== dir.split(/[\\/]/).filter(Boolean).pop()) {
+  if (dirNameMustMatch && result.data.name !== dir.split(/[\\/]/).filter(Boolean).pop()) {
     throw new PluginError(
       "PLUGIN_MANIFEST_INVALID",
       `plugin name "${result.data.name}" does not match its directory name at ${dir}`,

@@ -27,6 +27,12 @@ export interface SkillRuntimeOptions {
   workspaceRootOf: (sessionId: string) => Promise<string | null>;
   /** turn 提交链（agent-service.submitTurn 注入：requireActive + provider 缺席拒绝 + 受理即返 + usage 旁路）。 */
   submitTurn: (sessionId: string, text: string) => Promise<unknown>;
+  /**
+   * T6.1 第三源：marketplace 已安装插件根目录列表（每根取 `<root>/skills` 子目录，source="plugin"；
+   * 解析优先级 workspace > global > plugin）。runtime-domains 注入 marketplace.installedPluginDirs
+   * （就绪门 await 后返回台账投影）。
+   */
+  pluginSkillRoots?: () => Promise<string[]>;
   /** 诊断出口（缺省 console.error，风格同 subagent-runtime）。 */
   onDiagnostic?: (message: string, err?: unknown) => void;
 }
@@ -104,6 +110,9 @@ export class SkillRuntime {
         { path: join(workspaceRoot, ".raincode", "skills"), source: "workspace" },
         { path: join(this.options.dataRoot, "skills"), source: "global" },
       ];
+      for (const root of await this.options.pluginSkillRoots?.() ?? []) {
+        dirs.push({ path: join(root, "skills"), source: "plugin" });
+      }
       const invocable = this.skillCatalog(dirs).filter((item) => item.modelInvocable);
       if (invocable.length === 0) return basePrompt;
       const digest = createHash("sha256").update(JSON.stringify(invocable)).digest("hex").slice(0, 12);
@@ -130,7 +139,8 @@ export class SkillRuntime {
   // 目录与解析（低频同步 IO，同 profile 口径）
   // -------------------------------------------------------------------------
 
-  /** 技能目录候选：sessionId 提供时 workspace 层优先（未命中会话 → SESSION_NOT_FOUND），global 兜底。 */
+  /** 技能目录候选：sessionId 提供时 workspace 层优先（未命中会话 → SESSION_NOT_FOUND），global 兜底，
+   * plugin 第三源殿后（T6.1；workspace > global > plugin 优先级——用户自定义可覆盖市场技能）。 */
   private async skillDirs(sessionId: string | undefined): Promise<SkillDir[]> {
     const dirs: SkillDir[] = [];
     if (sessionId !== undefined) {
@@ -141,6 +151,9 @@ export class SkillRuntime {
       dirs.push({ path: join(root, ".raincode", "skills"), source: "workspace" });
     }
     dirs.push({ path: join(this.options.dataRoot, "skills"), source: "global" });
+    for (const root of await this.options.pluginSkillRoots?.() ?? []) {
+      dirs.push({ path: join(root, "skills"), source: "plugin" });
+    }
     return dirs;
   }
 

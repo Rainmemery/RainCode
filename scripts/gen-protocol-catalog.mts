@@ -22,6 +22,7 @@ import {
   MEMORY_ERROR_CODES,
   METHOD_SCHEMAS,
   PC_ERROR_CODES,
+  MARKETPLACE_ERROR_CODES,
   PLUGIN_ERROR_CODES,
   SYSTEM_ERROR_CODES,
   TOOL_ERROR_CODES,
@@ -157,6 +158,7 @@ const ERROR_CODE_FAMILIES: Array<{ name: string; label: string; codes: Record<st
   { name: "MEMORY_ERROR_CODES", label: "段 6 memory", codes: MEMORY_ERROR_CODES },
   { name: "TOOL_ERROR_CODES", label: "段 7 tool", codes: TOOL_ERROR_CODES },
   { name: "PLUGIN_ERROR_CODES", label: "段 10 plugins", codes: PLUGIN_ERROR_CODES },
+  { name: "MARKETPLACE_ERROR_CODES", label: "段 15 marketplace", codes: MARKETPLACE_ERROR_CODES },
 ];
 
 function generateCatalog(): string {

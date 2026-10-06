@@ -456,6 +456,8 @@ export interface ToolExecutor {
 
 > `todo` 状态存于会话内存并随事件落盘；`write/edit` 依赖 `read` 建立的文件快照（read-file state）做「先读后写」校验，防止盲写覆盖。
 
+**插件 marketplace 分发（T6.1 / 06 §2.10 v1.14）**：插件工具的第三条进入通道（内置 / MCP / 插件之外再加分发层）——marketplace 域在 plugins 域之上提供「来源注册（marketplace.json + 注册表，path 源先行）→ 校验安装（内容寻址 seed + symlink/junction 逃逸防护，安装副本落 `<dataRoot>/marketplaces/cache/<marketplaceId>/<plugin>/<version>/`）→ 插件域激活（attachExternal，与目录发布记录互斥）→ 可卸载」；安装副本 `<dir>/skills/` 同时作为技能第三源（优先级 workspace > global > plugin）。协议面 4 方法 `marketplace.add/list/install/uninstall` 与错误码段 15 详见 06 §2.10 / §4.3；实现单点 `packages/server/src/marketplace-runtime.ts`（fs 原语 `marketplace-fs.ts`）。
+
 ### 2.4 异常与边界场景
 
 | 场景 | 处理策略 |

@@ -10,9 +10,9 @@
 
 ## 概览
 
-- 协议方法 **58**（域 12 个：config / hooks / mcp / memory / permission / plugins / session / skills / subagent / system / tool / ws）
+- 协议方法 **62**（域 13 个：config / hooks / marketplace / mcp / memory / permission / plugins / session / skills / subagent / system / tool / ws）
 - 数据面事件 **21**
-- 代码侧错误码族 **5**（session / config / mcp / subagent / skills 域为调用点字面量，见 §3 注）
+- 代码侧错误码族 **6**（session / config / mcp / subagent / skills 域为调用点字面量，见 §3 注）
 
 ## 1. 方法表
 
@@ -134,6 +134,61 @@
 | --- | --- | --- | --- |
 | `workspaceId` | `string` | 是 |  |
 | `trusted` | `boolean` | 是 |  |
+
+### 域 marketplace（4 方法）
+
+#### marketplace.add
+
+入参：
+| 字段 | 类型 | 必填 | 约束/说明 |
+| --- | --- | --- | --- |
+| `id` | `string` | 是 | regex |
+| `source` | `{ path: string }` | 是 |  |
+
+出参：
+| 字段 | 类型 | 必填 | 约束/说明 |
+| --- | --- | --- | --- |
+| `marketplace` | `{ id: string, source: { path: string }, name: string?, description: string?, addedAt: int }` | 是 |  |
+
+#### marketplace.install
+
+入参：
+| 字段 | 类型 | 必填 | 约束/说明 |
+| --- | --- | --- | --- |
+| `marketplaceId` | `string` | 是 | len≥1 |
+| `plugin` | `string` | 是 | len≥1 |
+
+出参：
+| 字段 | 类型 | 必填 | 约束/说明 |
+| --- | --- | --- | --- |
+| `name` | `string` | 是 |  |
+| `marketplaceId` | `string` | 是 |  |
+| `version` | `string` | 是 |  |
+| `dir` | `string` | 是 |  |
+| `status` | `"active" \| "disabled" \| "failed"` | 是 |  |
+
+#### marketplace.list
+
+入参：
+无字段（空对象）。
+
+出参：
+| 字段 | 类型 | 必填 | 约束/说明 |
+| --- | --- | --- | --- |
+| `marketplaces` | `{ id: string, source: { path: string }, name: string?, description: string?, addedAt: int, pluginCount: int, plugins: object[], lastError: string \| null }[]` | 是 |  |
+
+#### marketplace.uninstall
+
+入参：
+| 字段 | 类型 | 必填 | 约束/说明 |
+| --- | --- | --- | --- |
+| `marketplaceId` | `string` | 是 | len≥1 |
+| `plugin` | `string` | 是 | len≥1 |
+
+出参：
+| 字段 | 类型 | 必填 | 约束/说明 |
+| --- | --- | --- | --- |
+| `removed` | `true` | 是 |  |
 
 ### 域 mcp（8 方法）
 
@@ -660,7 +715,7 @@
 出参：
 | 字段 | 类型 | 必填 | 约束/说明 |
 | --- | --- | --- | --- |
-| `items` | `{ name: string, description: string, source: "workspace" \| "global", argumentHint: string?, modelInvocable: boolean }[]` | 是 |  |
+| `items` | `{ name: string, description: string, source: "workspace" \| "global" \| "plugin", argumentHint: string?, modelInvocable: boolean }[]` | 是 |  |
 
 ### 域 subagent（4 方法）
 
@@ -1053,6 +1108,7 @@
 
 | 常量 | 段/域 | 码 |
 | --- | --- | --- |
+| `MARKETPLACE_ERROR_CODES` | 段 15 marketplace | `MARKETPLACE_ESCAPE_BLOCKED`、`MARKETPLACE_INVALID`、`MARKETPLACE_NOT_FOUND`、`MARKETPLACE_SEED_MISMATCH` |
 | `MEMORY_ERROR_CODES` | 段 6 memory | `MEMORY_DRAFT_NOT_FOUND`、`MEMORY_ENTRY_NOT_FOUND`、`MEMORY_SECTION_FORBIDDEN`、`MEMORY_WRITE_CONFLICT` |
 | `PC_ERROR_CODES` | 段 2 permission | `PC_GRANT_CONSUMED`、`PC_GRANT_NOT_FOUND`、`PC_RULE_INVALID`、`PC_RULE_NOT_FOUND` |
 | `PLUGIN_ERROR_CODES` | 段 10 plugins | `PLUGIN_INVALID`、`PLUGIN_NOT_FOUND` |

@@ -29,6 +29,9 @@ export const V1_CAPABILITIES = [
   // T3.8（v1.9，06 §6.3）：websocket 绑定连接级鉴权（ws.auth → system.ping → 业务方法时序）。
   // stdio / in-memory 绑定同生共死不设门，不注册 ws.auth handler（能力声明对传输绑定无感）。
   "ws.auth",
+  // T6.1（v1.14，06 §2.10）：marketplace 域装配（市场注册/清单/安装/卸载，path 源先行）；
+  // 端层经 system.ping 探测后启用安装入口（未装配调用报 METHOD_NOT_FOUND）。
+  "marketplace",
 ] as const satisfies readonly string[];
 
 // ---------------------------------------------------------------------------

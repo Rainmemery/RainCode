@@ -46,6 +46,7 @@ import {
 import { PermissionRuntime } from "./permission-runtime.js";
 import type { McpRuntime } from "./mcp-runtime.js";
 import type { PluginRuntime } from "./plugin-runtime.js";
+import type { MarketplaceRuntime } from "./marketplace-runtime.js";
 import type { SubagentRuntime } from "./subagent-runtime.js";
 import type { SkillRuntime } from "./skill-runtime.js";
 import { HooksRuntime } from "./hooks-runtime.js";
@@ -72,6 +73,8 @@ export interface AgentServiceOptions {
   mcp?: { workspaceRoot?: string; toolSearch?: boolean };
   /** plugins 域装配（06 §2.10 v1.8；缺省 = 不启用；数据根取 storage.dataRoot）。 */
   plugins?: Record<string, never>;
+  /** marketplace 域装配（T6.1 v1.14；缺省 = 不启用；要求 plugins 域在位）。 */
+  marketplace?: Record<string, never>;
   /** 子代理域装配（02 §4；缺省 = 不启用 subagent 域；workspaceRoot 为 workspace 层 profiles 判定域）。 */
   subagent?: { workspaceRoot?: string };
   /** memory 域装配（02 §7；缺省 = 不启用 memory 域；workspaceRoot 为 promote 反查兜底域）；
@@ -100,6 +103,7 @@ export class AgentService {
   /** MCP 域（06 §2.5；缺省未装配）。 */
   private readonly mcp: McpRuntime | null;
   private readonly plugins: PluginRuntime | null;
+  private readonly marketplace: MarketplaceRuntime | null; // T6.1（plugins 缺位时连带不装配）
   /** 子代理域（06 §2.5；缺省未装配）。 */
   private readonly subagent: SubagentRuntime | null;
   /** memory 域（06 §2.6；缺省未装配）。 */
@@ -156,13 +160,7 @@ export class AgentService {
     this.toolDomain = new ToolDomain({ registry, background: builtin.background });
     // 五域装配（T3.8 下沉 runtime-domains.ts，单文件 ≤500 行治理）：构造与接线集中一处
     const domains = buildRuntimeDomains(
-      {
-        mcp: options.mcp,
-        plugins: options.plugins,
-        subagent: options.subagent,
-        memory: options.memory,
-        skills: options.skills,
-      },
+      { mcp: options.mcp, plugins: options.plugins, marketplace: options.marketplace, subagent: options.subagent, memory: options.memory, skills: options.skills },
       {
         registry,
         background: builtin.background,
@@ -178,6 +176,7 @@ export class AgentService {
     );
     this.mcp = domains.mcp;
     this.plugins = domains.plugins;
+    this.marketplace = domains.marketplace;
     this.subagent = domains.subagent;
     this.memory = domains.memory;
     this.skills = domains.skills;
@@ -220,6 +219,7 @@ export class AgentService {
     void this.subagent?.dispose(); // 子代理级联停止 + agent 工具注销（异步收敛）
     void this.memory?.dispose(); // memory 域无长驻资源（dispose 最小实现）
     void this.plugins?.dispose(); // 插件 deactivate + 工具注销（异步收敛）
+    void this.marketplace?.dispose();
     this.sessions.clear();
   }
 
@@ -276,6 +276,7 @@ export class AgentService {
       ...(this.memory !== null ? this.memory.methods(register) : {}), // memory 域未装配不暴露（同上）
       ...(this.skills !== null ? this.skills.methods(register) : {}), // skills 域未装配不暴露（同上）
       ...(this.plugins !== null ? this.plugins.methods(register) : {}), // plugins 域未装配不暴露（同上）
+      ...(this.marketplace !== null ? this.marketplace.methods(register) : {}), // marketplace 域未装配不暴露（同上；06 §2.10 v1.14）
       ...(this.hooks !== null ? this.hooks.methods(register) : {}), // hooks 域未装配不暴露（同上；06 §2.12 hooks 域 3 方法）
       // default-allow 策略未装配 permission 域（requirePermission 在调用期报 PC_GRANT_NOT_FOUND）
       ...(this.permission !== null ? this.permission.methods(register) : {}),

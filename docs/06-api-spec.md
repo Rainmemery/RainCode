@@ -4,7 +4,7 @@
 | --- | --- |
 | 文档版本 | v1.0 |
 | 发布日期 | 2026-09-28 |
-| 文档状态 | 正式定稿；v1.13 增补 MessageRecord.reasoning（UI 重构轮，§6.3 snapshot / §7.5） |
+| 文档状态 | 正式定稿；v1.14 增补 marketplace 域（M6 T6.1，§2.10 / §4.3 段 15 / §7.5） |
 | 协议版本 | protocolVersion `1.0` |
 | 关联文档 | 02-module-design（模块接口语义权威）· 04-architecture（§4 传输无关 RPC 设计权威）· 03-ui-design（事件消费方）· 01-PRD（NFR 性能基线） |
 
@@ -263,7 +263,7 @@ system 域承载握手、版本发现与优雅停机，是唯一与业务无关�
 
 | 方法 | 请求 params | 返回 result | 业务错误码 | 说明 |
 | --- | --- | --- | --- | --- |
-| `skills.list` | `{ sessionId? }` | `{ items: SkillSummary[] }` | `SESSION_NOT_FOUND` | 技能清单（frontmatter 投影，不含模板正文）：每项含 `{ name, description, source: "workspace"\|"global", argumentHint?, modelInvocable }`；提供 `sessionId` 时含该会话 workspace 层（同名 workspace 优先），缺省仅 global 层；**非法文件跳过不阻塞面板**（仅产诊断） |
+| `skills.list` | `{ sessionId? }` | `{ items: SkillSummary[] }` | `SESSION_NOT_FOUND` | 技能清单（frontmatter 投影，不含模板正文）：每项含 `{ name, description, source: "workspace"\|"global"\|"plugin", argumentHint?, modelInvocable }`；提供 `sessionId` 时含该会话 workspace 层（同名 workspace 优先），缺省仅 global 层；**v1.14 增补第三源**：marketplace 已安装插件的 `<安装副本>/skills/` 目录（source="plugin"，优先级 workspace > global > plugin——用户自定义可覆盖市场随附技能）；**非法文件跳过不阻塞面板**（仅产诊断） |
 | `skills.invoke` | `{ sessionId, name, arguments? }` | `{ turnId, admission: "started"\|"queued", queuePosition? }` | `SESSION_NOT_FOUND` `SESSION_ARCHIVED` `SKILL_NOT_FOUND` `SKILL_INVALID` | 斜杠命令受理：按名解析 → 模板展开 → 复用 `session.send` 提交链（requireActive + provider 缺席拒绝 + 受理即返 + usage 旁路）；展开后文本即该 turn 的 user 消息（会话历史可见完整展开）；不受 `modelInvocable` 约束（用户显式行为） |
 
 ### 2.10 plugins 域（插件化，M3 T3.5，v1.8）
@@ -275,6 +275,15 @@ system 域承载握手、版本发现与优雅停机，是唯一与业务无关�
 | `plugins.list` | `{}` | `{ plugins: PluginSummary[] }` | — | 插件摘要投影（按名排序）：`{ name, description, version?, dir, enabled, status: "active"\|"disabled"\|"failed", tools: 全名数组, lastError }`；就绪门语义——初次目录扫描完成前调用等待而非落空 |
 | `plugins.setEnabled` | `{ name, enabled }` | `{ name, enabled, status }` | `PLUGIN_NOT_FOUND` | 受理即返启停：disable = deactivate + 工具注销 + 停用名单落盘；enable = 名单移除 + 激活（失败 → failed，经 `plugin.status_changed` 与本方法可查）；同态重复请求幂等 |
 | `plugins.rescan` | `{}` | `{ added: string[] }` | — | 运行时重扫描插件目录（v1.11，B10 缺陷修复）：装载「发布 = 目录拷入」后的新插件免重启——仅新增目录（新记录按停用名单判定启用状态并激活，失败隔离 failed，经 `plugin.status_changed` 可查）；已有记录（含 failed/active）不重载不触碰；重复调用幂等（无新增返回空数组）。双端扩展面板「刷新」按钮经本方法实现重扫描语义 |
+
+**marketplace 分发面（M6 T6.1，v1.14 additive；capability `marketplace`）**：插件与技能从「手工拷贝进目录」升级为「来源注册 → 清单发现 → 校验安装 → 可卸载」。形态（ZCode 实证格式字段子集，调研报告 `docs/research/2026-10-06-m6-schedule-research.md` §1.3）：市场清单 `marketplace.json`（`{name, version, plugins[]}`，条目字段子集 `name`[a-z0-9-]+ / `version` / `source`（相对市场根的插件子目录）/ `description` / `displayName?` / `category?`——呈现层 i18n/icon/examplePrompts 不做）；已知市场注册表 `<dataRoot>/marketplaces.json`（`{version: 1, marketplaces: [{id, source: {path}, name?, addedAt}]}`，**source=path 本地目录源先行**，url/github 远端源形态预留不实现）；安装副本 `<dataRoot>/marketplaces/cache/<marketplaceId>/<plugin>/<version>/` + 内容寻址种子 `.zcode-plugin-seed.json`（`{version: 1, hash, marketplace, plugin, pluginVersion, source}`，hash = 插件树「相对路径+内容」sha256，种子自身不参与哈希；ZCode「源/市场缓存副本/安装副本」三分离中的市场缓存副本属远端源形态，顺延）+ 安装台账 `<dataRoot>/marketplaces/installed.json`（重启后台账重 attach 的事实源）。**安全防护**（T6.1 验收项）：安装前逐条目 realpath 解析——插件树内 symlink/junction 指向插件根外即拒绝（`MARKETPLACE_ESCAPE_BLOCKED`，越界路径入错误消息与诊断审计），悬空链接同拒；安装副本激活时清单目录名比对放宽（缓存尾段是版本号，身份由市场清单+台账背书，安装前已做 manifest name/version 一致性校验）。**技能随插件**（第三源）：安装副本 `<dir>/skills/*.md` 进技能目录候选（§2.9，优先级 workspace > global > plugin）。装配口径：marketplace 域要求 plugins 域在位（激活/注销单点归 PluginRuntime；安装副本记录 origin=marketplace，plugins 目录同名 dir 记录互斥）；未装配时调用报 METHOD_NOT_FOUND（端层经 capability 探测）。无新事件（状态变化复用 `plugin.status_changed`）。
+
+| 方法 | 请求 params | 返回 result | 业务错误码 | 说明 |
+| --- | --- | --- | --- | --- |
+| `marketplace.add` | `{ id: [a-z0-9-]+, source: { path } }` | `{ marketplace: { id, source, name?, addedAt } }` | `MARKETPLACE_INVALID` | 注册 path 源市场（v1.14）：path 须绝对路径且指向含合法 `marketplace.json` 的目录（fail-fast 校验）；同 id 同源幂等返回既有登记，同 id 异源拒绝 |
+| `marketplace.list` | `{}` | `{ marketplaces: [{ id, source, name?, addedAt, pluginCount, plugins: [{ name, version, description, displayName?, category?, source, installed: { version, dir }\|null }], lastError }] }` | — | 注册表投影 + 市场清单现读（单市场清单损坏降级 `lastError` + 空投影，不阻塞其他市场）；`installed` 为安装台账按 marketplaceId 匹配的投影 |
+| `marketplace.install` | `{ marketplaceId, plugin }` | `{ name, marketplaceId, version, dir, status }` | `MARKETPLACE_NOT_FOUND` `MARKETPLACE_INVALID` `MARKETPLACE_SEED_MISMATCH` `MARKETPLACE_ESCAPE_BLOCKED` | 安装受理：清单发现 → source 越界校验 → 逃逸防护 → manifest 一致性 → 内容哈希 → 拷贝 + 种子落盘 → 台账 → 插件域 attach（`status` 为受理时点快照，加载失败隔离为 failed 可查）。重装同版本：副本哈希 = 种子 且 源哈希 = 种子 → 幂等；副本被篡改或同版本源漂移 → `MARKETPLACE_SEED_MISMATCH`（卸载重装复位）。同插件新版安装 = 原位升级（旧版本目录清理） |
+| `marketplace.uninstall` | `{ marketplaceId, plugin }` | `{ removed: true }` | `MARKETPLACE_NOT_FOUND` | 卸载复原：插件域 detach（deactivate + 工具注销 + 停用名单同步清除）+ 安装副本删除 + 台账移除；重复卸载幂等拒绝 |
 
 ### 2.11 ws 域（Web 传输接入，M3 T3.8，v1.9）
 
@@ -580,6 +589,10 @@ flush 边界保证：`message.completed`、`tool_call.*`、`permission.*`、`tur
 | 11 hooks | `HOOKS_CONFIG_INVALID` | hooks.trust.grant 时 project hooks.json 缺失或 schema 校验失败（v1.12） |
 | 10 plugins | `PLUGIN_NOT_FOUND` | plugins.setEnabled 未知插件名（v1.8） |
 | 10 plugins | `PLUGIN_INVALID` | 插件清单/入口/工具描述符非法（正常情况下加载期即拦截为 failed 状态，不达方法面） |
+| 15 marketplace | `MARKETPLACE_NOT_FOUND` | 未知市场 id / 市场中无该插件 / 台账无该市场安装记录（v1.14） |
+| 15 marketplace | `MARKETPLACE_INVALID` | 市场清单非法 / source 越界或路径非法 / 版本号非法 / manifest 版本不一致 / 插件名冲突 / 未支持的源形态（v1.14） |
+| 15 marketplace | `MARKETPLACE_SEED_MISMATCH` | 安装副本与种子记录不一致：副本被篡改（副本哈希 ≠ 种子）或同版本源漂移（源哈希 ≠ 种子）或种子缺失——卸载重装复位（v1.14） |
+| 15 marketplace | `MARKETPLACE_ESCAPE_BLOCKED` | symlink/junction 逃逸：插件树内条目 realpath 解析后落在插件根之外（或悬空不可解析），拒绝安装；越界路径入 message 与诊断（v1.14） |
 | 8 system | — | system 域无专属业务码；停机中再收请求返回 `CANCELLED` |
 
 > 区分原则：**turn 内工具执行失败是数据不是协议错误**——模型路径与 `tool.call` 直接调用一律以 `ToolResult{isError, error}` 返回（`invalid_input` / `timeout` / `ambiguous_match` / `permission_denied` 等，见 02 §2.3/§2.4）；协议错误只表达「调用本身未能被受理或执行」。
@@ -606,7 +619,7 @@ schema 真源在 `packages/shared`（zod 单一事实源，04 §4.3 / PRD §6.2�
 | `system.ts` | system 域方法 + capabilities 列表 | `systemSchemas` | ~60 行 |
 | `index.ts` | `METHOD_SCHEMAS`（method → {request, response}）与 `EVENT_SCHEMAS`（name → payload）注册表；事件构造函数 re-export | `METHOD_SCHEMAS` `EVENT_SCHEMAS` | ~120 行 |
 
-> **生成式协议目录（T4.3）**：[docs/generated/protocol-catalog.md](generated/protocol-catalog.md) 由 `scripts/gen-protocol-catalog.mts` 从上述注册表与 `*_ERROR_CODES` 常量机械投影生成（58 方法 / 21 事件 / 6 错误码族），`pnpm protocol:gen` 再生成、`pnpm protocol:check` 逐字节防漂移（CI 门禁 6）。职责边界：生成物只承载字段/类型/必填/约束；本文件手写章节承载语义、行为、时序与业务码含义，仍为唯一权威——协议演进时先改 schema 注册表，再 `protocol:gen` 同步生成物，最后核对本文件手写表。
+> **生成式协议目录（T4.3）**：[docs/generated/protocol-catalog.md](generated/protocol-catalog.md) 由 `scripts/gen-protocol-catalog.mts` 从上述注册表与 `*_ERROR_CODES` 常量机械投影生成（62 方法 / 21 事件 / 6 错误码族），`pnpm protocol:gen` 再生成、`pnpm protocol:check` 逐字节防漂移（CI 门禁 6）。职责边界：生成物只承载字段/类型/必填/约束；本文件手写章节承载语义、行为、时序与业务码含义，仍为唯一权威——协议演进时先改 schema 注册表，再 `protocol:gen` 同步生成物，最后核对本文件手写表。
 
 命名与形态规范：
 
@@ -790,6 +803,7 @@ capability 命名约定：`<domain>.<feature>`（小写点分），登记于 `sy
 | 1.11 | 2026-10-03 | 可视化测试缺陷修复批次（minor+1，additive）：plugins 域新增 `plugins.rescan`（§2.10，运行时重扫描插件目录，免重启装载新拷入插件——双端扩展面板「刷新」语义核销）。协议规模 55 方法 / 19 事件 |
 | 1.12 | 2026-10-04 | M5 T5.1 hooks 生命周期 v1（minor+1，additive）：新增 hooks 域 3 方法 `hooks.list` / `hooks.trust.grant` / `hooks.trust.revoke`（§2.12）与新事件 `hook.started` / `hook.completed`（§3.2 D 组）——hooks.json 双源（user/project，CC 兼容 command 子集）+ project 源 workspace trust 授信（**每 dispatch 前重验**，绑定配置 digest，撤销/改文件立即生效）+ 四生命周期接线（PreToolUse deny 拦截先于权限判定 / additionalContext provenance 注入下一轮 / failed·timed_out 告警不阻塞）+ log-only 审计事件对 `hook.invoked`/`hook.result`（stderr 截断落盘，不进 EVENT_SCHEMAS）；错误码新增段 11 `HOOKS_CONFIG_INVALID` 与数据级 `TOOL_HOOK_DENIED`。PermissionRequest hook / permissionUpdates 动态权限规则留 M6+。协议规模 58 方法 / 21 事件 |
 | 1.13 | 2026-10-04 | UI 重构轮（minor+1，additive）：`MessageRecord` 增可选 `reasoning`（string，仅 assistant 行）——思考过程随消息落盘（turn-loop 累积 `delta.reasoning` 并在 assistant 行随行写入，中断残留半行同口径），端层 `session.resume` 冷重建据此恢复思考块（跨宿主重启 / 换端接续）；`message.delta` reasoning 流保持瞬态不落盘（05 §4.2 口径不变），CLI 上下文组装不消费该字段（行为零变更）。方法/事件规模不变（58 方法 / 21 事件；生成式协议目录经 `protocol:gen` 同步） |
+| 1.14 | 2026-10-07 | M6 T6.1 插件 marketplace 分发基座（minor+1，additive）：plugins 域扩 4 方法 `marketplace.add` / `marketplace.list` / `marketplace.install` / `marketplace.uninstall`（§2.10）+ capability `marketplace`——市场清单 marketplace.json 字段子集（name/version/source/description/displayName/category）+ 已知市场注册表 marketplaces.json（**path 本地目录源先行**，url/github 形态预留不实现）+ 安装布局 `<dataRoot>/marketplaces/cache/<marketplaceId>/<plugin>/<version>/` + 内容寻址种子 `.zcode-plugin-seed.json`（重装双段校验：副本哈希与源哈希均须等于种子）+ 安装台账 installed.json（重启重 attach 事实源）+ symlink/junction 逃逸防护（realpath 越界拒绝 `MARKETPLACE_ESCAPE_BLOCKED` 并审计）+ 技能随插件第三源（§2.9 skills.list source 增枚举值 `"plugin"`，优先级 workspace > global > plugin）；错误码新增段 15 四码。无新事件（复用 `plugin.status_changed`）。呈现层 i18n/icon/examplePrompts 与双端安装入口顺延（07 §12.2）。协议规模 62 方法 / 21 事件 |
 
 ---
 

@@ -45,6 +45,8 @@ export interface AgentServiceNodeOptions {
   hooks?: AgentServiceOptions["hooks"];
   /** plugins 域装配（T3.5 v1.8；缺省 = 不启用。数据根取 storage.dataRoot）。 */
   plugins?: AgentServiceOptions["plugins"];
+  /** marketplace 域装配（T6.1 v1.14；缺省 = 不启用。要求 plugins 域在位）。 */
+  marketplace?: AgentServiceOptions["marketplace"];
   /** 沙箱执行域配置（M3 T3.1；缺省读 `<dataRoot>/config.json` 的 sandbox 节，不可读按 local）。 */
   sandboxConfig?: SandboxConfig;
 }
@@ -110,6 +112,7 @@ export async function createAgentServiceNode(
     ...(options.skills !== undefined && { skills: options.skills }),
     ...(options.hooks !== undefined && { hooks: options.hooks }),
     ...(options.plugins !== undefined && { plugins: options.plugins }),
+    ...(options.marketplace !== undefined && { marketplace: options.marketplace }),
     onShutdown: closeStorage,
   });
   // transport 缺省 = 延迟 attach（Web 多连接宿主逐连接 service.attach；T3.8），

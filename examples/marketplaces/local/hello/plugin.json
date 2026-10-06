@@ -1,0 +1,5 @@
+{
+  "name": "hello",
+  "description": "官方示例插件：提供 greet（问候语生成）与 word_count（字数统计）两个工具，演示插件目录结构与 activate 契约",
+  "version": "0.1.0"
+}

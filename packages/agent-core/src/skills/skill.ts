@@ -32,7 +32,7 @@ export interface Skill {
 }
 
 /** 带来源的技能（目录解析产出；skills.list 投影时剥离 template，协议面不含大文本）。 */
-export type SkillWithSource = Skill & { source: "workspace" | "global" };
+export type SkillWithSource = Skill & { source: "workspace" | "global" | "plugin" };
 
 export const SKILL_NAME_PATTERN = /^[a-z0-9-]+$/;
 
@@ -49,10 +49,10 @@ export class SkillError extends Error {
   }
 }
 
-/** 技能目录候选（按序解析，先命中者生效；同 profile 目录约定）。 */
+/** 技能目录候选（按序解析，先命中者生效；T6.1 v1.14 增补 plugin 源——marketplace 安装插件随附技能，优先级 workspace > global > plugin）。 */
 export interface SkillDir {
   path: string;
-  source: "workspace" | "global";
+  source: "workspace" | "global" | "plugin";
 }
 
 /**

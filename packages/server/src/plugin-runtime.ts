@@ -81,6 +81,11 @@ export interface PluginRuntimeOptions {
   publish: RpcServiceBinding["publish"];
   /** 诊断出口（缺省 console.error，风格同 mcp-runtime）。 */
   onDiagnostic?: (message: string, err?: unknown) => void;
+  /**
+   * 装配后钩子（T6.1）：初扫 + 激活完成后、ready 就绪门放行前执行——marketplace 域台账重
+   * attach 的确定序接入点（保证重启后首次 plugins.list 已含市场安装插件）。
+   */
+  postBootstrap?: () => Promise<void>;
 }
 
 interface PluginRecord {
@@ -93,6 +98,8 @@ interface PluginRecord {
   tools: string[];
   activation: PluginActivation | null;
   lastError: string | null;
+  /** 记录来源（T6.1）：dir = plugins 目录扫描发布；marketplace = 市场安装副本装配（attachExternal）。 */
+  origin: "dir" | "marketplace";
 }
 
 export class PluginRuntime {
@@ -100,17 +107,22 @@ export class PluginRuntime {
   private readonly statePath: string;
   private readonly records = new Map<string, PluginRecord>();
   private seq = 0;
-  /** 装配期扫描 + 激活的就绪门（控制面方法 await 之——初次扫描完成前调用不落空）。 */
+  /** 装配期初扫 + 激活的门（attachExternal/detachExternal 等待之——postBootstrap 在其后运行）。 */
+  private readonly scanned: Promise<void>;
+  /** 就绪门（控制面方法 await 之）：初扫 + 激活 + postBootstrap 钩子（marketplace 重 attach）完成。 */
   private readonly ready: Promise<void>;
 
   constructor(private readonly options: PluginRuntimeOptions) {
     this.pluginsPath = join(options.dataRoot, "plugins");
     this.statePath = join(options.dataRoot, "plugins.json");
-    this.ready = this.bootstrap();
+    this.scanned = this.scanAndActivate();
+    this.ready = this.scanned.then(() => this.options.postBootstrap?.()).catch((reason: unknown) => {
+      this.diag("post-bootstrap hook failed (isolated)", reason);
+    });
   }
 
-  /** 扫描 + 逐个激活启用中的插件（异步受理：失败仅该插件 failed，不阻塞服务启动）。 */
-  private async bootstrap(): Promise<void> {
+  /** 初扫 + 逐个激活启用中的插件（异步受理：失败仅该插件 failed，不阻塞服务启动）。 */
+  private async scanAndActivate(): Promise<void> {
     const state = await loadPluginState(this.statePath);
     const disabled = new Set(state.disabled);
     const candidates = await scanPluginDir(this.pluginsPath);
@@ -135,6 +147,7 @@ export class PluginRuntime {
         tools: [],
         activation: null,
         lastError,
+        origin: "dir",
       });
     }
     // 依次激活启用中的插件（逐个 try/catch——单插件故障不拖垮装配）
@@ -226,6 +239,7 @@ export class PluginRuntime {
         tools: [],
         activation: null,
         lastError,
+        origin: "dir",
       };
       this.records.set(name, record);
       added.push(name);
@@ -234,6 +248,77 @@ export class PluginRuntime {
       }
     }
     return { added };
+  }
+
+  /**
+   * marketplace 安装副本装配（T6.1 attachExternal；MarketplaceRuntime 注入调用）：
+   * - 同名记录已存在且同为 marketplace 来源：同目录幂等返回现状态；异目录按版本升级处理
+   *   （旧激活态退役 + 记录替换 + 重装配）；dir 来源记录同名 → 拒绝（发布目录与市场安装互斥，
+   *   由调用方映射 MARKETPLACE_INVALID）；
+   * - 新记录按停用名单判定启用状态；清单读取失败不抛（failed 态可见，同 bootstrap 隔离口径），
+   *   激活失败隔离为 failed（经 plugin.status_changed 与 plugins.list 可查）。
+   */
+  async attachExternal(input: { name: string; dir: string }): Promise<PluginStatus> {
+    await this.scanned;
+    const existing = this.records.get(input.name);
+    if (existing !== undefined) {
+      if (existing.origin !== "marketplace") {
+        throw new RpcCallError("PLUGIN_INVALID", `plugin name conflict: "${input.name}" already published in plugins dir (${existing.dir})`);
+      }
+      if (existing.dir === input.dir) {
+        return existing.status; // 幂等：同源同目录重复装配
+      }
+      this.deactivateRecord(existing); // 版本升级：旧激活态退役后替换记录
+      this.records.delete(input.name);
+    }
+    const record: PluginRecord = {
+      name: input.name,
+      dir: input.dir,
+      manifest: null,
+      enabled: true,
+      status: "disabled",
+      tools: [],
+      activation: null,
+      lastError: null,
+      origin: "marketplace",
+    };
+    this.records.set(input.name, record);
+    try {
+      // dirNameMustMatch: false——marketplace 安装副本目录尾段是版本号（<mkt>/<plugin>/<ver>/），
+      // 身份由市场清单 + 安装台账背书（安装前已做 manifest name/version 一致性校验）
+      record.manifest = await readPluginManifest(input.dir, { dirNameMustMatch: false });
+    } catch (reason: unknown) {
+      record.lastError = reason instanceof Error ? reason.message : String(reason);
+    }
+    const state = await loadPluginState(this.statePath);
+    record.enabled = !state.disabled.includes(input.name);
+    if (record.enabled) {
+      await this.activateRecord(record).catch(() => undefined); // 失败已隔离为 failed + lastError
+    } else {
+      this.publishStatus(record);
+    }
+    return record.status;
+  }
+
+  /**
+   * marketplace 卸载退役（T6.1 detachExternal）：deactivate + 工具注销 + 记录移除 +
+   * 停用名单同步清除（卸载 ≠ 停用——残留名单会在重装时压制新插件）。dir 来源记录拒绝
+   * （发布目录的移除不经本方法）；记录不存在容忍（幂等，清单读取失败态也可能无记录）。
+   */
+  async detachExternal(name: string): Promise<void> {
+    await this.scanned;
+    const record = this.records.get(name);
+    if (record !== undefined) {
+      if (record.origin !== "marketplace") {
+        throw new RpcCallError("PLUGIN_INVALID", `plugin "${name}" is not marketplace-managed; its plugins-dir copy is not uninstallable via marketplace`);
+      }
+      this.deactivateRecord(record);
+      this.records.delete(name);
+    }
+    const state = await loadPluginState(this.statePath);
+    if (state.disabled.includes(name)) {
+      await persistPluginState(this.statePath, { disabled: state.disabled.filter((item) => item !== name) });
+    }
   }
 
   /** 优雅停机：deactivate 全部 active 插件 + 注销工具（出错仅诊断；就绪门后收敛）。 */

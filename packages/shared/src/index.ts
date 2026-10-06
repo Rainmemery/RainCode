@@ -9,6 +9,7 @@ export * from "./schemas/common.js";
 export * from "./schemas/config.js";
 export * from "./schemas/events-turn.js";
 export * from "./schemas/hook.js";
+export * from "./schemas/marketplace.js";
 export * from "./schemas/mcp.js";
 export * from "./schemas/memory.js";
 export * from "./schemas/plugin.js";
@@ -133,6 +134,16 @@ import {
   mcpServerStatusChangedEventPayloadSchema,
 } from "./schemas/mcp.js";
 import {
+  marketplaceAddParamsSchema,
+  marketplaceAddResultSchema,
+  marketplaceInstallParamsSchema,
+  marketplaceInstallResultSchema,
+  marketplaceListParamsSchema,
+  marketplaceListResultSchema,
+  marketplaceUninstallParamsSchema,
+  marketplaceUninstallResultSchema,
+} from "./schemas/marketplace.js";
+import {
   buildPluginStatusChangedEvent,
   pluginsListParamsSchema,
   pluginsListResultSchema,
@@ -205,7 +216,8 @@ export interface MethodSchemas {
  * + T2.4 memory 域 5 方法 + T2.6 session.rename/fork/usage 与 config.providers.switch 4 方法
  * + T3.4 skills 域 2 方法 + T3.7 mcp.servers.setEnabled/health 2 方法 + T3.3 memory.drafts.* 2 方法
  * + T3.5 plugins 域 2 方法 + T3.8 ws.auth（协议 v1.9，53 → 54 方法 / 19 事件）
- * + B10 缺陷修复 plugins.rescan（协议 v1.11，54 → 55 方法）：
+ * + B10 缺陷修复 plugins.rescan（协议 v1.11，54 → 55 方法）
+ * + T6.1 marketplace 域 4 方法（协议 v1.14，58 → 62 方法 / 21 事件）：
  * system.ping/version/shutdown；session.create/send/steer/cancel/list/resume/archive/setMode/rename/fork/usage；
  * config.get/set/providers.list/add/remove/switch；tool.tools.list + 后台任务三方法；permission 5 方法；
  * subagent.spawn/stop/list/profiles.list；memory.read/write/search/entries.list/promote + drafts.list/resolve；
@@ -322,6 +334,14 @@ export const METHOD_SCHEMAS: Readonly<Record<string, MethodSchemas>> = {
   },
   // plugins.rescan（06 §2.10 v1.11，B10 缺陷修复）：运行时重扫描插件目录装载新拷入插件
   "plugins.rescan": { request: pluginsRescanParamsSchema, response: pluginsRescanResultSchema },
+  // T6.1 marketplace 域（06 §2.10 v1.14 additive）：市场注册/清单/安装/卸载（path 源先行）
+  "marketplace.add": { request: marketplaceAddParamsSchema, response: marketplaceAddResultSchema },
+  "marketplace.list": { request: marketplaceListParamsSchema, response: marketplaceListResultSchema },
+  "marketplace.install": { request: marketplaceInstallParamsSchema, response: marketplaceInstallResultSchema },
+  "marketplace.uninstall": {
+    request: marketplaceUninstallParamsSchema,
+    response: marketplaceUninstallResultSchema,
+  },
   // T3.4 skills 域（06 §2.9）：清单 + 斜杠命令展开受理（未装配不暴露 handler，调用期 method not found）
   "skills.list": { request: skillsListParamsSchema, response: skillsListResultSchema },
   "skills.invoke": { request: skillsInvokeParamsSchema, response: skillsInvokeResultSchema },

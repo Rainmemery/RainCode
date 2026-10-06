@@ -13,7 +13,8 @@ import { z } from "zod";
 export const skillSummarySchema = z.object({
   name: z.string(),
   description: z.string(),
-  source: z.enum(["workspace", "global"]),
+  /** 来源层（T6.1 v1.14 增补 plugin：marketplace 安装插件随附技能；解析优先级 workspace > global > plugin）。 */
+  source: z.enum(["workspace", "global", "plugin"]),
   /** 参数形状提示（如 "<file>"；缺省无参技能）。 */
   argumentHint: z.string().optional(),
   /** 模型侧可调用开关（T4.4，v1.10；缺省 true）——仅约束模型经 skill 工具的调用，斜杠命令不受限。 */

@@ -91,6 +91,7 @@ export async function startServiceNode(args: ParsedCliArgs): Promise<CliContext>
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
     skills: {}, // skills 域启用（T3.4）：workspace 技能目录按会话 workspaceRoot 逐会话解析
     plugins: {}, // plugins 域启用（T3.5）：数据根 plugins 目录扫描 + 激活（单插件故障隔离）
+    marketplace: {}, // marketplace 域启用（T6.1）：市场注册/安装/卸载（06 §2.10 v1.14）
     // mcp 域启用（T3.9 全量对齐补装配）：project 层 mcp.json 需装配期工作区，仅单工作区入口
     //（--workspace）生效；多工作区入口（chat 无 --workspace / serve / web）全局层 mcp.json 生效
     ...(args.workspace !== undefined ? { mcp: { workspaceRoot: resolve(args.workspace) } } : { mcp: {} }),

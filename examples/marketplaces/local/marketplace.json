@@ -1,0 +1,14 @@
+{
+  "name": "raincode-local-examples",
+  "version": "0.1.0",
+  "plugins": [
+    {
+      "name": "hello",
+      "version": "0.1.0",
+      "source": "hello",
+      "description": "官方示例插件（greet / word_count 工具 + 随附技能 plugin-demo），演示本地 path 市场分发全链",
+      "displayName": "Hello 示例插件",
+      "category": "examples"
+    }
+  ]
+}

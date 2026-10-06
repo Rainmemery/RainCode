@@ -99,6 +99,30 @@ describe("resolveSkillFile（workspace/global 双源）", () => {
     });
   });
 
+  it("plugin 第三源（T6.1）：workspace > global > plugin 优先级——用户自定义可覆盖市场随附技能", () => {
+    const pluginRoot = join(home, "mkt-cache", "hello", "0.1.0", "skills");
+    mkdirSync(pluginRoot, { recursive: true });
+    writeFileSync(join(pluginRoot, "review.md"), "---\nname: review\ndescription: plugin 版\n---\n\nPLUGIN", "utf8");
+    writeFileSync(join(pluginRoot, "vendor-only.md"), "---\ndescription: 市场独有技能\n---\n\nVENDOR", "utf8");
+    writeFileSync(join(home, "skills", "vendor-both.md"), "---\ndescription: global 版\n---\n\nGLOBAL", "utf8");
+    writeFileSync(join(pluginRoot, "vendor-both.md"), "---\ndescription: plugin 版\n---\n\nPLUGIN", "utf8");
+
+    const dirs = [
+      { path: join(workspace, ".raincode", "skills"), source: "workspace" as const },
+      { path: join(home, "skills"), source: "global" as const },
+      { path: pluginRoot, source: "plugin" as const },
+    ];
+    // plugin 源独有技能可见
+    const vendorHit = resolveSkillFile(dirs, "vendor-only");
+    assert.equal(vendorHit.skill.source, "plugin");
+    // global 与 plugin 双层同名 → global 生效（用户覆盖市场技能）
+    const globalOverPlugin = resolveSkillFile(dirs, "vendor-both");
+    assert.equal(globalOverPlugin.skill.source, "global");
+    // 三层同名 → workspace 最高优先（既有行为不回退）
+    const wsTop = resolveSkillFile(dirs, "review");
+    assert.equal(wsTop.skill.source, "workspace");
+  });
+
   it("首个命中者解析失败即 INVALID，不回落后续目录", () => {
     const a = join(home, "a");
     const b = join(home, "b");
