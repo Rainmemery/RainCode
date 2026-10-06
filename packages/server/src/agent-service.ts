@@ -28,7 +28,6 @@ import { ConfigDomain } from "./config-domain.js";
 import { ConfigStore } from "./config-store.js";
 import { ToolDomain } from "./tool-domain.js";
 import { SessionDomain } from "./session-domain.js";
-import { createHistorySearchChannel } from "./history-search-channel.js";
 import { appVersion } from "./app-version.js";
 import { buildLlmClient, resolveLlmForModel, resolveLlmForProvider, type LlmProviderResolverDeps } from "./llm-factory.js";
 import {
@@ -50,6 +49,7 @@ import type { PluginRuntime } from "./plugin-runtime.js";
 import type { SubagentRuntime } from "./subagent-runtime.js";
 import type { SkillRuntime } from "./skill-runtime.js";
 import { HooksRuntime } from "./hooks-runtime.js";
+import type { McpToolCatalog } from "./mcp-tool-catalog.js";
 import { memoryLoopEnhancements, type MemoryRuntime } from "./memory-runtime.js";
 import { buildRuntimeDomains } from "./runtime-domains.js";
 import type { SectionEditHooks } from "@raincode/memory";
@@ -68,8 +68,8 @@ export interface AgentServiceOptions {
   permission?: PermissionConfig;
   /** auto-compact 装配（02 §1.2.5；缺省 = 不启用；contextWindowTokens 取 Provider maxContextTokens；microcompact 预剪枝选项随 compaction 传入，T5.4）。 */
   compaction?: { thresholdRatio?: number; keepRecentCount?: number; microcompact?: MicrocompactOptions };
-  /** MCP 域装配（02 §3；缺省 = 不启用 mcp 域；workspaceRoot 为 project 层 mcp.json 判定域）。 */
-  mcp?: { workspaceRoot?: string };
+  /** MCP 域装配（02 §3；缺省 = 不启用 mcp 域；workspaceRoot 为 project 层 mcp.json 判定域；toolSearch=false 关闭工具目录化）。 */
+  mcp?: { workspaceRoot?: string; toolSearch?: boolean };
   /** plugins 域装配（06 §2.10 v1.8；缺省 = 不启用；数据根取 storage.dataRoot）。 */
   plugins?: Record<string, never>;
   /** 子代理域装配（02 §4；缺省 = 不启用 subagent 域；workspaceRoot 为 workspace 层 profiles 判定域）。 */
@@ -108,6 +108,8 @@ export class AgentService {
   private readonly skills: SkillRuntime | null;
   /** hooks 域（06 §2.12；缺省未装配）。 */
   private readonly hooks: HooksRuntime | null;
+  /** MCP 工具目录（T5.6；mcp 域未装配或 toolSearch=false → null，目录模式不生效）。 */
+  private readonly mcpCatalog: McpToolCatalog | null;
   /** 活跃绑定集（T3.8：Web 多连接宿主逐连接 attach，事件扇出到全部绑定；stdio/in-memory 单连接）。 */
   private readonly bindings = new Set<RpcServiceBinding>();
   private shuttingDown = false;
@@ -171,6 +173,7 @@ export class AgentService {
         llmForModel: (model) => this.llmForModel(model),
         publish: (event) => this.publishEvent(event),
         submitTurn: (sessionId, text) => this.submitTurn(sessionId, text),
+        maxContextTokens: this.maxContextTokens,
       },
     );
     this.mcp = domains.mcp;
@@ -178,6 +181,7 @@ export class AgentService {
     this.subagent = domains.subagent;
     this.memory = domains.memory;
     this.skills = domains.skills;
+    this.mcpCatalog = domains.mcpCatalog;
     // T5.1 hooks 域装配：user/project 双源 hooks.json + trust 授信（settings 表）；port 注入 turn-loop
     this.hooks = options.hooks !== undefined
       ? new HooksRuntime({
@@ -186,13 +190,7 @@ export class AgentService {
           workspaceRootOf: (sessionId) => this.options.storage.workspaceRootOf(sessionId),
         })
       : null;
-    // T4.4 skill 工具通道：展开单点 SkillRuntime（skills.invoke 同链路）；skills 域未装配 → 工具 TOOL_UNAVAILABLE
-    if (this.skills !== null) {
-      this.toolDeps.expandSkill = (request) => this.skills!.expandForModel(request.sessionId, request.name, request.arguments);
-    }
-    // T5.3 session_search 检索通道：storage.searchHistory 薄投影（part 级 FTS + 相对分数地板
-    // 语义单点在 storage history-search）；排除当前会话 + 错误形态投影见 history-search-channel.ts
-    this.toolDeps.searchHistory = createHistorySearchChannel(options.storage);
+    // 模型侧工具通道（expandSkill/searchHistory/searchMcpTools）接线已集中 buildRuntimeDomains
   }
 
   /**
@@ -267,7 +265,7 @@ export class AgentService {
         storage: this.options.storage, sessions: this.sessions, config: this.config,
         llmFor: (providerId) => this.llmFor(providerId), publisher: () => this.publisher(),
         systemPrompt: this.options.systemPrompt, tools: this.toolDeps, memory: this.memory,
-        skills: this.skills, compaction: this.compaction,
+        skills: this.skills, compaction: this.compaction, mcpToolCatalog: this.mcpCatalog,
       }).methods(register),
       ...this.config.methods(register),
       ...this.toolDomain.methods(register),
@@ -313,6 +311,7 @@ export class AgentService {
       ...(this.skills !== null && { systemPromptProvider: this.skills.systemPromptProvider(meta.id, params.workspaceRoot, memoryExtras.systemPrompt) }),
       tools: this.toolDeps, workspaceRoot: params.workspaceRoot, workspaceId: workspace.hash,
       ...(this.hooks !== null && { hooks: this.hooks.port }), // T5.1：hooks 生命周期接线（四事件 dispatch 单点）
+      ...(this.mcpCatalog !== null && { mcpToolCatalog: this.mcpCatalog }), // T5.6：MCP 工具目录化载荷端口
       initialEventSeq: 1,
       ...(this.compaction !== undefined && { compaction: this.compaction }),
     });
@@ -427,6 +426,7 @@ export class AgentService {
       memory: this.memory,
       skills: this.skills,
       ...(this.hooks !== null && { hooks: this.hooks.port }), // T5.1：resume 路径 hooks 生命周期接线
+      ...(this.mcpCatalog !== null && { mcpToolCatalog: this.mcpCatalog }), // T5.6：目录化载荷端口（resume 同接线）
       ...(this.options.systemPrompt !== undefined && { systemPrompt: this.options.systemPrompt }),
       ...(this.compaction !== undefined && { compaction: this.compaction }),
       providerId: this.providerId,

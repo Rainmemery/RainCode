@@ -452,6 +452,7 @@ export interface ToolExecutor {
 | `web_fetch` | 抓取 URL 转 Markdown（域名白名单校验） | `url`, `maxBytes` | network | P1 |
 | `ask_user_question` | 向用户提出结构化问题并挂起等答 | `questions[]` | none | P1 |
 | `session_search` | 跨会话检索历史（part 级 FTS：文本+工具名；T5.3） | `query`, `limit` | none | P1 |
+| `mcp_tool_search` | MCP 工具目录检索（BM25 K1=1.2；命中自下一轮起可调用；T5.6） | `query`, `limit` | none | P1 |
 
 > `todo` 状态存于会话内存并随事件落盘；`write/edit` 依赖 `read` 建立的文件快照（read-file state）做「先读后写」校验，防止盲写覆盖。
 
@@ -555,6 +556,13 @@ export function toMcpToolName(serverKey: string, toolName: string): string;
 
 适配规则：MCP `inputSchema`（JSON Schema）转换为等价 zod schema（不可表达处降级为 `z.unknown()` 并保留原始 schema 校验）；`ToolSource` 标记为 `mcp`；权限 metadata 合成策略：`readOnly=false、destructive=false、sideEffectScope="machine"、riskLevel="medium"、needsApproval=true`——外部工具默认从严，允许用户在权限规则中为可信 server 显式放宽。
 
+**MCP 工具目录化（T5.6，MiMo mcp-tool-search 参照）**：目录模式（mcp 域装配且未显式 `toolSearch:false`）下，MCP 工具完整参数 schema 不再全量进模型载荷——载荷 = 非 MCP 工具 + `mcp_tool_search`（description 承载预算化目录摘要）+ 已激活 MCP 工具。机制四件套：
+
+- **目录与预算降级**：目录快照 = 生效工具（registry source="mcp"，字典序）的 name/description；渲染预算 = 10% 模型窗口封顶 20000 tokens（窗口未知按 20000，估算 tokens=ceil(chars/3)），超预算降级为仅名称列表，仍超则确定性字典序前缀 + 省略计数；参数 schema 与参数描述绝不进目录（仅作检索语料）。目录 digest（sha256 12 位）变化即「重发布」（热变更下一 turn 生效，T4.4 同款诊断）。
+- **BM25 检索**：`mcp_tool_search(query, limit≤32)` 经 server 侧内存索引（K1=1.2，语料 = 名 + 描述 + 递归参数名/描述；ASCII 按非字母数字切分、CJK 二元 bigram），相对分数地板 top×0.15（T5.3 检索同纪律）。
+- **请求域激活**：搜索命中自**下一轮**起可按名调用；新 turn 重置激活集；单 turn 累计激活有界（32）；激活登记以同索引对搜索调用确定性重导出（不信任模型可见输出），digest 变化整体失效。
+- **执行安全**：全部 MCP 执行器保持注册（权限/审批/hooks 不变）；目录模式调度期守卫——未激活 `mcp__*` 调用先于 zod/hook/permission 拒绝（`TOOL_MCP_NOT_LOADED` + 指引先检索），覆盖幻觉调用与同轮并行 search+MCP 调用。偏差申报：MiMo 的上下文压力降级（用量 ≥70% 转名称列表）不做，压力面归 compact 线治理；子代理循环不接目录端口（维持全量 schema 投影）。
+
 ### 3.4 异常与边界场景
 
 | 场景 | 处理策略 |
@@ -568,6 +576,8 @@ export function toMcpToolName(serverKey: string, toolName: string): string;
 | HTTP server 返回 401/403 | 标记 Failed 并提示配置鉴权；不自动重试认证类错误 |
 | sse 兼容模式断流 | 与 http 相同进入 Reconnecting；SSE 为 P1 兼容路径，不做功能扩展 |
 | MCP 工具与内置工具重名 | 命名空间保证不冲突；若用户配置 serverKey 为内置名（如 `bash`），加载期拒绝 |
+| 目录模式下调用未加载的 MCP 工具（幻觉/同轮并行/目录变更后旧引用） | 调度期拒绝（`TOOL_MCP_NOT_LOADED`，先于 zod/hook/permission），message 指引先 `mcp_tool_search` 检索；命中自下一轮生效（T5.6） |
+| 目录热变更（server 连接/断开，工具集变化） | 目录 digest 变化 → 重发布诊断 + 已激活集整体失效；新目录下一 turn 生效（T5.6） |
 
 ---
 

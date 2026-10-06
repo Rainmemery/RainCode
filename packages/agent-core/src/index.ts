@@ -34,6 +34,10 @@ export type {
 export { LoopEvents } from "./turn/loop-events.js";
 export type { AuditEventName, PersistedEventName, TransientEventName } from "./turn/loop-events.js";
 
+// MCP 工具目录化（T5.6）：端口/快照类型供 server 目录模块实现，状态机供 turn-loop 内部消费
+export { McpRequestCatalog, toCatalogedLlmFunctionTools } from "./turn/mcp-catalog.js";
+export type { McpToolCatalogPort, McpToolCatalogSearchResult, McpToolCatalogSnapshot } from "./turn/mcp-catalog.js";
+
 export { HookDispatcher, emptyHookDispatchResult } from "./hooks/dispatcher.js";
 export { DEFAULT_HOOK_TIMEOUT_MS, runHook } from "./hooks/runner.js";
 export type {

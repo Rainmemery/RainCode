@@ -17,6 +17,7 @@ import { webFetchTool } from "./handlers/web-fetch.js";
 import { askUserTool } from "./handlers/ask-user.js";
 import { skillTool } from "./handlers/skill.js";
 import { sessionSearchTool } from "./handlers/session-search.js";
+import { mcpToolSearchTool } from "./handlers/mcp-tool-search.js";
 import { createTodoWriteTool, createTodoReadTool } from "./handlers/todo.js";
 
 export interface BuiltinToolSet {
@@ -61,6 +62,9 @@ export function createBuiltinTools(options: CreateBuiltinToolsOptions = {}): Bui
   registry.register(askUserTool);
   registry.register(skillTool); // T4.4：展开经 ctx.expandSkill 通道（skills 域未装配 → TOOL_UNAVAILABLE）
   registry.register(sessionSearchTool); // T5.3：检索经 ctx.searchHistory 通道（server 装配注入；未装配 → TOOL_UNAVAILABLE）
+  // T5.6：MCP 目录检索经 ctx.searchMcpTools 通道（目录模式未启用 → TOOL_UNAVAILABLE；
+  // 非目录模式载荷按名剔除——turn/mcp-catalog.ts，目录模式由 server 装配开关）
+  registry.register(mcpToolSearchTool);
   registry.register(createTodoWriteTool(todos));
   registry.register(createTodoReadTool(todos));
   return { registry, background, todos };

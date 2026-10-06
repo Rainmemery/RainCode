@@ -35,6 +35,8 @@ export interface ToolPhaseContext {
   background: BackgroundTaskRegistry;
   /** hooks 生命周期 dispatch 单点（T5.1；缺省 = 未装配，PreToolUse/PostToolUse 均跳过）。 */
   hooks?: HookDispatcher;
+  /** MCP 目录模式调度守卫（T5.6；未生效 undefined）：非 undefined = 未加载，先于 zod/hook/permission。 */
+  mcpEligibility?: (toolName: string) => string | undefined;
   /**
    * 聚合记录持久化钩子（appendMessage + history 推入；turn-loop 单写者链）。
    * 缺省不持久化（测试场景）。
@@ -113,6 +115,13 @@ export class ToolPhaseRunner {
           code: TOOL_ERROR_CODES.UNKNOWN,
           message: `unknown tool: ${call.toolName}`,
         });
+        return entry;
+      }
+      // T5.6 目录模式守卫：调用未加载的 MCP 工具 → 指引先 mcp_tool_search（命中下一轮生效）
+      const mcpRejection = ctx.mcpEligibility?.(call.toolName);
+      if (mcpRejection !== undefined) {
+        const entry = this.plainEntry(call, tool.metadata);
+        entry.blocked = this.makeBlocked(entry, { code: TOOL_ERROR_CODES.MCP_NOT_LOADED, message: mcpRejection });
         return entry;
       }
       let args: unknown;
@@ -306,6 +315,7 @@ export class ToolPhaseRunner {
           deps.searchHistory!({ sessionId: ctx.sessionKey, workspaceId: ctx.workspaceId, query: request.query,
             ...(request.limit !== undefined && { limit: request.limit }) }),
       }),
+      ...(deps.searchMcpTools !== undefined && { searchMcpTools: deps.searchMcpTools }), // T5.6（无会话绑定，缺省 TOOL_UNAVAILABLE）
       onToolProgress: (event: ToolProgressEvent & { toolCallId: string }) => {
         this.publishThrottledProgress(event, progressThrottleMs);
       },

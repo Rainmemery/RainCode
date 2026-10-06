@@ -18,7 +18,8 @@ import { DeltaBatcher } from "./delta-batcher.js";
 import { LoopEvents } from "./loop-events.js";
 import type { SessionTurnLoopOptions } from "./loop-options.js";
 import { transitionPhase, type TurnPhase, type TurnTrigger } from "./phase.js";
-import { buildAssistantRecord, errorMessage, invalidInputStats, mergeUsage, toLlmFunctionTools } from "./round-helpers.js";
+import { buildAssistantRecord, errorMessage, invalidInputStats, mergeUsage } from "./round-helpers.js";
+import { McpRequestCatalog } from "./mcp-catalog.js";
 import { TurnSettler } from "./settle.js";
 import { ToolPhaseRunner, type PlannedToolCall } from "./tool-phase.js";
 export type { TurnAdmission, TurnInput, TurnOutcome } from "../ports.js";
@@ -63,6 +64,7 @@ export class SessionTurnLoop {
   private lastPromptTokens = 0;
   /** hooks 生命周期 dispatch 单点（T5.1：事件投影 + 审计对 + provenance 上下文缓冲）。 */
   private readonly hooks: HookDispatcher;
+  private readonly mcpRequestCatalog = new McpRequestCatalog(); // T5.6：每轮载荷 + 请求域激活 + 调度守卫
 
   constructor(private readonly options: SessionTurnLoopOptions) {
     this.mode = options.mode;
@@ -338,8 +340,7 @@ export class SessionTurnLoop {
     };
 
     try {
-      const tools = this.options.tools;
-      const toolsPayload = tools !== undefined ? toLlmFunctionTools(tools.registry) : undefined;
+      const toolsPayload = this.mcpRequestCatalog.payloadFor(this.options.mcpToolCatalog, this.options.tools?.registry, round); // T5.6
       await llm.streamChat({
         messages: requestMessages,
         ...(toolsPayload !== undefined && { tools: toolsPayload }),
@@ -422,6 +423,7 @@ export class SessionTurnLoop {
         workspaceId: this.options.workspaceId ?? "",
         background: tools.background,
         hooks: this.hooks, // T5.1：PreToolUse/PostToolUse 生命周期接线（additionalContext 走 dispatcher 缓冲）
+        mcpEligibility: this.mcpRequestCatalog.eligibility(), // T5.6：目录模式调度守卫（未生效 = undefined 不设防）
         persistRecord: async (toolRecord) => {
           await this.serialWrite(() =>
             this.options.storage.appendMessage(this.options.sessionId, toolRecord),
@@ -441,6 +443,7 @@ export class SessionTurnLoop {
 
     // T13：AggregatingResults --followup.required--> ModelRequest（下一轮）；AC-12 非法入参统计随轮上交
     const invalidStats = invalidInputStats(phaseResult.results);
+    await this.mcpRequestCatalog.captureSearches(this.options.mcpToolCatalog, calls, phaseResult.results); // T5.6 激活重导出（下一轮生效）
     this.toPhase("AggregatingResults", "followup.required", entry.turnId);
     return { kind: "continue", usage: roundUsage, ...invalidStats };
   }

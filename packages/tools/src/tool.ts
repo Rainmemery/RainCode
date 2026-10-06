@@ -59,6 +59,23 @@ export type SessionHistorySearchResult =
   | { ok: true; hits: SessionHistoryHitView[] }
   | { ok: false; code: string; message: string };
 
+// ---------------------------------------------------------------------------
+// mcp_tool_search 目录检索通道（T5.6；目录与 BM25 索引在 server，装配方注入）
+// ---------------------------------------------------------------------------
+
+/** 目录命中投影（BM25 细节不外露；已按相关性排序、相对分数地板裁剪、limit 截断）。 */
+export interface McpToolMatchView {
+  name: string;
+  description: string;
+  /** BM25 相关性（四舍五入 4 位；仅排序参考）。 */
+  score: number;
+}
+
+/** 检索结果：ok = 命中列表 + 目录指纹（digest 一致方视为有效激活依据）；!ok = 域码投影。 */
+export type McpToolSearchResult =
+  | { ok: true; digest: string; matches: McpToolMatchView[] }
+  | { ok: false; code: string; message: string };
+
 export interface ToolExecutionContext {
   /** 贯穿取消（02 §1.4 T12：中断信号广播到工具执行器）。 */
   signal: AbortSignal;
@@ -91,6 +108,11 @@ export interface ToolExecutionContext {
    * （同 ask_user/skill fail-safe 口径）。
    */
   searchHistory?: (request: { query: string; limit?: number }) => Promise<SessionHistorySearchResult>;
+  /**
+   * mcp_tool_search 目录检索通道（T5.6；agent-core tool-phase 从 ToolPhaseDeps 注入）。
+   * 缺省 = MCP 工具目录模式未启用，mcp_tool_search 以 TOOL_UNAVAILABLE 收敛（同 ask_user/skill fail-safe 口径）。
+   */
+  searchMcpTools?: (request: { query: string; limit?: number }) => Promise<McpToolSearchResult>;
   /** 进度回调（长耗时工具周期性产出）。 */
   onProgress?: (event: ToolProgressEvent) => void;
 }

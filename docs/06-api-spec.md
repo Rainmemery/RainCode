@@ -576,6 +576,7 @@ flush 边界保证：`message.completed`、`tool_call.*`、`permission.*`、`tur
 | 9 skills | `SKILL_NOT_FOUND` | 技能名无法解析（未命中 / 名字非法含路径逃逸形态 / 文件读取失败） |
 | 9 skills | `SKILL_INVALID` | 技能文件校验失败（缺 frontmatter / 缺 description / name 非法）；清单路径跳过、调用路径报错 |
 | 7 tool | `TOOL_HOOK_DENIED` | PreToolUse hook 判定 block 的工具结果收敛码（T5.1 数据级；hook 拦截先于权限判定，reason 随 message） |
+| 7 tool | `TOOL_MCP_NOT_LOADED` | MCP 工具目录模式下调用未加载的 `mcp__*` 工具（T5.6 数据级；调度期先于 zod/hook/permission 拒绝，message 指引先 `mcp_tool_search` 检索，命中自下一轮生效——02 §3.3 目录化） |
 | 11 hooks | `HOOKS_CONFIG_INVALID` | hooks.trust.grant 时 project hooks.json 缺失或 schema 校验失败（v1.12） |
 | 10 plugins | `PLUGIN_NOT_FOUND` | plugins.setEnabled 未知插件名（v1.8） |
 | 10 plugins | `PLUGIN_INVALID` | 插件清单/入口/工具描述符非法（正常情况下加载期即拦截为 failed 状态，不达方法面） |

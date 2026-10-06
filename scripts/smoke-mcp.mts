@@ -212,8 +212,17 @@ async function caseControlCall(scenario: Scenario): Promise<void> {
 }
 
 async function caseModelCall(scenario: Scenario): Promise<void> {
-  // D：turn 内模型调用（needsApproval 从严 → default-allow 审批放行）
+  // D：turn 内模型调用（T5.6 目录模式：先 mcp_tool_search 检索激活 → 下一轮调用 mcp__alpha__echo
+  //    → 权限链（needsApproval 从严）→ default-allow 审批放行；未检索直调会被调度守卫 TOOL_MCP_NOT_LOADED 拒绝）
   scenario.setScript([
+    {
+      frames: [
+        { choices: [{ index: 0, delta: { role: "assistant", content: "" } }] },
+        toolCallFrame("call_search_1", "mcp_tool_search", { query: "echo" }),
+        { choices: [], usage: { prompt_tokens: 20, completion_tokens: 6 } },
+      ],
+      finish: "tool_calls",
+    },
     {
       frames: [
         { choices: [{ index: 0, delta: { role: "assistant", content: "" } }] },
@@ -232,10 +241,13 @@ async function caseModelCall(scenario: Scenario): Promise<void> {
   assert.equal(admission.admission, "started");
   await withTimeout(run.done, 20000, "model turn done");
   run.stop();
+  const searchCompleted = scenario.watch.toolCompleted.find((e) => e.contentPreview?.includes("Found 1 MCP tool"));
+  assert.ok(searchCompleted !== undefined, `mcp_tool_search 命中回传（${JSON.stringify(scenario.watch.toolCompleted)}）`);
+  assert.equal(searchCompleted.isError, false, "目录检索应成功（目录模式生效）");
   const completed = scenario.watch.toolCompleted.find((e) => e.contentPreview?.includes("echo(alpha): from-model"));
   assert.ok(completed !== undefined, `mcp 工具结果回传（${JSON.stringify(scenario.watch.toolCompleted)}）`);
   assert.equal(completed.isError, false);
-  console.log("case D: turn 内模型调用（权限链 + 命名空间工具执行）OK");
+  console.log("case D: turn 内模型调用（目录检索激活 → 权限链 → 命名空间工具执行）OK");
 }
 
 async function caseReconnect(scenario: Scenario): Promise<void> {

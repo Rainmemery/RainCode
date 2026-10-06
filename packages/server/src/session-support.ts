@@ -17,7 +17,7 @@ import { stat } from "node:fs/promises";
 import { StorageError, type SessionResume, type Storage } from "@raincode/storage";
 import { computeWorkspaceHash } from "@raincode/storage";
 import { SessionTurnLoop } from "@raincode/agent-core";
-import type { CompactionOptions, HooksPort, LlmPort, MicrocompactOptions, SessionEventPublisher, ToolPhaseDeps, TurnOutcome } from "@raincode/agent-core";
+import type { CompactionOptions, HooksPort, LlmPort, McpToolCatalogPort, MicrocompactOptions, SessionEventPublisher, ToolPhaseDeps, TurnOutcome } from "@raincode/agent-core";
 import { memoryLoopEnhancements, type MemoryRuntime } from "./memory-runtime.js";
 import type { SkillRuntime } from "./skill-runtime.js";
 
@@ -59,6 +59,8 @@ export interface SessionLoopDeps {
   compactionOnBeforeReplace?: (prefix: MessageRecord[]) => Promise<void>;
   /** hooks 生命周期端口（T5.1；缺省 = hooks 域未装配，全部 no-op）。 */
   hooks?: HooksPort;
+  /** MCP 工具目录端口（T5.6；缺省 = 目录模式未装配，MCP 工具全量 schema 照旧投影）。 */
+  mcpToolCatalog?: McpToolCatalogPort;
 }
 
 export function createSessionLoop(deps: SessionLoopDeps): SessionTurnLoop {
@@ -80,6 +82,7 @@ export function createSessionLoop(deps: SessionLoopDeps): SessionTurnLoop {
     ...(deps.compaction !== undefined && { compaction: deps.compaction }),
     ...(deps.compactionOnBeforeReplace !== undefined && { compactionOnBeforeReplace: deps.compactionOnBeforeReplace }),
     ...(deps.hooks !== undefined && { hooks: deps.hooks }),
+    ...(deps.mcpToolCatalog !== undefined && { mcpToolCatalog: deps.mcpToolCatalog }), // T5.6
     onDiagnostic: (message, err) => console.error(`[raincode/server] ${message}`, err ?? ""),
   });
 }
@@ -150,6 +153,8 @@ export async function resumeSessionFlow(input: {
   skills: SkillRuntime | null;
   /** hooks 域端口（T5.1：非 null 时注入 hooks 生命周期 dispatch）。 */
   hooks?: HooksPort | null;
+  /** MCP 工具目录端口（T5.6：非 null 时装配目录化载荷）。 */
+  mcpToolCatalog?: McpToolCatalogPort | null;
   systemPrompt?: string;
   compaction?: CompactionOptions;
   providerId: string;
@@ -195,6 +200,7 @@ export async function resumeSessionFlow(input: {
     ...(input.skills !== null && { systemPromptProvider: input.skills.systemPromptProvider(meta.id, workspaceRoot, memoryExtras.systemPrompt) }),
     tools: input.toolDeps, workspaceRoot, workspaceId: meta.workspaceId,
     ...(input.hooks != null && { hooks: input.hooks }), // T5.1：resume 路径同 hooks 接线
+    ...(input.mcpToolCatalog != null && { mcpToolCatalog: input.mcpToolCatalog }), // T5.6：目录化载荷端口
     initialHistory: replay.history,
     initialEventSeq: seedEventSeq(replay),
     initialEpoch: replay.epoch,

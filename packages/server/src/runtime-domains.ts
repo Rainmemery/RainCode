@@ -13,10 +13,13 @@ import { PluginRuntime } from "./plugin-runtime.js";
 import { SubagentRuntime } from "./subagent-runtime.js";
 import { SkillRuntime } from "./skill-runtime.js";
 import { MemoryRuntime } from "./memory-runtime.js";
+import { McpToolCatalog } from "./mcp-tool-catalog.js";
+import { createHistorySearchChannel } from "./history-search-channel.js";
 
 /** 五域装配入参（AgentServiceOptions 的域配置投影，原样透传）。 */
 export interface RuntimeDomainInputs {
-  mcp?: { workspaceRoot?: string };
+  /** toolSearch = false 显式关闭 MCP 工具目录化（T5.6；缺省启用）。 */
+  mcp?: { workspaceRoot?: string; toolSearch?: boolean };
   plugins?: Record<string, never>;
   subagent?: { workspaceRoot?: string };
   memory?: { workspaceRoot?: string; sectionEditHooks?: SectionEditHooks };
@@ -39,6 +42,8 @@ export interface RuntimeDomainDeps {
   publish: (event: { name: string; payload: unknown }) => void;
   /** skills 域提交链（session.send / skills.invoke 共用）。 */
   submitTurn: (sessionId: string, text: string) => Promise<unknown>;
+  /** 模型可用窗口 token（T5.6 目录预算 = 10% 封顶 20000；与 contextUsage 投影同口径）。 */
+  maxContextTokens: number;
 }
 
 export interface RuntimeDomains {
@@ -47,6 +52,8 @@ export interface RuntimeDomains {
   subagent: SubagentRuntime | null;
   memory: MemoryRuntime | null;
   skills: SkillRuntime | null;
+  /** MCP 工具目录（T5.6；mcp 域未装配或显式关闭 → null，目录模式不生效）。 */
+  mcpCatalog: McpToolCatalog | null;
 }
 
 export function buildRuntimeDomains(inputs: RuntimeDomainInputs, deps: RuntimeDomainDeps): RuntimeDomains {
@@ -104,5 +111,23 @@ export function buildRuntimeDomains(inputs: RuntimeDomainInputs, deps: RuntimeDo
           workspaceRootOf: (sessionId) => deps.storage.workspaceRootOf(sessionId),
           submitTurn: deps.submitTurn,
         });
-  return { mcp, plugins, subagent, memory, skills };
+  // 模型侧工具通道接线集中此处（tool-phase ToolPhaseDeps；缺省字段缺失 → 工具以 TOOL_UNAVAILABLE 收敛）
+  if (skills !== null) {
+    // T4.4 skill 展开通道：展开单点 SkillRuntime（skills.invoke 同链路）
+    deps.toolDeps.expandSkill = (request) => skills.expandForModel(request.sessionId, request.name, request.arguments);
+  }
+  // T5.3 session_search 检索通道：storage.searchHistory 薄投影（part 级 FTS + 相对分数地板语义单点在 storage）
+  deps.toolDeps.searchHistory = createHistorySearchChannel(deps.storage);
+  // T5.6 MCP 工具目录化：mcp 域装配且未显式关闭 → 目录快照端口（turn-loop 载荷）+ mcp_tool_search 检索通道
+  const mcpCatalog =
+    inputs.mcp !== undefined && (inputs.mcp.toolSearch ?? true)
+      ? new McpToolCatalog({
+          registry: deps.registry,
+          maxContextTokens: () => deps.maxContextTokens,
+        })
+      : null;
+  if (mcpCatalog !== null) {
+    deps.toolDeps.searchMcpTools = (request) => mcpCatalog.search(request.query, request.limit);
+  }
+  return { mcp, plugins, subagent, memory, skills, mcpCatalog };
 }

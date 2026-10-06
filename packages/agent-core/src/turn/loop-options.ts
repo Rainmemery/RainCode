@@ -7,6 +7,7 @@ import type { BackgroundTaskRegistry } from "@raincode/tools";
 import type { CompactionOptions } from "../compact/service.js";
 import type { HooksPort } from "../hooks/types.js";
 import type { LlmPort, SessionEventPublisher, StoragePort, ToolPhaseDeps } from "../ports.js";
+import type { McpToolCatalogPort } from "./mcp-catalog.js";
 
 export interface SessionTurnLoopOptions {
   sessionId: string;
@@ -41,4 +42,6 @@ export interface SessionTurnLoopOptions {
   compactionOnBeforeReplace?: (prefix: MessageRecord[]) => Promise<void>; // 02 §7.2 compact 记忆抽取钩子（透传 CompactionDeps.onBeforeReplace）
   /** hooks 生命周期端口（T5.1；缺省 = 未装配，全部 no-op 零事件）。 */
   hooks?: HooksPort;
+  /** MCP 工具目录端口（T5.6；缺省 = 目录模式未装配，MCP 工具全量 schema 照旧投影）。 */
+  mcpToolCatalog?: McpToolCatalogPort;
 }

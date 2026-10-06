@@ -76,6 +76,8 @@ export const TOOL_ERROR_CODES = {
   PERMISSION_DENIED: "TOOL_PERMISSION_DENIED",
   /** PreToolUse hook 判定 block（T5.1：hook 拦截先于权限判定；reason 随 message 携带）。 */
   HOOK_DENIED: "TOOL_HOOK_DENIED",
+  /** MCP 工具目录模式下调用未加载工具（T5.6：先 mcp_tool_search 检索，命中自下一轮起可调用）。 */
+  MCP_NOT_LOADED: "TOOL_MCP_NOT_LOADED",
   /** web_fetch 目标命中私网/环回/保留段等 SSRF 黑名单（02 §2.4：直接拒绝并注明原因）。 */
   SSRF_BLOCKED: "TOOL_SSRF_BLOCKED",
   /** IO / 进程等执行层失败（含目标文件不存在）。 */

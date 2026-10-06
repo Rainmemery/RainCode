@@ -23,7 +23,7 @@ import type {
   SessionUsageParams,
   SessionUsageResult,
 } from "@raincode/shared";
-import type { CompactionOptions, LlmPort, SessionEventPublisher, ToolPhaseDeps } from "@raincode/agent-core";
+import type { CompactionOptions, LlmPort, McpToolCatalogPort, SessionEventPublisher, ToolPhaseDeps } from "@raincode/agent-core";
 import type { Storage } from "@raincode/storage";
 import type { BackgroundTaskRegistry } from "@raincode/tools";
 import type { ConfigDomain } from "./config-domain.js";
@@ -49,6 +49,8 @@ export interface SessionDomainDeps {
   skills: SkillRuntime | null;
   /** auto-compact 选项（undefined = 不启用；与 create/resume 同口径）。 */
   compaction?: CompactionOptions;
+  /** MCP 工具目录端口（T5.6：fork 装配目录化载荷，与 create/resume 同口径）。 */
+  mcpToolCatalog?: McpToolCatalogPort | null;
 }
 
 export class SessionDomain {
@@ -129,6 +131,7 @@ export class SessionDomain {
       ...memoryExtras,
       ...(this.deps.skills !== null && { systemPromptProvider: this.deps.skills.systemPromptProvider(forked.id, workspaceRoot, memoryExtras.systemPrompt) }),
       tools: this.deps.tools, workspaceRoot, workspaceId: source.workspaceId,
+      ...(this.deps.mcpToolCatalog != null && { mcpToolCatalog: this.deps.mcpToolCatalog }), // T5.6：fork 同 create/resume 口径
       initialHistory: replay.history,
       initialEventSeq: checkpoint.accepted ? checkpoint.seq : lastSeq,
       ...(this.deps.compaction !== undefined && { compaction: this.deps.compaction }),

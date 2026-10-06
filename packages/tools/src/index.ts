@@ -54,6 +54,9 @@ export { TodoStore } from "./todo-store.js";
 export { assertPublicHttpUrl } from "./ssrf.js";
 export type { SsrfLookupDeps } from "./ssrf.js";
 export type { AskUserAnswer, AskUserRequest, SessionHistoryHitView, SessionHistorySearchResult } from "./tool.js";
+// MCP 工具目录化（T5.6）：名称常量供 agent-core 载荷装配与 server 目录模块共用
+export { MCP_TOOL_SEARCH_MAX_LIMIT, MCP_TOOL_SEARCH_NAME } from "./handlers/mcp-tool-search.js";
+export type { McpToolMatchView, McpToolSearchResult } from "./tool.js";
 
 // 沙箱（02 §5）
 export { execLocal, killProcessTree, resolveShell, spawnLocal } from "./sandbox/local-executor.js";

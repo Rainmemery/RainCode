@@ -14,7 +14,7 @@ import type {
   ChatCompletionStreamRequest,
   LlmStreamResult,
 } from "@raincode/llm";
-import type { ToolExecutor, ToolMetadata, ToolRegistry } from "@raincode/tools";
+import type { ToolExecutor, ToolMetadata, ToolRegistry, McpToolSearchResult } from "@raincode/tools";
 import type {
   AppendResult,
   CheckpointResult,
@@ -177,6 +177,12 @@ export interface ToolPhaseDeps {
    * 会话归属与 workspace 判定域由 tool-phase 注入）；结果形态不复用异常（同 expandSkill 口径）。
    */
   searchHistory?: SessionHistorySearchChannel;
+  /**
+   * mcp_tool_search 目录检索通道（T5.6；可选——缺省 = MCP 工具目录模式未启用，工具以
+   * TOOL_UNAVAILABLE 收敛）。真实实现由 server 装配（McpToolCatalog.search 薄投影：
+   * BM25 K1=1.2 + 相对分数地板，命中随目录 digest 携带供激活校验）。
+   */
+  searchMcpTools?: (request: { query: string; limit?: number }) => Promise<McpToolSearchResult>;
 }
 
 // ---------------------------------------------------------------------------
