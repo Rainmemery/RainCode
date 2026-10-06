@@ -3,7 +3,8 @@
  * 覆盖：工厂解析（未配置 local / docker+wsl 不可用回退告警 / 可用生效）、DockerExecutor
  * argv 策略断言（仅挂载 workspace = 越界拦截语义、--network 隔离、workdir 映射、env 注入、
  * 退出后 rm -f 清理）、WslExecutor 命令翻译（--cd / 发行版 / env 前缀）、bash 工具执行域接线
- * （sandbox 标记 / 后台任务同域投递 / 路径守卫不变）。
+ * （sandbox 标记 / 后台任务同域投递 / 路径守卫不变）、T5.2 enforcement 自报矩阵与拒绝标记。
+ * SshExecutor 用例（T5.7 base64 远端命令契约）在 executor-ssh.test.ts（500 行门禁按域拆分）。
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
@@ -213,94 +214,6 @@ describe("LocalExecutor", () => {
   });
 });
 
-describe("SshExecutor（T3.2 / ES-5 远程工作区）", () => {
-  const target = {
-    host: "build.example.com",
-    user: "deploy",
-    port: 2222,
-    identityFile: "C:/keys/id_ed25519",
-    remoteWorkspaceRoot: "/srv/work/ws",
-  };
-
-  it("远端路径映射：workspace 内 cwd → remoteWorkspaceRoot 相对展开", () => {
-    const wsl = new SshExecutor(target);
-    const { file, args } = wsl.buildArgv({ command: "make", cwd: inside("src"), workspaceRoot: WORKSPACE });
-    assert.equal(file, "ssh");
-    const remote = args.at(-1)!;
-    assert.ok(remote.startsWith(`cd "/srv/work/ws/src" && `), remote);
-    assert.ok(remote.includes("sh -c"));
-  });
-
-  it("连接参数：user@host + -p 端口 + -i 密钥 + BatchMode（禁交互提示）", () => {
-    const wsl = new SshExecutor(target);
-    const { args } = wsl.buildArgv({ command: "ls", cwd: WORKSPACE, workspaceRoot: WORKSPACE });
-    assert.ok(args.includes("-o"));
-    assert.ok(args.includes("BatchMode=yes"));
-    assert.ok(args.includes("-p"));
-    assert.ok(args.includes("2222"));
-    assert.ok(args.includes("-i"));
-    assert.ok(args.includes("C:/keys/id_ed25519"));
-    assert.ok(args.includes("deploy@build.example.com"));
-  });
-
-  it("env 注入：远端 env K=V 前缀（ssh 不转发本地环境）", () => {
-    const wsl = new SshExecutor(target);
-    const remote = wsl.buildRemoteCommand({ command: "npm test", cwd: WORKSPACE, env: { CI: "1" } });
-    assert.ok(remote.includes(`env CI=${JSON.stringify("1")} sh -c`));
-  });
-
-  it("无 user/无端口：destination 仅 host", () => {
-    const wsl = new SshExecutor({ host: "h1", remoteWorkspaceRoot: "/w" });
-    const { args } = wsl.buildArgv({ command: "ls", cwd: WORKSPACE, workspaceRoot: WORKSPACE });
-    assert.ok(args.includes("h1"));
-    assert.ok(!args.includes("-p"));
-  });
-
-  it("工厂：探针通过生效 / 未配置 ssh 节或不可达回退告警", async () => {
-    const ok = await resolveSandboxExecutor(
-      { executor: "ssh", ssh: target },
-      { docker: async () => false, wsl: async () => false, ssh: async () => true },
-    );
-    assert.equal(ok.executor.kind, "ssh");
-    assert.ok(ok.executor instanceof SshExecutor);
-    assert.deepEqual(ok.warnings, []);
-
-    const noCfg = await resolveSandboxExecutor(
-      { executor: "ssh" },
-      { docker: async () => false, wsl: async () => false, ssh: async () => false },
-    );
-    assert.equal(noCfg.executor.kind, "local");
-    assert.ok(noCfg.warnings[0]!.includes("ssh 连接配置"));
-
-    const unreachable = await resolveSandboxExecutor(
-      { executor: "ssh", ssh: target },
-      { docker: async () => false, wsl: async () => false, ssh: async () => false },
-    );
-    assert.equal(unreachable.executor.kind, "local");
-    assert.ok(unreachable.warnings[0]!.includes("连通性探测失败"));
-  });
-
-  it("bash 接线：data.sandbox=ssh 且内容头行标注", async () => {
-    const { transport, execed } = recordingTransport();
-    const tool = createBashTool({ executor: new SshExecutor(target, transport) });
-    const background = new BackgroundTaskRegistry();
-    const out = await tool.execute(
-      { command: "make all" },
-      {
-        signal: new AbortController().signal,
-        workspaceRoot: WORKSPACE,
-        cwd: WORKSPACE,
-        sessionKey: "test",
-        background,
-      },
-    );
-    assert.equal(out.data.sandbox, "ssh");
-    assert.equal(out.data.enforcement, "partial", "ssh 探针不可得时工厂缺省 partial");
-    assert.ok(out.content!.startsWith("sandbox: ssh (enforcement: partial)\nexit code: 0"));
-    assert.ok(execed[0]!.command.startsWith("ssh '"), 'run/spawn 命令串应经 shell 单引号包装（argv 世界 → shell 字符串世界）');
-    assert.ok(execed[0]!.command.includes("make all"));
-  });
-});
 
 describe("bash 工具执行域接线（T3.1）", () => {
   const ctx = (workspaceRoot: string, cwd: string, background: BackgroundTaskRegistry): ToolExecutionContext => ({

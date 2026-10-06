@@ -38,10 +38,16 @@ importers:
       '@raincode/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      better-sqlite3:
+        specifier: ^12.4.1
+        version: 12.11.1
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
         version: 22.20.4
+      esbuild:
+        specifier: ^0.24.0
+        version: 0.24.2
       typescript:
         specifier: ^5.6.0
         version: 5.9.3

@@ -5,14 +5,16 @@
  * 形态：loopback 真 SSH2 协议服务端（ssh2 npm——密钥交换 / 公钥认证 / exec 通道均走真实线上协议）
  *   + 一次性 ssh-keygen 密钥对（临时目录，不触碰用户 ~/.ssh）
  *   + SshExecutor 经真实 ssh.exe（OpenSSH 客户端）发起连接——客户端与协议层全真；
- *   仅「远端主机」由本进程内 ssh2 服务端扮演：收到的远端命令（`cd <path> && env … sh -c <cmd>`）
+ *   仅「远端主机」由本进程内 ssh2 服务端扮演：收到的远端命令（T5.7 base64 包装契约
+ *   `echo <b64> | base64 -d | sh`，解码后 `cd '<path>' && env … sh -c '<cmd>'`）
  *   经解析后由本机 POSIX shell（sh）执行，与 SshExecutor 的远端命令契约同构。
  *   真 OpenSSH 服务端 / 真 Linux 远端主机仍是环境门控（legacy-items L-02 注记保留）。
  *
  * 断言：
  *   A 探针：resolveSandboxExecutor(ssh 配置) → kind=ssh 且无告警（`exit 0` 探测走真实协议）
- *   B 回合端到端：mock LLM 脚本化 bash 工具调用 → 命令经 SSH 执行域执行 → 输出与落盘文件
- *     在映射的远端根（N-3 验证世界）；cwd 映射经服务端线上收到的 cd 路径核对
+ *   B 回合端到端：mock LLM 脚本化三次 bash 工具调用（含 T4.8 双引号残差场景）→ 命令经
+ *     SSH 执行域执行 → 输出与落盘文件在映射的远端根（N-3 验证世界）；cwd 映射与命令体
+ *     逐字保真经服务端线上解码核对（T5.7 base64 加固验收）
  *   C env 注入：SshExecutor.run 显式 env → 远端 shell 可见，服务端线上核对 env 前缀
  *   D 失败收敛：错误密钥 → 探测失败 → 回退 local + 告警（02 §5.4 fail-closed）
  *   E 本地审计：会话事件 JSONL 落本地数据根（T3.2 口径），bash 工具调用在案
@@ -63,36 +65,44 @@ interface ExecRecord {
   command: string;
 }
 
-/** 解析 SshExecutor 远端命令契约：`cd "<path>" && [env K="V" …] sh -c "<cmd>"`；探测命令（exit 0）返回 null。
- * 注意：本地 shell 传递会消耗一层转义（JSON.stringify 的 \\ → \、\" → "），服务端按线上实收形态解析。 */
+/** 解析 SshExecutor 远端命令契约（T5.7 base64 包装）：线上形态 `echo <b64> | base64 -d | sh`；
+ * 解码后脚本 `cd '<path>' && [env K='V' …] sh -c '<cmd>'`（'\'' 习语）；探测命令（exit 0）返回 null。 */
+function unquoteSingle(raw: string): string {
+  assert.ok(raw.startsWith("'") && raw.endsWith("'") && raw.length >= 2, `单引号包装形态异常: ${JSON.stringify(raw)}`);
+  return raw.slice(1, -1).replaceAll("'\\''", "'");
+}
+
 function parseRemoteCommand(raw: string): ExecRecord | null {
   const trimmed = raw.trim();
   if (trimmed === "exit 0") {
     return null;
   }
-  const head = /^cd\s+"([^"]*)"\s+&&\s+([\s\S]*)$/.exec(trimmed);
-  assert.ok(head !== null, `远端命令形态不符合 SshExecutor 契约: ${JSON.stringify(raw)}`);
-  const cwd = head[1];
-  const rest = head[2];
+  const wire = /^echo\s+([A-Za-z0-9+/=]+)\s+\|\s+base64\s+-d\s+\|\s+sh$/.exec(trimmed);
+  assert.ok(wire !== null, `远端命令应为 base64 包装契约: ${JSON.stringify(raw)}`);
+  const script = Buffer.from(wire[1]!, "base64").toString("utf8");
+  const andIdx = script.indexOf(" && ");
+  assert.ok(andIdx > 0, `远端脚本缺少 cd && 段: ${JSON.stringify(script)}`);
+  const cdPart = /^cd\s+(.+)$/.exec(script.slice(0, andIdx));
+  assert.ok(cdPart !== null, `cd 段形态异常: ${JSON.stringify(script.slice(0, andIdx))}`);
+  const cwd = unquoteSingle(cdPart[1]!);
+  const rest = script.slice(andIdx + 4);
   const shIdx = rest.indexOf("sh -c ");
-  assert.ok(shIdx >= 0, `远端命令缺少 sh -c 段: ${JSON.stringify(raw)}`);
+  assert.ok(shIdx >= 0, `远端脚本缺少 sh -c 段: ${JSON.stringify(rest)}`);
   const env: Record<string, string> = {};
   const envPart = rest.slice(0, shIdx).trim();
   if (envPart.length > 0) {
     assert.ok(envPart.startsWith("env "), `env 段形态异常: ${JSON.stringify(envPart)}`);
     const pairs = envPart.slice(4).trim();
     if (pairs.length > 0) {
-      for (const pair of pairs.split(/\s+(?=[A-Za-z_][A-Za-z0-9_]*=)/)) {
+      for (const pair of pairs.split(/\s+(?=[A-Za-z_][A-Za-z0-9_]*=')/)) {
         const eq = pair.indexOf("=");
-        const key = pair.slice(0, eq);
-        const value = pair.slice(eq + 1);
-        env[key] = /^".*"$/.test(value) ? value.slice(1, -1) : value;
+        env[pair.slice(0, eq)] = unquoteSingle(pair.slice(eq + 1));
       }
     }
   }
-  const inner = /^sh\s+-c\s+"([^"]*)"\s*$/.exec(rest.slice(shIdx));
+  const inner = /^sh\s+-c\s+(.+)\s*$/.exec(rest.slice(shIdx));
   assert.ok(inner !== null, `sh -c 段形态异常: ${JSON.stringify(rest.slice(shIdx))}`);
-  return { cwd, env, command: inner[1] };
+  return { cwd, env, command: unquoteSingle(inner[1]!) };
 }
 
 function resolveSh(): string {
@@ -175,6 +185,10 @@ function startSshServer(keyPath: string, pubKeyData: Buffer): Promise<SshServerH
 
 const BASH_CALL_1 = "echo RAINCODE_SSH_E2E > ssh-e2e-out.txt && cat ssh-e2e-out.txt";
 const BASH_CALL_2 = "pwd";
+// T4.8 双引号残差场景（T5.7 base64 加固验收）：内嵌双引号 + && + 单引号，旧契约经本地
+// shell/argv 逐层解析会被改写；新契约要求远端逐字保真（服务端解码核对 + 输出核对双重断言）
+const BASH_CALL_3 = `echo "double-\\"q\\"-and-&&-intact 'sq'" > ssh-e2e-quote.txt && cat ssh-e2e-quote.txt`;
+const QUOTE_OUTPUT = `double-"q"-and-&&-intact 'sq'`;
 
 function startMockLlmServer(): Promise<{ url: string; close: () => Promise<void> }> {
   let toolRounds = 0;
@@ -211,6 +225,18 @@ function startMockLlmServer(): Promise<{ url: string; close: () => Promise<void>
             }],
           });
           const args = JSON.stringify({ command: BASH_CALL_2, timeoutMs: 15000 });
+          sse(res, { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: args } }] } }] });
+          sse(res, { choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] });
+          toolRounds += 1;
+        } else if (toolRounds === 2) {
+          // 第三轮：T4.8 双引号残差场景（内嵌双引号 + && + 单引号逐字保真）
+          sse(res, {
+            choices: [{
+              index: 0,
+              delta: { tool_calls: [{ index: 0, id: `call_ssh_${String(toolRounds)}`, type: "function", function: { name: "bash", arguments: "" } }] },
+            }],
+          });
+          const args = JSON.stringify({ command: BASH_CALL_3, timeoutMs: 15000 });
           sse(res, { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: args } }] } }] });
           sse(res, { choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] });
           toolRounds += 1;
@@ -317,9 +343,13 @@ async function main(): Promise<void> {
     await client.call("session.send", { sessionId: created.sessionId, input: { text: "在远端执行验证命令" } });
     const doneSessionId = await withTimeout(donePromise, 30_000, "ssh 执行域回合收束");
     assert.equal(doneSessionId, created.sessionId, "done 事件应属本会话");
-    assert.ok(toolCompleted.length >= 2, `应至少两次工具调用完成（实际 ${String(toolCompleted.length)}）`);
-    assert.ok(toolCompleted.every((e) => e.isError === false), "两次 bash 调用应均成功完成");
-    assert.equal(server.records.length, 2, `服务端应记录两次 exec（实际 ${String(server.records.length)}）`);
+    assert.ok(toolCompleted.length >= 3, `应至少三次工具调用完成（实际 ${String(toolCompleted.length)}）`);
+    assert.ok(toolCompleted.every((e) => e.isError === false), "三次 bash 调用应均成功完成");
+    assert.equal(server.records.length, 3, `服务端应记录三次 exec（实际 ${String(server.records.length)}）`);
+    // T4.8 双引号残差核销（T5.7）：服务端解码后命令与模型意图逐字一致（含内嵌双引号/&&/单引号）
+    assert.equal(server.records[0]!.command, BASH_CALL_1, "第一跳命令逐字保真");
+    assert.equal(server.records[1]!.command, BASH_CALL_2, "第二跳命令逐字保真");
+    assert.equal(server.records[2]!.command, BASH_CALL_3, "双引号场景命令逐字保真（旧契约会被本地 shell 改写）");
     // T5.2：结果首行（contentPreview）携带真实执行域与边界强度（模型可见面）
     assert.ok(
       toolCompleted.every((e) => (e.contentPreview ?? "").includes("sandbox: ssh (enforcement: partial)")),
@@ -339,7 +369,9 @@ async function main(): Promise<void> {
     const outFile = join(remoteRoot, "ssh-e2e-out.txt");
     assert.ok(existsSync(outFile), "远端落盘文件应存在于映射根");
     assert.ok(readFileSync(outFile, "utf8").includes("RAINCODE_SSH_E2E"), "远端落盘文件内容应一致");
-    console.log("B 回合端到端：两次 bash 经 SSH 执行域执行，cwd 映射与远端落盘核对一致 ✓");
+    const quoteFile = join(remoteRoot, "ssh-e2e-quote.txt");
+    assert.ok(readFileSync(quoteFile, "utf8").includes(QUOTE_OUTPUT), "双引号场景远端输出应逐字落盘（T4.8 残差核销）");
+    console.log("B 回合端到端：三次 bash 经 SSH 执行域执行，cwd 映射 / 命令保真 / 远端落盘核对一致 ✓");
 
     // C：env 注入（直接 SshExecutor，线上核对 env 前缀 + 远端可见性）
     const executor = new SshExecutor(sshConfig.ssh);

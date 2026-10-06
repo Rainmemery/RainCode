@@ -80,6 +80,11 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
+/** POSIX sh 单引号字面量包装（'\'' 习语）。仅用于 base64 载荷内部——线上可见面不含任何引号。 */
+function shSingleQuote(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`;
+}
+
 function joinPosix(...parts: string[]): string {
   return parts.join("/").replace(/\/+/g, "/");
 }
@@ -277,17 +282,24 @@ export class SshExecutor implements Executor {
   }
 
   /**
-   * 远端命令串：`cd <remoteCwd> && env K=V ... sh -c <command>`。
-   * env 经远端 env 前缀注入（ssh 不转发本地环境，AcceptEnv 依赖服务端配置不可靠）。
+   * 远端命令串（T5.7 base64 包装）：`echo <b64> | base64 -d | sh`。
+   * T4.8 残差修复：旧形态 `cd "…" && env K="V" sh -c "<cmd>"`（JSON.stringify 嵌入）经
+   * Windows argv 解析（CommandLineToArgvW 吃双引号）与本地 shell 逐层传递会消耗一层转义，
+   * 含内嵌双引号的远端命令被改写（m4 报告 §4 申报）。现将 cd/env/sh -c 三段整体编入
+   * base64（字母表 A-Za-z0-9+/= 无引号无空格无元字符），命令行全程零双引号，免疫逐层解析；
+   * 远端解码后经 sh 解释，引号语义在唯一一层 shell 内闭合（shSingleQuote POSIX '\'' 习语）。
+   * 要求远端具备 coreutils base64（POSIX 系统标配；探测命令 `exit 0` 不变）。
+   * env 仍经远端 env 前缀注入（ssh 不转发本地环境，AcceptEnv 依赖服务端配置不可靠）。
    */
   buildRemoteCommand(req: ExecRequest): string {
     const remoteCwd = toRemotePath(this.target, resolve(req.workspaceRoot ?? req.cwd), req.cwd);
     const envEntries = Object.entries(req.env ?? {});
-    const envPrefix = envEntries.map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(" ");
+    const envPrefix = envEntries.map(([k, v]) => `${k}=${shSingleQuote(v)}`).join(" ");
     const inner = envPrefix.length > 0
-      ? `env ${envPrefix} sh -c ${JSON.stringify(req.command)}`
-      : `sh -c ${JSON.stringify(req.command)}`;
-    return `cd ${JSON.stringify(remoteCwd)} && ${inner}`;
+      ? `env ${envPrefix} sh -c ${shSingleQuote(req.command)}`
+      : `sh -c ${shSingleQuote(req.command)}`;
+    const script = `cd ${shSingleQuote(remoteCwd)} && ${inner}`;
+    return `echo ${Buffer.from(script, "utf8").toString("base64")} | base64 -d | sh`;
   }
 
   buildArgv(req: ExecRequest): { file: string; args: string[] } {

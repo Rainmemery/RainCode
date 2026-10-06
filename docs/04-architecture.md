@@ -573,6 +573,8 @@ exceptions: []               # 白名单外豁免必须显式登记并附理由�
 - **策略即代码**：policy 文件本身的变更必须出现在 PR diff 中并接受评审——放宽依赖白名单、提高行数上限、新增 exceptions 都是有意识的结构决策，不允许「顺手改」。
 - **演进节奏**：每个里程碑（M1/M2/M3）收尾时做一次全量检查与孤儿模块清理；新增包前先回答「是否属于七大模块归属表或五类平台包」，两者皆否则禁止建包（§2.2 的防碎片化约束）。
 - **生成物防漂移（门禁 6，双生成物）**：`pnpm protocol:check`（T4.3 协议目录）+ `pnpm event-matrix:check`（T5.5 事件矩阵，扩展同管线）逐字节比对 `docs/generated/` 两个生成物——源码扫描面演进后必须 `protocol:gen` / `event-matrix:gen` 再生成随代码提交；事件矩阵另设防漏登记守卫（事件域前缀点分字面量未登记即生成器报错）。
+- **pinned 包管理器校验（T5.7，MiMo build.ts pinned 教训）**：`scripts/check-pinned-manager.mjs` 在 gates job install 前执行——packageManager 字段必须为精确 `pnpm@<semver>`（拒绝 `^`/范围/缺失形态）、pnpm-lock.yaml 在位、`pnpm --version` 实测与 pinned 一致（杂散 pnpm 二进制可致运行时挂死而 smoke 仍绿，构建期校验把问题拦在 install 前）。
+- **CLI bundle 构建冒烟 job（T5.7，与六门禁 gates 并行的独立 job；随门禁升级提交落地）**：windows-latest 上 install → `pnpm build:cli`（apps/cli/scripts/build.mjs 单文件 ESM bundle + 三件套：原生模块外置清单 / metafile 重复依赖校验 / alias 逐条精确声明）→ `pnpm smoke:bundle`（产物命令集与协议断言 8 项：help 命令集 / 未知命令退出码 / config dump / 握手门禁 / system.ping / tool.tools.list 装配面逐项一致 / session.create 迁移自举 / stdin 优雅退出）——bundle 产物是发布形态，随门禁回归防「源码绿、产物坏」。
 
 ---
 

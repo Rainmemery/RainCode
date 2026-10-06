@@ -78,6 +78,16 @@ node --import tsx apps/cli/src/index.ts chat        # 交互 REPL（推荐日常
 
 > ⚠️ **密钥安全约束**：API Key 只存在于内存与本地配置文件，绝不写入任何被跟踪文件、日志、输出或审计（架构级约束，见 docs/04-architecture §5.3）。推荐 `apiKeyRef: "file:config/apikey.txt"` 引用制。
 
+### CLI esbuild 前置编译（T5.7）
+
+```bash
+pnpm build:cli        # apps/cli/scripts/build.mjs → apps/cli/dist/raincode.mjs 单文件 ESM bundle
+node apps/cli/dist/raincode.mjs ping   # 产物直跑（无需 tsx；migrations 随包分发至 dist/migrations/）
+pnpm smoke:bundle     # 产物冒烟：构建 + 命令集与协议断言 8 项（CI 独立 job 同款）
+```
+
+构建三件套（ZCode build.mjs 参照）：原生模块外置清单（better-sqlite3，经 apps/cli 声明依赖解析）、metafile 重复依赖校验（同一包多物理实例即失败，构建期拦截 zod 双实例类问题）、alias 逐条精确声明（@raincode/* 十包）；banner 自举注入 migrations 目录 / appVersion / ESM-CJS require 绑定。
+
 ## CLI 命令
 
 | 命令 | 说明 |
@@ -480,6 +490,7 @@ pnpm test                 # 单元测试（node:test + tsx，零外呼）
 pnpm smoke:p0             # P0 全集（内部并复 compact/mcp/subagent/memory/migrations/kernel/p1tools 等全部 smoke）
 pnpm smoke:stdio          # stdio 绑定 + headless 六场景
 pnpm smoke:e2e            # 端到端主链路（单独运行）
+pnpm smoke:bundle         # CLI esbuild 产物冒烟（自跑 build:cli + 命令集与协议断言）
 
 # NFR 基准（口径见 docs/benchmarks/）
 pnpm bench:all                        # NFR-1/2/3/5/7（冷启动 / 发送开销 / 渲染延迟 / 会话恢复 / 崩溃恢复）

@@ -19,7 +19,7 @@
 
 | ID | 遗留项 | 来源 | 处置 | 状态 |
 | --- | --- | --- | --- | --- |
-| L-01 | Docker/WSL 真实执行域运行时验证（本机无 Docker、WSL 无发行版；T3.1 仅 argv 级隔离策略断言） | m3 报告 §8 | T4.8 环境门控 | 🔒 保留（环境不可得；2026-10-04 T4.8 复测：docker CLI 缺失、wsl 无发行版、无管理员权限安装，见 [m4 报告 §5](benchmarks/m4-2026-10-04.md)） |
+| L-01 | Docker/WSL 真实执行域运行时验证（本机无 Docker、WSL 无发行版；T3.1 仅 argv 级隔离策略断言） | m3 报告 §8 | T4.8 环境门控 | 🔒 保留（环境不可得；2026-10-04 T4.8 复测：docker CLI 缺失、wsl 无发行版、无管理员权限安装，见 [m4 报告 §5](benchmarks/m4-2026-10-04.md)；2026-10-06 T5.7 复测口径不变） |
 | L-02 | SSH 端到端样例（本机无 SSH 服务端；SshExecutor 仅探针/argv/路径映射用例） | m3 报告 §8 | **T4.8 批次 B**（[smoke-ssh.mts](scripts 已入库)：loopback 真 SSH2 协议服务端 + 一次性密钥 + 真 OpenSSH ssh.exe 客户端全链路，5 断言入 smoke:p0） | ✅ 收口（2026-10-04，真实协议端到端验证并修出 SshExecutor argv→shell 真缺陷；真 OpenSSH 服务端/真 Linux 主机仍环境门控注记，见 [m4 报告 §4](benchmarks/m4-2026-10-04.md)） |
 | L-03 | 场景 6 真实 MCP 任务样例（真实 MCP server + 真实任务演示；smoke:mcp 仅 fixture 级互操作） | m2/m3 报告 §8 | **T4.8 批次 B**（真实 filesystem MCP server + 真实 Provider 周报汇总任务） | ✅ 收口（2026-10-04，@modelcontextprotocol/server-filesystem 真实接入 + mcp__filesystem__ 工具链真实调用 + 落盘产物核对，见 [m4 报告 §3](benchmarks/m4-2026-10-04.md)） |
 | L-04 | electron-builder 完整 dist 打包（pnpm 符号链接 + 原生模块 rebuild 属打包机环节；现仅 verify-agent-bundle 验证 bundle 通路） | PROGRESS T2.9 / README 桌面端节 | **T4.7 批次 A**（prepare-native.mjs electron-ABI 原生模块暂存 + dist.mjs 镜像/winCodeSign 缓存兜底 + agent 目录 asarUnpack） | ✅ 收口（2026-10-04，nsis 产物 RainCode-Setup-0.1.0.exe 落地 + 静默安装 + walkthrough-desktop 安装目标 14/14 含 mock 会话全链路；三问题现场解决见 PROGRESS §3 T4.7 与 §4 P-7） |
@@ -32,9 +32,9 @@
 | L-11 | AC-8「删除」语义降级为 archive（归档只读保留全部数据），未回写 PRD；物理删除未提供 | 01-PRD §5 AC-8 | 规划轮注记（2026-10-03 PRD 实现注记）；session.delete 物理删除列 M5+ 候选 | ✅ 收口（2026-10-03） |
 | L-12 | 01-PRD 头部「关联文档」仍写「02-技术架构设计（待撰写）」等过时引用 | 01-PRD 头部 | 规划轮修订（2026-10-03） | ✅ 收口（2026-10-03） |
 | L-13 | 02-module-design / 05-database 停留 v0.1 设计稿状态，未随 M1~M3 实现校准升版 | 两文档头部 | 规划轮校准注记（2026-10-03；版本号保持 v0.1 不作形式升版，实现细节以代码与 06-api-spec 为准） | ✅ 收口（2026-10-03） |
-| L-14 | M1 验收场景 1（五 Provider 真实连通矩阵）无执行留存（需真实 key 环境） | 07 §2.4 场景 1 | T4.8 环境门控（smoke:remote 矩阵化——自动化欠账已清零，密钥到位即入阵） | 🔒 保留（环境不可得；2026-10-04 实测 2/5 连通：aliyun-qwen + Ollama 本地端点，OpenAI/DeepSeek/Kimi/GLM 密钥门控，见 [m4 报告 §1](benchmarks/m4-2026-10-04.md)） |
+| L-14 | M1 验收场景 1（五 Provider 真实连通矩阵）无执行留存（需真实 key 环境） | 07 §2.4 场景 1 | T4.8 环境门控（smoke:remote 矩阵化——自动化欠账已清零，密钥到位即入阵） | 🔒 保留（环境不可得；2026-10-04 实测 2/5 连通：aliyun-qwen + Ollama 本地端点，OpenAI/DeepSeek/Kimi/GLM 密钥门控，见 [m4 报告 §1](benchmarks/m4-2026-10-04.md)；2026-10-06 T5.7 复测 1/2：aliyun-qwen PASS 1.2s，ollama-local 本地服务在运行但已无已安装模型（/v1/models 空）——机器状态变化非代码回归，模型重装后即入阵） |
 | L-15 | M1 验收场景 5（真实开源仓库 Bug 修复端到端样例）无执行留存（需真实 Provider） | 07 §2.4 场景 5 | **T4.8 批次 B**（minimist v1.2.5 + CVE-2021-44906 复现脚本 + 真实 Provider 会话） | ✅ 收口（2026-10-04，agent 独立完成定位→修复→测试→汇报，仓库 tap 160/160 全绿，见 [m4 报告 §2](benchmarks/m4-2026-10-04.md)） |
-| L-16 | CLI esbuild 前置编译未立项（M2 预告 M3 实施；Node v22→v24 使 NFR-1 -50% 后有意识放弃） | m2/m3 报告 §2.1 | 保留（NFR-1 绝对值 2.1× 余量达标；列 M5+ 候选） | 🔒 保留（申报） |
+| L-16 | CLI esbuild 前置编译未立项（M2 预告 M3 实施；Node v22→v24 使 NFR-1 -50% 后有意识放弃） | m2/m3 报告 §2.1 | **T5.7 核销**（2026-10-06：apps/cli/scripts/build.mjs 单文件 ESM bundle + 三件套——原生模块外置清单（better-sqlite3）/ metafile 重复依赖校验（18 包零重复实例）/ alias 逐条精确声明（@raincode/* 十包）；banner 自举 migrations 随包分发 + appVersion 内联 + ESM/CJS require 绑定；`pnpm build:cli` + `pnpm smoke:bundle` 产物冒烟 8 断言（命令集 + 协议握手 + tools.list 装配面 + 迁移自举）入 CI 独立 job） | ✅ 收口（2026-10-06，07-dev-plan §11 T5.7；NFR-1 口径以 tsx 源码路径为准——bundle 即 L-16 对策本身） |
 | L-17 | 测试环境孤儿 node 进程空转烧 CPU 破坏时序敏感用例（多次复现，需人工查杀） | PROGRESS §4 2026-10-03 条目 | 保留（运维注意项；预防经验已沉淀入 [defensive-patterns](defensive-patterns.md) P-4「dispose 必须达到静默」/ N-2） | 🔒 保留（运维） |
 | L-18 | ask_user_question 未按 02 L322 的 T14 awaiting_user 状态机实现（同构最小简化，偏差已申报） | PROGRESS T2.7 偏差申报 | 保留（等价实现已覆盖交互闭环；T14 全状态机列 M5+ 候选） | 🔒 保留（申报） |
 | L-19 | NFR-7 基准默认单轮专项，07 要求的「强杀 ×20 全量口径」需 `--times 20` 手动扩展 | testing.md §6 | 保留（按需扩展；里程碑验收时建议跑一次全量口径） | 🔒 保留（申报） |
@@ -44,8 +44,8 @@
 | L-23 | 子会话（`[subagent:<profile>]` 前缀 title）随 `session.list` 全量投影进入双端侧栏会话列表，与主会话混排（前缀可辨识；与 L-20 全量投影口径同源） | UI 三栏演进轮截图核对发现（2026-10-04） | **UI 管理面板深化轮核销**（2026-10-05）：双端侧栏 `isSubsessionSession` + `filterSessionRows` 过滤投影落地，「显示子会话」开关默认关（localStorage 持久化），默认视图降噪且可还原全量（L-20 全量可见口径不变） | ✅ 收口（2026-10-05，03-ui-design v1.6 §16；PROGRESS §3） |
 | L-24 | 附件入口未做（`session.send` 协议已支持 `input.attachments`，但 Web 端无法取得真实文件路径、桌面端需新增 Electron dialog IPC 通道——跨端不对称，两端能力缺口不一致） | UI 异常态收口轮 spec §C6 设计核实（2026-10-05） | 保留（申报性遗留；跨端不对称故不伪造入口；补端能力或协议提供路径/内容形态后另行立项） | 🔒 保留（申报） |
 
-## 3. 状态图例与统计（2026-10-05）
+## 3. 状态图例与统计（2026-10-06）
 
 - ✅ 收口 · 🟡 待收口（M4 任务承接）· 🔒 保留（环境门控 / 申报性遗留 / 运维注意项）
-- 当前：**待收口 0 · 环境门控保留 2（L-01/14）· 申报性保留 6（L-09/16/18/19/20/24）· 运维保留 1（L-17）· 规划轮收口 4（L-10/11/12/13）· M4 执行收口 8（L-02/03/04/05/06/07/08/15）· 观察项复核收口 1（L-21）· UI 管理面板深化轮收口 1（L-23）· UI 异常态收口轮收口 1（L-22）**
+- 当前：**待收口 0 · 环境门控保留 2（L-01/14）· 申报性保留 5（L-09/18/19/20/24）· 运维保留 1（L-17）· 规划轮收口 4（L-10/11/12/13）· M4 执行收口 8（L-02/03/04/05/06/07/08/15）· 观察项复核收口 1（L-21）· UI 管理面板深化轮收口 1（L-23）· UI 异常态收口轮收口 1（L-22）· M5 T5.7 收口 1（L-16）**
 - 新遗留项登记时按 §1 口径判定处置，并在 07-dev-plan 对应里程碑任务表中挂承接（如有）。
