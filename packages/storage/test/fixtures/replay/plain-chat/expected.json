@@ -1,0 +1,27 @@
+{
+  "scenario": "plain-chat",
+  "description": "两轮纯文本基线：message/checkpoint 行的双路重放与投影一致",
+  "messages": [
+    {
+      "id": "msg_01M49XRCBHTAJGRVGWEZBAT1NM",
+      "role": "user",
+      "content": "第一轮：请介绍你自己。"
+    },
+    {
+      "id": "msg_01M49XRCC8P9FJMWVP68MHVX66",
+      "role": "assistant",
+      "content": "你好，我是回放 lane 的种子助手。"
+    },
+    {
+      "id": "msg_01M49XRCCCADND2YY58VF4PZA0",
+      "role": "user",
+      "content": "第二轮：确认就绪。"
+    },
+    {
+      "id": "msg_01M49XRCCF9782PHF96WKRSSRN",
+      "role": "assistant",
+      "content": "第二轮：随时可以开始录制回放测试。"
+    }
+  ],
+  "recordedAt": "2026-10-07T00:56:00.238Z"
+}

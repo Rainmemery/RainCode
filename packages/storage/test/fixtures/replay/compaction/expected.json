@@ -1,0 +1,27 @@
+{
+  "scenario": "compaction",
+  "description": "手动 compact：compaction.applied 标记 + epoch 1 + 摘要替换重放 + 压缩后新轮",
+  "messages": [
+    {
+      "id": "msg_compact_cp_01M49XRCKTEDQKWTVZ4J9HGRWC",
+      "role": "user",
+      "content": "[上下文压缩] 以下是此前会话历史的结构化摘要，后续对话以本摘要为早期上下文：\n本会话摘要：用户与助手进行了两轮问候并确认回放 lane 就绪。"
+    },
+    {
+      "id": "msg_01M49XRCKSCF3HZPZ7Q50TRKD3",
+      "role": "assistant",
+      "content": "第二轮回复：继续记录上下文。"
+    },
+    {
+      "id": "msg_01M49XRCMGTARQNSGMV2W70RKB",
+      "role": "user",
+      "content": "压缩后的第三轮：继续。"
+    },
+    {
+      "id": "msg_01M49XRCMJQH05X870YJMVYBJX",
+      "role": "assistant",
+      "content": "压缩后的新一轮回复。"
+    }
+  ],
+  "recordedAt": "2026-10-07T00:56:00.492Z"
+}

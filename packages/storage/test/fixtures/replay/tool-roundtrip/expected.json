@@ -1,0 +1,49 @@
+{
+  "scenario": "tool-roundtrip",
+  "description": "真实 write 工具往返：tool_call 块 + role:\"tool\" 结果行配对重放",
+  "messages": [
+    {
+      "id": "msg_01M49XRCFY9V4YT1D31TQV6R47",
+      "role": "user",
+      "content": "请把种子内容写入 notes/replay.txt。"
+    },
+    {
+      "id": "msg_01M49XRCG3BT9R8Z1AW7RSVE1E",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "tool_call",
+          "toolCallId": "call_fixture_write",
+          "name": "write",
+          "arguments": {
+            "path": "notes/replay.txt",
+            "content": "回放 lane 种子内容\n第二行"
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg_01M49XRCG6V9D6CBDFRHK6R2K6",
+      "role": "tool",
+      "toolCallId": "call_fixture_write",
+      "content": "wrote notes/replay.txt (34 bytes)",
+      "isError": false
+    },
+    {
+      "id": "msg_01M49XRCG9F33GJXDMSEBNF4Z5",
+      "role": "assistant",
+      "content": "已写入 notes/replay.txt。"
+    },
+    {
+      "id": "msg_01M49XRCGBA4YV6QDDSGP4QPEY",
+      "role": "user",
+      "content": "第二轮：确认写入结果。"
+    },
+    {
+      "id": "msg_01M49XRCGCQCA95DKQZGVT09RB",
+      "role": "assistant",
+      "content": "工具往返完成，回放 lane 种子会话就绪。"
+    }
+  ],
+  "recordedAt": "2026-10-07T00:56:00.357Z"
+}

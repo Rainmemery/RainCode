@@ -1,0 +1,22 @@
+{
+  "scenario": "crash-seed",
+  "description": "崩溃态种子：悬挂 assistant tool_call（合成恢复结果）+ 半行截尾（残尾修复前提）",
+  "messages": [
+    {
+      "id": "msg_01M49XRCQRT9H2M6VPK9384JC6",
+      "role": "user",
+      "content": "第一轮：正常完成。"
+    },
+    {
+      "id": "msg_01M49XRCQX8TFYZ1ENPPFGAPQ4",
+      "role": "assistant",
+      "content": "第一轮正常完成。"
+    }
+  ],
+  "seeded": {
+    "assistantMessageId": "msg_seed_dangling",
+    "danglingToolCallId": "call_seed_interrupt",
+    "truncatedTail": true
+  },
+  "recordedAt": "2026-10-07T00:56:00.600Z"
+}
